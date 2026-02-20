@@ -17,7 +17,7 @@ import api from '../utils/api';
 import Button from '../components/shared/Button';
 import QRCodeDisplay from '../components/venue/QRCodeDisplay';
 import QueueManager from '../components/venue/QueueManager';
-import Settings from '../components/venue/Settings';
+import VenueSettings from '../components/venue/Settings';
 import EarningsCard from '../components/venue/EarningsCard';
 
 export default function VenueDashboard() {
@@ -169,7 +169,7 @@ export default function VenueDashboard() {
         {/* Settings Panel */}
         {showSettings && (
           <div className="mb-8">
-            <Settings venueCode={venue.code} onSaved={() => setShowSettings(false)} variant="light" />
+            <VenueSettings venueCode={venue.code} onSaved={() => setShowSettings(false)} variant="light" />
           </div>
         )}
 
