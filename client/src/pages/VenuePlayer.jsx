@@ -199,7 +199,7 @@ export default function VenuePlayer() {
         <div className="flex items-center gap-3 mb-4">
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/venue/dashboard')}
             className="text-dark-400 hover:text-white flex items-center gap-1 text-sm"
           >
             ← Back
