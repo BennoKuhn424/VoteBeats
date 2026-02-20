@@ -17,6 +17,7 @@ export default function VenuePlayer() {
   const lastPlayedIdRef = useRef(null);
   const playbackListenerRef = useRef(null);
   const autoplayFromServerRef = useRef(false);
+  const startPlaybackWithQueueRef = useRef(null);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const [previewDetected, setPreviewDetected] = useState(false);
   const playbackStartedAtRef = useRef(null);
@@ -41,19 +42,22 @@ export default function VenuePlayer() {
   useEffect(() => {
     if (!venueCode) return;
 
-    async function fetchQueue() {
-      try {
-        const res = await api.getQueue(venueCode);
-        setQueue(res.data);
-        setError(null);
-      } catch (err) {
-        setError('Could not load queue');
-      }
-    }
-
     async function load() {
       try {
         const res = await api.getQueue(venueCode);
+        const serverNowId = res.data?.nowPlaying?.appleId
+          ? String(res.data.nowPlaying.appleId)
+          : null;
+        const lastId = lastPlayedIdRef.current ? String(lastPlayedIdRef.current) : null;
+        // Server nowPlaying changed (e.g. Skip clicked on dashboard) – replace MusicKit queue
+        if (
+          serverNowId &&
+          lastId &&
+          lastId !== serverNowId &&
+          getMusicInstance()?.isAuthorized
+        ) {
+          startPlaybackWithQueueRef.current?.(res.data);
+        }
         setQueue(res.data);
         if (!autoplayFromServerRef.current) {
           const fromServer = res.data?.requestSettings?.autoplayQueue;
@@ -73,6 +77,7 @@ export default function VenuePlayer() {
   }, [venueCode]);
 
   // Build full queue and start playback. Pass queueData to use fresh data (e.g. after song completed).
+  // Always replaces MusicKit queue from server state – never appends (prevents buildup).
   const startPlaybackWithQueue = useCallback((queueData) => {
     const music = getMusicInstance();
     if (!music || !music.isAuthorized) return;
@@ -122,7 +127,22 @@ export default function VenuePlayer() {
       });
   }, [venueCode, queue?.nowPlaying?.appleId, queue?.upcoming]);
 
+  startPlaybackWithQueueRef.current = startPlaybackWithQueue;
+
   const startPlayback = useCallback(() => startPlaybackWithQueue(null), [startPlaybackWithQueue]);
+
+  // Skip: advance server, replace MusicKit queue from server (no buildup)
+  const handleSkip = useCallback(async () => {
+    try {
+      await api.advanceQueue(venueCode);
+      const res = await api.getQueue(venueCode);
+      setQueue(res.data);
+      const music = getMusicInstance();
+      if (music?.isAuthorized && (res.data?.nowPlaying || res.data?.upcoming?.length > 0)) {
+        startPlaybackWithQueue(res.data);
+      }
+    } catch (_) {}
+  }, [venueCode, startPlaybackWithQueue]);
 
   // When MusicKit reports song completed: advance server, detect preview cutoff, and continue autoplay
   const handlePlaybackCompleted = useCallback(async () => {
@@ -162,10 +182,13 @@ export default function VenuePlayer() {
           }
         } catch (_) {}
       } else {
-        // Update UI: fetch queue for display
+        // Update UI and lastPlayedIdRef after skipToNextItem
         try {
           const res = await api.getQueue(venueCode);
           setQueue(res.data);
+          if (res.data?.nowPlaying?.appleId) {
+            lastPlayedIdRef.current = String(res.data.nowPlaying.appleId);
+          }
         } catch (_) {}
       }
     }
@@ -310,11 +333,18 @@ export default function VenuePlayer() {
                 <p className="font-semibold truncate">{queue.nowPlaying.title}</p>
                 <p className="text-sm text-dark-400 truncate">{queue.nowPlaying.artist}</p>
               </div>
-              {(queue.nowPlaying.appleId || queue.upcoming?.length > 0) && (
-                <Button onClick={startPlayback} className="shrink-0 !py-2 !px-4">
-                  ▶ Play
-                </Button>
-              )}
+              <div className="flex shrink-0 gap-2">
+                {(queue.nowPlaying.appleId || queue.upcoming?.length > 0) && (
+                  <Button onClick={startPlayback} className="!py-2 !px-4">
+                    ▶ Play
+                  </Button>
+                )}
+                {queue.nowPlaying && (
+                  <Button variant="danger" onClick={handleSkip} className="!py-2 !px-4">
+                    Skip
+                  </Button>
+                )}
+              </div>
             </div>
           ) : queue?.upcoming?.length > 0 ? (
             <div className="flex items-center justify-between">
