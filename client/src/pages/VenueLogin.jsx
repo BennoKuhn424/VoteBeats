@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Music2, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import api from '../utils/api';
 import Button from '../components/shared/Button';
-import Header from '../components/shared/Header';
 
 export default function VenueLogin() {
   const [isRegister, setIsRegister] = useState(false);
@@ -10,6 +10,7 @@ export default function VenueLogin() {
   const [password, setPassword] = useState('');
   const [venueName, setVenueName] = useState('');
   const [location, setLocation] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -38,106 +39,178 @@ export default function VenueLogin() {
     }
   }
 
-  return (
-    <div className="min-h-screen bg-dark-950 text-white pb-safe">
-      <Header />
-      <div className="container mx-auto px-5 py-10 max-w-md">
-        <h1 className="text-2xl font-extrabold mb-8 text-center tracking-tight">
-          {isRegister ? 'Register your venue' : 'Venue login'}
-        </h1>
+  const inputClass =
+    'w-full min-h-touch pl-10 pr-10 py-3 bg-white border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-zinc-900 placeholder:text-zinc-400';
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {isRegister ? (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-dark-400 mb-2">Email</label>
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100">
+      <div className="w-full max-w-md p-8">
+        {/* Card Container */}
+        <div className="bg-white rounded-xl shadow-xl border border-zinc-200 p-8">
+          {/* Logo */}
+          <div className="flex items-center justify-center gap-3 mb-8">
+            <Music2 className="h-8 w-8 text-brand-600" />
+            <h1 className="text-2xl font-semibold text-zinc-900">VoteBeats</h1>
+          </div>
+
+          {/* Welcome Text */}
+          <div className="mb-8 text-center">
+            <h2 className="text-xl font-semibold text-zinc-900 mb-2">
+              {isRegister ? 'Register your venue' : 'Venue Login'}
+            </h2>
+            <p className="text-sm text-zinc-600">
+              {isRegister
+                ? 'Create an account to manage your venue'
+                : 'Sign in to access your venue dashboard'}
+            </p>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Email Field */}
+            <div className="space-y-2">
+              <label htmlFor="email" className="text-zinc-700 text-sm font-medium block">
+                Email Address
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 pointer-events-none" />
                 <input
+                  id="email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  className={inputClass}
+                  placeholder="your@email.com"
                   required
-                  className="w-full min-h-touch px-4 py-3 bg-dark-800 border border-dark-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-dark-400 mb-2">Venue name</label>
-                <input
-                  type="text"
-                  value={venueName}
-                  onChange={(e) => setVenueName(e.target.value)}
-                  required
-                  placeholder="My Bar"
-                  className="w-full min-h-touch px-4 py-3 bg-dark-800 border border-dark-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-dark-400 mb-2">Location (optional)</label>
-                <input
-                  type="text"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="City or address"
-                  className="w-full min-h-touch px-4 py-3 bg-dark-800 border border-dark-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                />
-              </div>
-            </>
-          ) : (
-            <div>
-              <label className="block text-sm font-medium text-dark-400 mb-2">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="you@example.com"
-                className="w-full min-h-touch px-4 py-3 bg-dark-800 border border-dark-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-              />
             </div>
-          )}
 
-          <div>
-            <label className="block text-sm font-medium text-dark-400 mb-2">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full min-h-touch px-4 py-3 bg-dark-800 border border-dark-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-            />
+            {/* Register-only: Venue name & Location */}
+            {isRegister && (
+              <>
+                <div className="space-y-2">
+                  <label htmlFor="venueName" className="text-zinc-700 text-sm font-medium block">
+                    Venue name
+                  </label>
+                  <input
+                    id="venueName"
+                    type="text"
+                    value={venueName}
+                    onChange={(e) => setVenueName(e.target.value)}
+                    className="w-full min-h-touch px-4 py-3 bg-white border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-zinc-900 placeholder:text-zinc-400"
+                    placeholder="My Bar"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="location" className="text-zinc-700 text-sm font-medium block">
+                    Location (optional)
+                  </label>
+                  <input
+                    id="location"
+                    type="text"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    className="w-full min-h-touch px-4 py-3 bg-white border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-zinc-900 placeholder:text-zinc-400"
+                    placeholder="City or address"
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Password Field */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="text-zinc-700 text-sm font-medium block">
+                  Password
+                </label>
+                {!isRegister && (
+                  <button
+                    type="button"
+                    className="text-sm text-brand-600 hover:text-brand-700 transition-colors"
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 pointer-events-none" />
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={inputClass}
+                  placeholder="Enter your password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition-colors"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <p className="text-red-500 text-sm">{error}</p>
+            )}
+
+            {/* Login/Register Button */}
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full !py-3 !h-11 bg-brand-600 hover:!bg-brand-500 !text-white font-medium mt-6"
+            >
+              {loading ? 'Please wait...' : isRegister ? 'Register' : 'Sign In'}
+            </Button>
+          </form>
+
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-zinc-200" />
+            </div>
+            <div className="relative flex justify-center text-xs">
+              <span className="bg-white px-2 text-zinc-500">
+                {isRegister ? 'Already have an account?' : 'New to VoteBeats?'}
+              </span>
+            </div>
           </div>
 
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          {/* Toggle Login/Register */}
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={() => {
+                setIsRegister(!isRegister);
+                setError('');
+              }}
+              className="text-sm text-zinc-700 hover:text-zinc-900 transition-colors"
+            >
+              {isRegister ? 'Log in instead' : 'Create a venue account'}
+            </button>
+          </div>
+        </div>
 
-          <Button type="submit" disabled={loading} className="w-full !py-4">
-            {loading ? 'Please wait...' : isRegister ? 'Register' : 'Log in'}
-          </Button>
-        </form>
-
-        <p className="mt-8 text-center text-dark-400 text-sm">
-          {isRegister ? (
-            <>
-              Already have an account?{' '}
-              <button
-                type="button"
-                onClick={() => setIsRegister(false)}
-                className="text-brand-400 hover:text-brand-300 font-medium"
-              >
-                Log in
-              </button>
-            </>
-          ) : (
-            <>
-              New venue?{' '}
-              <button
-                type="button"
-                onClick={() => setIsRegister(true)}
-                className="text-brand-400 hover:text-brand-300 font-medium"
-              >
-                Register
-              </button>
-            </>
-          )}
-        </p>
+        {/* Footer Link */}
+        <div className="mt-6 text-center">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors"
+          >
+            ← Back to Home
+          </button>
+        </div>
       </div>
     </div>
   );

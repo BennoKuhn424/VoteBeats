@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../utils/api';
 import Button from '../shared/Button';
 
-export default function Settings({ venueCode, onSaved }) {
+export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
   const [allowExplicit, setAllowExplicit] = useState(false);
   const [maxSongsPerUser, setMaxSongsPerUser] = useState(3);
   const [genreFilters, setGenreFilters] = useState('');
@@ -48,11 +48,16 @@ export default function Settings({ venueCode, onSaved }) {
     setSaving(false);
   }
 
+  const isLight = variant === 'light';
+  const cardClass = isLight
+    ? 'bg-white rounded-xl border border-zinc-200 shadow-sm p-6'
+    : 'bg-dark-800 rounded-2xl border border-dark-600 p-6';
+
   return (
-    <div className="bg-dark-800 rounded-2xl border border-dark-600 p-6">
-      <h2 className="text-lg font-bold mb-4">Settings</h2>
+    <div className={cardClass}>
+      <h2 className={`text-lg font-bold mb-4 ${isLight ? 'text-zinc-900' : ''}`}>Settings</h2>
       <form onSubmit={handleSubmit} className="space-y-5">
-        <label className="flex items-center gap-3 min-h-touch cursor-pointer">
+        <label className={`flex items-center gap-3 min-h-touch cursor-pointer ${isLight ? 'text-zinc-700' : ''}`}>
           <input
             type="checkbox"
             checked={allowExplicit}
@@ -62,18 +67,20 @@ export default function Settings({ venueCode, onSaved }) {
           <span>Allow explicit content</span>
         </label>
         <div>
-          <label className="block text-sm font-medium text-dark-400 mb-2">Max songs per user</label>
+          <label className={`block text-sm font-medium mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>Max songs per user</label>
           <input
             type="number"
             min={1}
             max={10}
             value={maxSongsPerUser}
             onChange={(e) => setMaxSongsPerUser(Number(e.target.value))}
-            className="w-full min-h-touch px-4 py-3 bg-dark-700 border border-dark-600 rounded-xl text-white focus:ring-2 focus:ring-brand-500"
+            className={`w-full min-h-touch px-4 py-3 rounded-xl focus:ring-2 focus:ring-brand-500 ${
+              isLight ? 'bg-white border border-zinc-300 text-zinc-900' : 'bg-dark-700 border border-dark-600 text-white'
+            }`}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-dark-400 mb-2">
+          <label className={`block text-sm font-medium mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>
             Genre filters (comma-separated, leave empty for all)
           </label>
           <input
@@ -81,12 +88,14 @@ export default function Settings({ venueCode, onSaved }) {
             value={genreFilters}
             onChange={(e) => setGenreFilters(e.target.value)}
             placeholder="e.g. amapiano, house, hip-hop"
-            className="w-full min-h-touch px-4 py-3 bg-dark-700 border border-dark-600 rounded-xl text-white placeholder-dark-500 focus:ring-2 focus:ring-brand-500"
+            className={`w-full min-h-touch px-4 py-3 rounded-xl focus:ring-2 focus:ring-brand-500 ${
+              isLight ? 'bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400' : 'bg-dark-700 border border-dark-600 text-white placeholder-dark-500'
+            }`}
           />
         </div>
-        <div className="border-t border-dark-600 pt-5 space-y-4">
-          <h3 className="font-semibold">Venue Player</h3>
-          <label className="flex items-center gap-3 min-h-touch cursor-pointer">
+        <div className={`border-t pt-5 space-y-4 ${isLight ? 'border-zinc-200' : 'border-dark-600'}`}>
+          <h3 className={`font-semibold ${isLight ? 'text-zinc-900' : ''}`}>Venue Player</h3>
+          <label className={`flex items-center gap-3 min-h-touch cursor-pointer ${isLight ? 'text-zinc-700' : ''}`}>
             <input
               type="checkbox"
               checked={autoplayQueue}
@@ -96,9 +105,9 @@ export default function Settings({ venueCode, onSaved }) {
             <span>Autoplay queue (auto-advance and play next song)</span>
           </label>
         </div>
-        <div className="border-t border-dark-600 pt-5 space-y-4">
-          <h3 className="font-semibold">Pay to play</h3>
-          <label className="flex items-center gap-3 min-h-touch cursor-pointer">
+        <div className={`border-t pt-5 space-y-4 ${isLight ? 'border-zinc-200' : 'border-dark-600'}`}>
+          <h3 className={`font-semibold ${isLight ? 'text-zinc-900' : ''}`}>Pay to play</h3>
+          <label className={`flex items-center gap-3 min-h-touch cursor-pointer ${isLight ? 'text-zinc-700' : ''}`}>
             <input
               type="checkbox"
               checked={requirePaymentForRequest}
@@ -109,14 +118,16 @@ export default function Settings({ venueCode, onSaved }) {
           </label>
           {requirePaymentForRequest && (
             <div>
-              <label className="block text-sm font-medium text-dark-400 mb-2">Price per request (R)</label>
+              <label className={`block text-sm font-medium mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>Price per request (R)</label>
               <input
                 type="number"
                 min={5}
                 max={50}
                 value={requestPriceCents / 100}
                 onChange={(e) => setRequestPriceCents(Math.round(Number(e.target.value) * 100) || 1000)}
-                className="w-24 min-h-touch px-4 py-3 bg-dark-700 border border-dark-600 rounded-xl text-white focus:ring-2 focus:ring-brand-500"
+                className={`w-24 min-h-touch px-4 py-3 rounded-xl focus:ring-2 focus:ring-brand-500 ${
+                  isLight ? 'bg-white border border-zinc-300 text-zinc-900' : 'bg-dark-700 border border-dark-600 text-white'
+                }`}
               />
               <p className="text-xs text-dark-500 mt-1">R5–R50. Add YOCO_SECRET_KEY on the server to enable.</p>
             </div>
