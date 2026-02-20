@@ -85,13 +85,14 @@ export default function VenuePlayer() {
     });
     if (ids.length === 0) return;
 
-    const opts = ids.length > 1 ? { songs: ids } : { song: ids[0] };
+    const opts = ids.length > 1
+      ? { songs: ids, startPlaying: true }
+      : { song: ids[0], startPlaying: true };
     const expectedSec = (queueData || queue)?.nowPlaying?.duration ? Number((queueData || queue).nowPlaying.duration) : 0;
     expectedDurationRef.current = expectedSec;
 
     music
       .setQueue(opts)
-      .then(() => music.play())
       .then(() => {
         playbackStartedAtRef.current = Date.now();
         lastPlayedIdRef.current = ids[0];
@@ -136,17 +137,37 @@ export default function VenuePlayer() {
     lastPlayedIdRef.current = null;
     await api.advanceQueue(venueCode).catch(() => {});
 
-    // If autoplay is on, fetch updated queue and play next song (MusicKit may not always auto-advance)
+    // Continue to next song: skipToNextItem+play keeps session alive (avoids autoplay block)
     if (autoplayRef.current) {
+      const music = getMusicInstance();
+      let continued = false;
       try {
-        const res = await api.getQueue(venueCode);
-        const q = res.data;
-        const hasMore = q?.nowPlaying?.appleId || (q?.upcoming?.length ?? 0) > 0;
-        if (hasMore) {
-          setQueue(q);
-          startPlaybackWithQueue(q);
+        if (typeof music?.skipToNextItem === 'function') {
+          await music.skipToNextItem();
+          await music.play();
+          playbackStartedAtRef.current = Date.now();
+          continued = true;
         }
       } catch (_) {}
+
+      // Fallback: no next in MusicKit queue, fetch from server and set fresh queue
+      if (!continued) {
+        try {
+          const res = await api.getQueue(venueCode);
+          const q = res.data;
+          const hasMore = q?.nowPlaying?.appleId || (q?.upcoming?.length ?? 0) > 0;
+          if (hasMore) {
+            setQueue(q);
+            startPlaybackWithQueue(q);
+          }
+        } catch (_) {}
+      } else {
+        // Update UI: fetch queue for display
+        try {
+          const res = await api.getQueue(venueCode);
+          setQueue(res.data);
+        } catch (_) {}
+      }
     }
   }, [venueCode, startPlaybackWithQueue]);
 
