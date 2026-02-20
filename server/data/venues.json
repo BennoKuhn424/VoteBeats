@@ -1,0 +1,39 @@
+{
+  "H928K4": {
+    "code": "H928K4",
+    "name": "LessGo",
+    "location": "Centurion",
+    "owner": {
+      "email": "bennokuhn1@icloud.com",
+      "passwordHash": "$2a$10$pX16N5XobBG6uDWhVtoCZ.Dsf2IVLwFIGVkvX4IAWTQidtwdDgs8a"
+    },
+    "settings": {
+      "allowExplicit": false,
+      "maxSongsPerUser": 3,
+      "genreFilters": [],
+      "blockedArtists": [],
+      "requirePaymentForRequest": true,
+      "requestPriceCents": 500,
+      "autoplayQueue": true
+    },
+    "createdAt": "2026-02-06T21:45:17.885Z"
+  },
+  "H86FRW": {
+    "code": "H86FRW",
+    "name": "Padstal",
+    "location": "Centurion",
+    "owner": {
+      "email": "Bennokuhn2@icloud.com",
+      "passwordHash": "$2a$10$94uLqFGPC53xATpqhlVi1uJmO5QrkYc087HhKvoJZwwhkisd3AS4C"
+    },
+    "settings": {
+      "allowExplicit": false,
+      "maxSongsPerUser": 3,
+      "genreFilters": [],
+      "blockedArtists": [],
+      "requirePaymentForRequest": false,
+      "requestPriceCents": 1000
+    },
+    "createdAt": "2026-02-09T11:41:18.728Z"
+  }
+}

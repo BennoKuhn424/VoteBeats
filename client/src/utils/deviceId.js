@@ -1,0 +1,14 @@
+export function getDeviceId() {
+  let deviceId = localStorage.getItem('votebeats_device_id');
+
+  if (!deviceId) {
+    deviceId =
+      'device_' +
+      Math.random().toString(36).substring(2, 11) +
+      '_' +
+      Date.now();
+    localStorage.setItem('votebeats_device_id', deviceId);
+  }
+
+  return deviceId;
+}
