@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { initMusicKit, getMusicInstance, unauthorizeMusicKit } from '../utils/musickit';
 import Button from '../components/shared/Button';
@@ -8,6 +8,7 @@ const POLL_INTERVAL = 5000;
 
 export default function VenuePlayer() {
   const { venueCode } = useParams();
+  const navigate = useNavigate();
   const [queue, setQueue] = useState({ nowPlaying: null, upcoming: [] });
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [autoplay, setAutoplay] = useState(true);
@@ -71,20 +72,21 @@ export default function VenuePlayer() {
     return () => clearInterval(interval);
   }, [venueCode]);
 
-  // Build full queue: [nowPlaying, ...upcoming] - MusicKit auto-advances through all; one tap = entire queue plays
-  const startPlayback = useCallback(() => {
+  // Build full queue and start playback. Pass queueData to use fresh data (e.g. after song completed).
+  const startPlaybackWithQueue = useCallback((queueData) => {
     const music = getMusicInstance();
     if (!music || !music.isAuthorized) return;
 
+    const q = queueData || queue;
     const ids = [];
-    if (queue?.nowPlaying?.appleId) ids.push(String(queue.nowPlaying.appleId));
-    (queue?.upcoming || []).forEach((s) => {
+    if (q?.nowPlaying?.appleId) ids.push(String(q.nowPlaying.appleId));
+    (q?.upcoming || []).forEach((s) => {
       if (s?.appleId) ids.push(String(s.appleId));
     });
     if (ids.length === 0) return;
 
     const opts = ids.length > 1 ? { songs: ids } : { song: ids[0] };
-    const expectedSec = queue?.nowPlaying?.duration ? Number(queue.nowPlaying.duration) : 0;
+    const expectedSec = (queueData || queue)?.nowPlaying?.duration ? Number((queueData || queue).nowPlaying.duration) : 0;
     expectedDurationRef.current = expectedSec;
 
     music
@@ -103,7 +105,7 @@ export default function VenuePlayer() {
             .then(() => music.play())
             .then(() => {
               playbackStartedAtRef.current = Date.now();
-              expectedDurationRef.current = queue?.nowPlaying?.duration ? Number(queue.nowPlaying.duration) : 0;
+              expectedDurationRef.current = (queueData || queue)?.nowPlaying?.duration ? Number((queueData || queue).nowPlaying.duration) : 0;
               lastPlayedIdRef.current = ids[0];
               setPlaybackBlocked(false);
               if (venueCode && ids[0]) api.reportPlaying(venueCode, ids[0]).catch(() => {});
@@ -119,25 +121,45 @@ export default function VenuePlayer() {
       });
   }, [venueCode, queue?.nowPlaying?.appleId, queue?.upcoming]);
 
-  // When MusicKit reports song completed: advance server queue, or detect 30-sec preview and force re-login
+  const startPlayback = useCallback(() => startPlaybackWithQueue(null), [startPlaybackWithQueue]);
+
+  // When MusicKit reports song completed: advance server, detect preview cutoff, and continue autoplay
+  const handlePlaybackCompleted = useCallback(async () => {
+    const expectedSec = expectedDurationRef.current || 0;
+    const playedMs = playbackStartedAtRef.current ? Date.now() - playbackStartedAtRef.current : 0;
+    const playedSec = playedMs / 1000;
+    if (expectedSec > 60 && playedSec > 0 && playedSec < 45) {
+      setPreviewDetected(true);
+    }
+    playbackStartedAtRef.current = null;
+    expectedDurationRef.current = null;
+    lastPlayedIdRef.current = null;
+    await api.advanceQueue(venueCode).catch(() => {});
+
+    // If autoplay is on, fetch updated queue and play next song (MusicKit may not always auto-advance)
+    if (autoplayRef.current) {
+      try {
+        const res = await api.getQueue(venueCode);
+        const q = res.data;
+        const hasMore = q?.nowPlaying?.appleId || (q?.upcoming?.length ?? 0) > 0;
+        if (hasMore) {
+          setQueue(q);
+          startPlaybackWithQueue(q);
+        }
+      } catch (_) {}
+    }
+  }, [venueCode, startPlaybackWithQueue]);
+
+  const autoplayRef = useRef(autoplay);
+  autoplayRef.current = autoplay;
+
   useEffect(() => {
     const music = getMusicInstance();
     if (!music || !music.isAuthorized || !venueCode) return;
 
     const handler = (e) => {
       if (e.state === 'completed') {
-        const expectedSec = expectedDurationRef.current || 0;
-        const playedMs = playbackStartedAtRef.current ? Date.now() - playbackStartedAtRef.current : 0;
-        const playedSec = playedMs / 1000;
-        // Detect 30-sec preview cutoff: song ended in <45s but should have been >60s
-        // Don't call unauthorize() - it triggers 403 from Apple and can corrupt the session
-        if (expectedSec > 60 && playedSec > 0 && playedSec < 45) {
-          setPreviewDetected(true);
-        }
-        playbackStartedAtRef.current = null;
-        expectedDurationRef.current = null;
-        lastPlayedIdRef.current = null;
-        api.advanceQueue(venueCode).catch(() => {});
+        handlePlaybackCompleted();
       }
     };
 
@@ -147,7 +169,7 @@ export default function VenuePlayer() {
     return () => {
       music.removeEventListener('playbackStateDidChange', playbackListenerRef.current);
     };
-  }, [isAuthorized, venueCode]);
+  }, [isAuthorized, venueCode, handlePlaybackCompleted]);
 
   async function handleAuthorize() {
     const music = getMusicInstance();
@@ -174,6 +196,16 @@ export default function VenuePlayer() {
   return (
     <div className="min-h-screen bg-dark-950 text-white pb-safe p-6">
       <div className="max-w-md mx-auto">
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="text-dark-400 hover:text-white flex items-center gap-1 text-sm"
+          >
+            ← Back
+          </button>
+          <div className="flex-1" />
+        </div>
         <h1 className="text-xl font-bold mb-2">Venue Player</h1>
         <p className="text-dark-400 text-sm mb-6 font-mono">Code: {venueCode}</p>
 
