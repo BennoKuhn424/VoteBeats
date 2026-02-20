@@ -232,14 +232,13 @@ export default function VenueDashboard() {
                   )}
                 </button>
               </div>
-              <a
-                href={playerUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-brand-600 hover:text-brand-500 font-medium"
+              <button
+                type="button"
+                onClick={() => navigate(`/venue/player/${venue.code}`)}
+                className="text-sm text-brand-600 hover:text-brand-500 font-medium text-left"
               >
-                Open in new tab →
-              </a>
+                Open Venue Player →
+              </button>
               <div
                 role="button"
                 tabIndex={0}
