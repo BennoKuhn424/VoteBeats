@@ -83,9 +83,6 @@ export default function VenuePlayer() {
     if (!music || !music.isAuthorized || !appleId) return false;
     if (isTransitioningRef.current) return false;
     isTransitioningRef.current = true;
-    // #region agent log
-    fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:playSong',message:'playSong CALLED',data:{appleId,prevLastId:lastPlayedIdRef.current,mkState:music.playbackState,mkTime:music.currentPlaybackTime,mkDur:music.currentPlaybackDuration},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{}); console.warn('[VB_DEBUG] playSong CALLED',{appleId,prevLastId:lastPlayedIdRef.current});
-    // #endregion
 
     try {
       await safeStop();
@@ -106,9 +103,6 @@ export default function VenuePlayer() {
       setPlaybackBlocked(false);
 
       if (venueCode) api.reportPlaying(venueCode, String(appleId)).catch(() => {});
-      // #region agent log
-      fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:playSong-ok',message:'playSong SUCCESS',data:{appleId,mkState:music.playbackState,mkTime:music.currentPlaybackTime,mkDur:music.currentPlaybackDuration},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{}); console.warn('[VB_DEBUG] playSong SUCCESS',{appleId});
-      // #endregion
 
       isTransitioningRef.current = false;
       return true;
@@ -142,9 +136,6 @@ export default function VenuePlayer() {
 
     try {
       const res = await api.autofillQueue(venueCode);
-      // #region agent log
-      fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:autofill-result',message:'autofill response',data:{filled:res.data?.filled,songId:res.data?.song?.appleId,songTitle:res.data?.song?.title},timestamp:Date.now(),hypothesisId:'F'})}).catch(()=>{}); console.warn('[VB_DEBUG] autofill result',{filled:res.data?.filled,songId:res.data?.song?.appleId,title:res.data?.song?.title});
-      // #endregion
       if (res.data?.filled && res.data?.song) {
         const q = { nowPlaying: res.data.song, upcoming: [] };
         setQueue(q);
@@ -172,9 +163,6 @@ export default function VenuePlayer() {
     if (_ps === 2 || _ps === 1 || _ps === 6 || _ps === 8) return;
 
     songEndHandledRef.current = true;
-    // #region agent log
-    fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:handleSongEnd',message:'handleSongEnd CALLED - song will be removed',data:{lastPlayedId:lastPlayedIdRef.current,elapsed:playbackStartedAtRef.current?(Date.now()-playbackStartedAtRef.current)/1000:null,mkTime:_m?.currentPlaybackTime,mkDur:_m?.currentPlaybackDuration,mkState:_ps},timestamp:Date.now(),hypothesisId:'verified'})}).catch(()=>{}); console.warn('[VB_DEBUG] handleSongEnd CALLED',{lastId:lastPlayedIdRef.current,mkState:_ps,mkTime:_m?.currentPlaybackTime,mkDur:_m?.currentPlaybackDuration});
-    // #endregion
 
     const expectedSec = expectedDurationRef.current || 0;
     const playedMs = playbackStartedAtRef.current ? Date.now() - playbackStartedAtRef.current : 0;
@@ -261,9 +249,6 @@ export default function VenuePlayer() {
     if (!music || !music.isAuthorized) return;
 
     const handler = (e) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:mkEvent',message:'MusicKit state change',data:{state:e.state,oldState:e.oldState,lastId:lastPlayedIdRef.current,songEndHandled:songEndHandledRef.current},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{}); console.warn('[VB_DEBUG] MK event',e.state);
-      // #endregion
       if (e.state === 'playing') setIsPlaying(true);
       else if (e.state === 'paused') setIsPlaying(false);
     };
@@ -305,9 +290,6 @@ export default function VenuePlayer() {
         const mkIsPlaying = music.playbackState === 2;
 
         if (serverNowId && currentId && serverNowId !== currentId) {
-          // #region agent log
-          fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:poll-diff',message:'POLL: server song CHANGED, switching',data:{serverNowId,currentId,mkNowId,mkIsPlaying},timestamp:Date.now(),hypothesisId:'F'})}).catch(()=>{}); console.warn('[VB_DEBUG] POLL: server changed song',{serverNowId,currentId});
-          // #endregion
           await playSong(serverNowId, res.data);
           return;
         }
@@ -326,9 +308,6 @@ export default function VenuePlayer() {
 
         const queueEmpty = !serverNowId && (!res.data?.upcoming || res.data.upcoming.length === 0);
         if (queueEmpty && autoplayRef.current && !autofillDisabledRef.current) {
-          // #region agent log
-          fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:poll-autofill',message:'POLL: queue empty, calling autofill',data:{serverNowId,currentId,mkNowId},timestamp:Date.now(),hypothesisId:'F'})}).catch(()=>{}); console.warn('[VB_DEBUG] POLL: queue empty, autofilling');
-          // #endregion
           await tryAutofill();
         }
 
@@ -358,13 +337,8 @@ export default function VenuePlayer() {
 
         // Detect real song end: playback position reached end of track
         if (d > 10 && t >= d - 1.5 && !songEndHandledRef.current && lastPlayedIdRef.current) {
-          // #region agent log
-          fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:timer-songend',message:'SONG END condition triggered',data:{t,d,diff:d-t,lastId:lastPlayedIdRef.current,handled:songEndHandledRef.current},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{}); console.warn('[VB_DEBUG] SONG END trigger',{t,d,diff:d-t});
-          // #endregion
           handleSongEnd();
         }
-
-        // Stall detection REMOVED - was causing false song removals during transitions
       } catch (_) {}
     }, 500);
     return () => clearInterval(tick);
