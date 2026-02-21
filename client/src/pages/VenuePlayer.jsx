@@ -14,6 +14,7 @@ import Button from '../components/shared/Button';
 import { initMusicKit, getMusicInstance, unauthorizeMusicKit } from '../utils/musickit';
 
 const POLL_INTERVAL = 5000;
+const MIN_PLAY_SECONDS = 30;
 
 export default function VenuePlayer() {
   const { venueCode } = useParams();
@@ -46,6 +47,7 @@ export default function VenuePlayer() {
 
   // ── MusicKit init ──
   useEffect(() => {
+    console.log('[VB] v4 loaded');
     mountedRef.current = true;
     async function setup() {
       const music = await initMusicKit();
@@ -88,11 +90,10 @@ export default function VenuePlayer() {
       await safeStop();
       await new Promise((r) => setTimeout(r, 150));
 
-      const ids = [String(appleId)];
-      const upcoming = queueData?.upcoming || [];
-      upcoming.forEach((s) => { if (s?.appleId) ids.push(String(s.appleId)); });
-
-      await music.setQueue(ids.length > 1 ? { songs: ids } : { song: ids[0] });
+      // Always queue exactly one song so MusicKit never auto-advances internally.
+      // If we feed the full upcoming list here, MusicKit skips songs on its own
+      // without our handleSongEnd firing, causing songs to restart mid-stream.
+      await music.setQueue({ song: String(appleId) });
       await music.play();
 
       expectedDurationRef.current = queueData?.nowPlaying?.duration ? Number(queueData.nowPlaying.duration) : 0;
@@ -157,16 +158,22 @@ export default function VenuePlayer() {
     if (!mountedRef.current || isTransitioningRef.current) return;
     if (songEndHandledRef.current) return;
 
-    // Final safety: verify MusicKit actually finished (not mid-transition)
     const _m = getMusicInstance();
     const _ps = _m?.playbackState;
     if (_ps === 2 || _ps === 1 || _ps === 6 || _ps === 8) return;
 
-    songEndHandledRef.current = true;
-
-    const expectedSec = expectedDurationRef.current || 0;
     const playedMs = playbackStartedAtRef.current ? Date.now() - playbackStartedAtRef.current : 0;
     const playedSec = playedMs / 1000;
+
+    // Never end a song unless at least MIN_PLAY_SECONDS of wall-clock time passed
+    if (playedSec < MIN_PLAY_SECONDS) return;
+
+    songEndHandledRef.current = true;
+    // Hold the transition lock immediately so the polling loop cannot restart
+    // the just-ended song during the async advanceQueue / getQueue gap.
+    isTransitioningRef.current = true;
+
+    const expectedSec = expectedDurationRef.current || 0;
     if (expectedSec > 60 && playedSec > 0 && playedSec < 45) setPreviewDetected(true);
 
     playbackStartedAtRef.current = null;
@@ -176,7 +183,10 @@ export default function VenuePlayer() {
 
     await api.advanceQueue(venueCode).catch(() => {});
 
-    if (!autoplayRef.current) return;
+    if (!autoplayRef.current) {
+      isTransitioningRef.current = false;
+      return;
+    }
 
     try {
       const res = await api.getQueue(venueCode);
@@ -184,16 +194,25 @@ export default function VenuePlayer() {
       setQueue(q);
       const nextId = q?.nowPlaying?.appleId;
       if (nextId) {
+        // Release our lock before playSong takes its own lock; both are
+        // synchronous so nothing else can slip in between.
+        isTransitioningRef.current = false;
         await playSong(nextId, q);
       } else {
+        isTransitioningRef.current = false;
         await tryAutofill();
       }
-    } catch (_) {}
+    } catch (_) {
+      isTransitioningRef.current = false;
+    }
   }, [venueCode, playSong, tryAutofill]);
 
   // ── Skip button ──
   const handleSkip = useCallback(async () => {
     if (isTransitioningRef.current) return;
+    // Hold the lock for the full async skip flow so the polling loop
+    // cannot restart the skipped song before the next one begins.
+    isTransitioningRef.current = true;
     songEndHandledRef.current = true;
     await safeStop();
     lastPlayedIdRef.current = null;
@@ -206,11 +225,17 @@ export default function VenuePlayer() {
       setQueue(q);
       const nextId = q?.nowPlaying?.appleId;
       if (nextId) {
+        isTransitioningRef.current = false;
         await playSong(nextId, q);
       } else if (autoplayRef.current) {
+        isTransitioningRef.current = false;
         await tryAutofill();
+      } else {
+        isTransitioningRef.current = false;
       }
-    } catch (_) {}
+    } catch (_) {
+      isTransitioningRef.current = false;
+    }
   }, [venueCode, playSong, tryAutofill, safeStop]);
 
   // ── Play/Pause toggle ──

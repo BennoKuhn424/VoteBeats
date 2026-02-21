@@ -370,7 +370,11 @@ async function searchByGenre(genre, venueCode) {
         duration: Math.round(s.attributes.durationInMillis / 1000),
         genre: s.attributes.genreNames?.[0] || '',
       }));
-      const filtered = filterByVenueSettings(songs, venue);
+      const genreLower = genre.toLowerCase();
+      const genreMatched = songs.filter(
+        (s) => s.genre && s.genre.toLowerCase().includes(genreLower)
+      );
+      const filtered = filterByVenueSettings(genreMatched.length > 0 ? genreMatched : songs, venue);
       if (filtered.length > 0) {
         return filtered[Math.floor(Math.random() * filtered.length)];
       }
@@ -383,7 +387,8 @@ async function searchByGenre(genre, venueCode) {
   const matched = MOCK_CATALOG.filter(
     (s) => s.genre && s.genre.toLowerCase().includes(genreLower)
   );
-  const pool = filterByVenueSettings(matched.length ? matched : MOCK_CATALOG, venue);
+  if (matched.length === 0) return null;
+  const pool = filterByVenueSettings(matched, venue);
   return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : null;
 }
 
