@@ -31,7 +31,6 @@ export default function VenuePlayer() {
   const [duration, setDuration] = useState(0);
 
   const lastPlayedIdRef = useRef(null);
-  const playbackListenerRef = useRef(null);
   const autoplayFromServerRef = useRef(false);
   const autoplayRef = useRef(autoplay);
   autoplayRef.current = autoplay;
@@ -39,12 +38,11 @@ export default function VenuePlayer() {
   const playbackStartedAtRef = useRef(null);
   const expectedDurationRef = useRef(null);
 
-  // Guards to prevent concurrent operations and double-fires
   const isTransitioningRef = useRef(false);
-  const completedLockRef = useRef(false);
   const autofillCooldownRef = useRef(0);
   const autofillDisabledRef = useRef(false);
   const mountedRef = useRef(true);
+  const songEndHandledRef = useRef(false);
 
   // ── MusicKit init ──
   useEffect(() => {
@@ -55,13 +53,13 @@ export default function VenuePlayer() {
       setMusicReady(true);
       setIsAuthorized(music.isAuthorized);
 
-      // Sync with MusicKit if it's already playing (e.g. returning to this page)
       if (music.isAuthorized && music.nowPlayingItem) {
         const currentAppleId = String(music.nowPlayingItem.id || '');
         if (currentAppleId) {
           lastPlayedIdRef.current = currentAppleId;
           playbackStartedAtRef.current = Date.now();
-          setIsPlaying(music.playbackState === 2); // 2 = playing
+          songEndHandledRef.current = false;
+          setIsPlaying(music.playbackState === 2);
         }
       }
     }
@@ -79,18 +77,19 @@ export default function VenuePlayer() {
     } catch (_) {}
   }, []);
 
-  // ── Core playback function: stops current, sets queue, plays ──
+  // ── Core playback: stop current, set queue, play ──
   const playSong = useCallback(async (appleId, queueData) => {
     const music = getMusicInstance();
     if (!music || !music.isAuthorized || !appleId) return false;
-
     if (isTransitioningRef.current) return false;
     isTransitioningRef.current = true;
-    completedLockRef.current = true;
+    // #region agent log
+    fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:playSong',message:'playSong CALLED',data:{appleId,prevLastId:lastPlayedIdRef.current,mkState:music.playbackState,mkTime:music.currentPlaybackTime,mkDur:music.currentPlaybackDuration},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{}); console.warn('[VB_DEBUG] playSong CALLED',{appleId,prevLastId:lastPlayedIdRef.current});
+    // #endregion
 
     try {
       await safeStop();
-      await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 150));
 
       const ids = [String(appleId)];
       const upcoming = queueData?.upcoming || [];
@@ -99,17 +98,19 @@ export default function VenuePlayer() {
       await music.setQueue(ids.length > 1 ? { songs: ids } : { song: ids[0] });
       await music.play();
 
-      const dur = queueData?.nowPlaying?.duration ? Number(queueData.nowPlaying.duration) : 0;
-      expectedDurationRef.current = dur;
+      expectedDurationRef.current = queueData?.nowPlaying?.duration ? Number(queueData.nowPlaying.duration) : 0;
       playbackStartedAtRef.current = Date.now();
       lastPlayedIdRef.current = String(appleId);
+      songEndHandledRef.current = false;
       setIsPlaying(true);
       setPlaybackBlocked(false);
 
       if (venueCode) api.reportPlaying(venueCode, String(appleId)).catch(() => {});
+      // #region agent log
+      fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:playSong-ok',message:'playSong SUCCESS',data:{appleId,mkState:music.playbackState,mkTime:music.currentPlaybackTime,mkDur:music.currentPlaybackDuration},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{}); console.warn('[VB_DEBUG] playSong SUCCESS',{appleId});
+      // #endregion
 
       isTransitioningRef.current = false;
-      setTimeout(() => { completedLockRef.current = false; }, 3000);
       return true;
     } catch (err) {
       console.error('playSong error:', err);
@@ -118,27 +119,25 @@ export default function VenuePlayer() {
         await music.play();
         lastPlayedIdRef.current = String(appleId);
         playbackStartedAtRef.current = Date.now();
+        songEndHandledRef.current = false;
         setIsPlaying(true);
         setPlaybackBlocked(false);
         if (venueCode) api.reportPlaying(venueCode, String(appleId)).catch(() => {});
         isTransitioningRef.current = false;
-        setTimeout(() => { completedLockRef.current = false; }, 3000);
         return true;
       } catch (e2) {
         console.error('playSong fallback error:', e2);
         setPlaybackBlocked(true);
-        completedLockRef.current = false;
         isTransitioningRef.current = false;
         return false;
       }
     }
   }, [venueCode, safeStop]);
 
-  // ── Try autofill: fetch a song from venue's autoplay genre ──
+  // ── Autofill: fetch song from venue's autoplay genre ──
   const tryAutofill = useCallback(async () => {
     if (autofillDisabledRef.current) return false;
     if (Date.now() < autofillCooldownRef.current) return false;
-
     autofillCooldownRef.current = Date.now() + 20000;
 
     try {
@@ -146,13 +145,11 @@ export default function VenuePlayer() {
       if (res.data?.filled && res.data?.song) {
         const q = { nowPlaying: res.data.song, upcoming: [] };
         setQueue(q);
-        const ok = await playSong(res.data.song.appleId, q);
-        return ok;
+        return await playSong(res.data.song.appleId, q);
       }
       return false;
     } catch (err) {
-      const status = err?.response?.status;
-      if (status === 400) {
+      if (err?.response?.status === 400) {
         autofillDisabledRef.current = true;
       } else {
         autofillCooldownRef.current = Date.now() + 30000;
@@ -161,26 +158,17 @@ export default function VenuePlayer() {
     }
   }, [venueCode, playSong]);
 
-  // ── Playback completed handler (song finished) ──
-  const handlePlaybackCompleted = useCallback(async () => {
-    if (!mountedRef.current) return;
-    if (completedLockRef.current || isTransitioningRef.current) return;
-
-    const playedMs = playbackStartedAtRef.current ? Date.now() - playbackStartedAtRef.current : 0;
-
-    // Ignore false 'completed' events: no start time recorded, or within 10s of starting
-    if (!playbackStartedAtRef.current || playedMs < 10000) return;
-
-    // Double-check MusicKit isn't actually still playing
-    const music = getMusicInstance();
-    if (music) {
-      const ps = music.playbackState;
-      if (ps === 2 || ps === 1 || ps === 6 || ps === 7 || ps === 8) return;
-    }
-
-    completedLockRef.current = true;
+  // ── Song ended handler (called from progress timer, NOT from MusicKit events) ──
+  const handleSongEnd = useCallback(async () => {
+    if (!mountedRef.current || isTransitioningRef.current) return;
+    if (songEndHandledRef.current) return;
+    songEndHandledRef.current = true;
+    // #region agent log
+    const _m = getMusicInstance(); fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:handleSongEnd',message:'handleSongEnd CALLED - song will be removed',data:{lastPlayedId:lastPlayedIdRef.current,playbackStartedAt:playbackStartedAtRef.current,elapsed:playbackStartedAtRef.current?(Date.now()-playbackStartedAtRef.current)/1000:null,mkTime:_m?.currentPlaybackTime,mkDuration:_m?.currentPlaybackDuration,mkState:_m?.playbackState,mkNowPlaying:_m?.nowPlayingItem?.id},timestamp:Date.now(),hypothesisId:'ABC'})}).catch(()=>{}); console.warn('[VB_DEBUG] handleSongEnd CALLED',{lastId:lastPlayedIdRef.current,elapsed:playbackStartedAtRef.current?(Date.now()-playbackStartedAtRef.current)/1000:null,mkTime:_m?.currentPlaybackTime,mkDur:_m?.currentPlaybackDuration,mkState:_m?.playbackState});
+    // #endregion
 
     const expectedSec = expectedDurationRef.current || 0;
+    const playedMs = playbackStartedAtRef.current ? Date.now() - playbackStartedAtRef.current : 0;
     const playedSec = playedMs / 1000;
     if (expectedSec > 60 && playedSec > 0 && playedSec < 45) setPreviewDetected(true);
 
@@ -191,35 +179,25 @@ export default function VenuePlayer() {
 
     await api.advanceQueue(venueCode).catch(() => {});
 
-    if (!autoplayRef.current) {
-      completedLockRef.current = false;
-      return;
-    }
+    if (!autoplayRef.current) return;
 
     try {
       const res = await api.getQueue(venueCode);
       const q = res.data;
+      setQueue(q);
       const nextId = q?.nowPlaying?.appleId;
-
       if (nextId) {
-        setQueue(q);
         await playSong(nextId, q);
       } else {
-        setQueue(q);
-        const filled = await tryAutofill();
-        if (!filled) {
-          completedLockRef.current = false;
-        }
+        await tryAutofill();
       }
-    } catch (_) {
-      completedLockRef.current = false;
-    }
+    } catch (_) {}
   }, [venueCode, playSong, tryAutofill]);
 
   // ── Skip button ──
   const handleSkip = useCallback(async () => {
     if (isTransitioningRef.current) return;
-
+    songEndHandledRef.current = true;
     await safeStop();
     lastPlayedIdRef.current = null;
     setIsPlaying(false);
@@ -229,7 +207,6 @@ export default function VenuePlayer() {
       const res = await api.getQueue(venueCode);
       const q = res.data;
       setQueue(q);
-
       const nextId = q?.nowPlaying?.appleId;
       if (nextId) {
         await playSong(nextId, q);
@@ -269,29 +246,22 @@ export default function VenuePlayer() {
     }
   }, []);
 
-  // ── MusicKit event listener ──
+  // ── MusicKit event listener: ONLY for play/pause UI, NEVER advances queue ──
   useEffect(() => {
     const music = getMusicInstance();
-    if (!music || !music.isAuthorized || !venueCode) return;
+    if (!music || !music.isAuthorized) return;
 
     const handler = (e) => {
-      if (e.state === 'completed') {
-        handlePlaybackCompleted();
-      } else if (e.state === 'playing') {
-        setIsPlaying(true);
-      } else if (e.state === 'paused') {
-        setIsPlaying(false);
-      }
+      // #region agent log
+      fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:mkEvent',message:'MusicKit state change',data:{state:e.state,oldState:e.oldState,lastId:lastPlayedIdRef.current,songEndHandled:songEndHandledRef.current},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{}); console.warn('[VB_DEBUG] MK event',e.state);
+      // #endregion
+      if (e.state === 'playing') setIsPlaying(true);
+      else if (e.state === 'paused') setIsPlaying(false);
     };
 
-    playbackListenerRef.current = handler;
     music.addEventListener('playbackStateDidChange', handler);
-    return () => {
-      if (playbackListenerRef.current) {
-        music.removeEventListener('playbackStateDidChange', playbackListenerRef.current);
-      }
-    };
-  }, [isAuthorized, venueCode, handlePlaybackCompleted]);
+    return () => music.removeEventListener('playbackStateDidChange', handler);
+  }, [isAuthorized]);
 
   // ── Polling loop ──
   useEffect(() => {
@@ -322,7 +292,6 @@ export default function VenuePlayer() {
         const music = getMusicInstance();
         if (!music?.isAuthorized || isTransitioningRef.current) return;
 
-        // Check if MusicKit is already playing this song (e.g. after returning to page)
         const mkNowId = music.nowPlayingItem ? String(music.nowPlayingItem.id || '') : null;
         const mkIsPlaying = music.playbackState === 2;
 
@@ -333,9 +302,9 @@ export default function VenuePlayer() {
 
         if (serverNowId && !currentId) {
           if (mkNowId === serverNowId && mkIsPlaying) {
-            // MusicKit already playing this song -- just sync refs, don't restart
             lastPlayedIdRef.current = serverNowId;
             playbackStartedAtRef.current = playbackStartedAtRef.current || Date.now();
+            songEndHandledRef.current = false;
             setIsPlaying(true);
           } else if (autoplayRef.current) {
             await playSong(serverNowId, res.data);
@@ -359,20 +328,43 @@ export default function VenuePlayer() {
     return () => clearInterval(interval);
   }, [venueCode, playSong, tryAutofill]);
 
-  // ── Progress tracker ──
+  // ── Progress timer: tracks position AND detects real song end ──
   useEffect(() => {
     const tick = setInterval(() => {
+      if (!mountedRef.current) return;
       const music = getMusicInstance();
       if (!music) return;
+
       try {
         const t = music.currentPlaybackTime || 0;
         const d = music.currentPlaybackDuration || 0;
         setCurrentTime(t);
         setDuration(d);
+
+        // Detect real song end: playback position reached end of track
+        if (d > 10 && t >= d - 1.5 && !songEndHandledRef.current && lastPlayedIdRef.current) {
+          // #region agent log
+          fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:timer-songend',message:'SONG END condition triggered',data:{t,d,diff:d-t,lastId:lastPlayedIdRef.current,handled:songEndHandledRef.current},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{}); console.warn('[VB_DEBUG] SONG END trigger',{t,d,diff:d-t});
+          // #endregion
+          handleSongEnd();
+        }
+
+        // Also detect if MusicKit stopped and time reset (preview mode / stall)
+        if (lastPlayedIdRef.current && !songEndHandledRef.current && playbackStartedAtRef.current) {
+          const ps = music.playbackState;
+          const elapsed = (Date.now() - playbackStartedAtRef.current) / 1000;
+          // If playback state is stopped/completed/ended AND we've been playing for >15s AND time is near 0
+          if ((ps === 0 || ps === 4 || ps === 5 || ps === 9 || ps === 10) && elapsed > 15 && t < 2) {
+            // #region agent log
+            fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:timer-stall',message:'STALL condition triggered',data:{ps,elapsed,t,d,lastId:lastPlayedIdRef.current},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{}); console.warn('[VB_DEBUG] STALL trigger',{ps,elapsed,t,d});
+            // #endregion
+            handleSongEnd();
+          }
+        }
       } catch (_) {}
     }, 500);
     return () => clearInterval(tick);
-  }, [isAuthorized]);
+  }, [isAuthorized, handleSongEnd]);
 
   // ── Volume ──
   useEffect(() => {
