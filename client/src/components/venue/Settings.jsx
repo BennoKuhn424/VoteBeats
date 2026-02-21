@@ -9,7 +9,15 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
   const [requirePaymentForRequest, setRequirePaymentForRequest] = useState(false);
   const [requestPriceCents, setRequestPriceCents] = useState(1000);
   const [autoplayQueue, setAutoplayQueue] = useState(true);
+  const [autoplayGenre, setAutoplayGenre] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const GENRE_OPTIONS = [
+    '', 'Pop', 'Rock', 'Hip-Hop', 'R&B', 'Electronic', 'Jazz', 'Classical',
+    'Country', 'Folk', 'Reggae', 'Latin', 'Afrikaans', 'Afrobeat', 'Amapiano',
+    'House', 'Dance', 'Indie', 'Alternative', 'Punk', 'Metal', 'Soul', 'Funk',
+    'Blues', 'Gospel', 'Lo-Fi', 'Ambient', 'Techno', 'EDM', 'Trap',
+  ];
 
   useEffect(() => {
     if (!venueCode) return;
@@ -23,6 +31,7 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
         setRequirePaymentForRequest(s.requirePaymentForRequest ?? false);
         setRequestPriceCents(s.requestPriceCents ?? 1000);
         setAutoplayQueue(s.autoplayQueue ?? true);
+        setAutoplayGenre(s.autoplayGenre || '');
       })
       .catch(console.error);
   }, [venueCode]);
@@ -40,6 +49,7 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
         requirePaymentForRequest,
         requestPriceCents: Math.max(500, Math.min(5000, requestPriceCents)) || 1000,
         autoplayQueue,
+        autoplayGenre: autoplayGenre || null,
       });
       onSaved?.();
     } catch (err) {
@@ -104,6 +114,28 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
             />
             <span>Autoplay queue (auto-advance and play next song)</span>
           </label>
+          {autoplayQueue && (
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>
+                Auto-play genre (when queue is empty)
+              </label>
+              <select
+                value={autoplayGenre}
+                onChange={(e) => setAutoplayGenre(e.target.value)}
+                className={`w-full min-h-touch px-4 py-3 rounded-xl focus:ring-2 focus:ring-brand-500 ${
+                  isLight ? 'bg-white border border-zinc-300 text-zinc-900' : 'bg-dark-700 border border-dark-600 text-white'
+                }`}
+              >
+                <option value="">None (stop when empty)</option>
+                {GENRE_OPTIONS.filter(Boolean).map((g) => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+              </select>
+              <p className={`text-xs mt-1 ${isLight ? 'text-zinc-500' : 'text-dark-500'}`}>
+                Pick a genre and songs will auto-play when nobody requests
+              </p>
+            </div>
+          )}
         </div>
         <div className={`border-t pt-5 space-y-4 ${isLight ? 'border-zinc-200' : 'border-dark-600'}`}>
           <h3 className={`font-semibold ${isLight ? 'text-zinc-900' : ''}`}>Pay to play</h3>

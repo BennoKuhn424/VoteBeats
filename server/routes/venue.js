@@ -34,6 +34,9 @@ router.put('/:venueCode/settings', authMiddleware, (req, res) => {
     venue.settings.requestPriceCents = requestPriceCents;
   }
   if (typeof autoplayQueue === 'boolean') venue.settings.autoplayQueue = autoplayQueue;
+  if (req.body.autoplayGenre !== undefined) {
+    venue.settings.autoplayGenre = req.body.autoplayGenre || null;
+  }
 
   db.saveVenue(venue.code, venue);
   res.json(venue.settings);

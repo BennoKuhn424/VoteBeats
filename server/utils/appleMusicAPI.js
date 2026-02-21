@@ -341,4 +341,50 @@ function mockSearch(query, venue) {
   return filterByVenueSettings(matched.length ? matched : MOCK_CATALOG.slice(0, 5), venue);
 }
 
-module.exports = { searchAppleMusic };
+async function searchByGenre(genre, venueCode) {
+  const db = require('./database');
+  const venue = venueCode ? db.getVenue(venueCode) : null;
+  const token = getToken();
+
+  const searchTerms = [genre];
+
+  if (token) {
+    try {
+      const term = searchTerms[Math.floor(Math.random() * searchTerms.length)];
+      const offset = Math.floor(Math.random() * 50);
+      const res = await fetch(
+        `https://api.music.apple.com/v1/catalog/us/search?types=songs&term=${encodeURIComponent(term)}&limit=25&offset=${offset}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      const data = await res.json();
+      const songs = (data.results?.songs?.data || []).map((s) => ({
+        appleId: s.id,
+        title: s.attributes.name,
+        artist: s.attributes.artistName,
+        albumArt: s.attributes.artwork?.url?.replace(/\{w\}/g, '300').replace(/\{h\}/g, '300') || '',
+        duration: Math.round(s.attributes.durationInMillis / 1000),
+        genre: s.attributes.genreNames?.[0] || '',
+      }));
+      const filtered = filterByVenueSettings(songs, venue);
+      if (filtered.length > 0) {
+        return filtered[Math.floor(Math.random() * filtered.length)];
+      }
+    } catch (err) {
+      console.error('Apple Music genre search error:', err);
+    }
+  }
+
+  const genreLower = genre.toLowerCase();
+  const matched = MOCK_CATALOG.filter(
+    (s) => s.genre && s.genre.toLowerCase().includes(genreLower)
+  );
+  const pool = filterByVenueSettings(matched.length ? matched : MOCK_CATALOG, venue);
+  return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : null;
+}
+
+module.exports = { searchAppleMusic, searchByGenre };

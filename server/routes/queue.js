@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const authMiddleware = require('../middleware/authMiddleware');
 const { advanceToNextSong } = require('../utils/queueAdvance');
 const { fulfillPaidRequest } = require('../utils/paymentFulfill');
+const { searchByGenre } = require('../utils/appleMusicAPI');
 
 const router = express.Router();
 
@@ -305,6 +306,49 @@ router.get('/:venueCode/request-status', async (req, res) => {
   }
 
   res.json({ fulfilled: false });
+});
+
+// GET /api/queue/:venueCode/autofill – get a random song from the venue's autoplay genre
+router.get('/:venueCode/autofill', async (req, res) => {
+  const { venueCode } = req.params;
+  const venue = db.getVenue(venueCode);
+  if (!venue) return res.status(404).json({ error: 'Venue not found' });
+
+  const genre = venue.settings?.autoplayGenre;
+  if (!genre) {
+    return res.status(400).json({ error: 'No autoplay genre configured' });
+  }
+
+  const queue = db.getQueue(venueCode);
+  if (queue.nowPlaying || (queue.upcoming && queue.upcoming.length > 0)) {
+    return res.json({ filled: false, reason: 'Queue is not empty' });
+  }
+
+  try {
+    const song = await searchByGenre(genre, venueCode);
+    if (!song) {
+      return res.status(404).json({ error: 'No songs found for genre' });
+    }
+
+    const newSong = {
+      ...song,
+      id: song.id || `autofill_${Date.now()}`,
+      votes: 0,
+      requestedBy: '__autofill__',
+      requestedAt: Date.now(),
+    };
+
+    const updatedQueue = {
+      nowPlaying: newSong,
+      upcoming: [],
+    };
+    db.updateQueue(venueCode, updatedQueue);
+
+    res.json({ filled: true, song: newSong });
+  } catch (err) {
+    console.error('Autofill error:', err);
+    res.status(500).json({ error: 'Failed to autofill queue' });
+  }
 });
 
 module.exports = router;

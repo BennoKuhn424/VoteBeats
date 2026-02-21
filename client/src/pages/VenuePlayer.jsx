@@ -46,6 +46,8 @@ export default function VenuePlayer() {
     return () => { mounted = false; };
   }, []);
 
+  const autofillCooldownRef = useRef(0);
+
   useEffect(() => {
     if (!venueCode) return;
     async function load() {
@@ -64,6 +66,21 @@ export default function VenuePlayer() {
             autoplayFromServerRef.current = true;
           }
         }
+
+        const queueEmpty = !res.data?.nowPlaying && (!res.data?.upcoming || res.data.upcoming.length === 0);
+        const music = getMusicInstance();
+        if (queueEmpty && autoplayRef.current && music?.isAuthorized && Date.now() > autofillCooldownRef.current) {
+          autofillCooldownRef.current = Date.now() + 15000;
+          try {
+            const fill = await api.autofillQueue(venueCode);
+            if (fill.data?.filled && fill.data?.song) {
+              const q = { nowPlaying: fill.data.song, upcoming: [] };
+              setQueue(q);
+              startPlaybackWithQueueRef.current?.(q);
+            }
+          } catch (_) {}
+        }
+
         setError(null);
       } catch (err) {
         setError('Could not load queue');
@@ -160,6 +177,8 @@ export default function VenuePlayer() {
           if (hasMore) {
             setQueue(q);
             startPlaybackWithQueue(q);
+          } else {
+            await tryAutofill();
           }
         } catch (_) {}
       } else {
@@ -170,6 +189,17 @@ export default function VenuePlayer() {
         } catch (_) {}
       }
     }
+  }, [venueCode, startPlaybackWithQueue]);
+
+  const tryAutofill = useCallback(async () => {
+    try {
+      const res = await api.autofillQueue(venueCode);
+      if (res.data?.filled && res.data?.song) {
+        const q = { nowPlaying: res.data.song, upcoming: [] };
+        setQueue(q);
+        startPlaybackWithQueue(q);
+      }
+    } catch (_) {}
   }, [venueCode, startPlaybackWithQueue]);
 
   const autoplayRef = useRef(autoplay);

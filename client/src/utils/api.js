@@ -40,6 +40,7 @@ export default {
   reportPlaying: (venueCode, songId) =>
     api.post(`/queue/${venueCode}/playing`, { songId }),
   advanceQueue: (venueCode) => api.post(`/queue/${venueCode}/advance`),
+  autofillQueue: (venueCode) => api.get(`/queue/${venueCode}/autofill`),
   removeSong: (venueCode, songId) => api.delete(`/queue/${venueCode}/song/${songId}`),
 
   searchSongs: (query, venueCode) =>
