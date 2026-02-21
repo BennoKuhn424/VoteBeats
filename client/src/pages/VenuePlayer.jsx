@@ -27,6 +27,8 @@ export default function VenuePlayer() {
   const [volume, setVolume] = useState(70);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const [previewDetected, setPreviewDetected] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
 
   const lastPlayedIdRef = useRef(null);
   const playbackListenerRef = useRef(null);
@@ -42,18 +44,29 @@ export default function VenuePlayer() {
   const completedLockRef = useRef(false);
   const autofillCooldownRef = useRef(0);
   const autofillDisabledRef = useRef(false);
+  const mountedRef = useRef(true);
 
   // ── MusicKit init ──
   useEffect(() => {
-    let mounted = true;
+    mountedRef.current = true;
     async function setup() {
       const music = await initMusicKit();
-      if (!mounted || !music) return;
+      if (!mountedRef.current || !music) return;
       setMusicReady(true);
       setIsAuthorized(music.isAuthorized);
+
+      // Sync with MusicKit if it's already playing (e.g. returning to this page)
+      if (music.isAuthorized && music.nowPlayingItem) {
+        const currentAppleId = String(music.nowPlayingItem.id || '');
+        if (currentAppleId) {
+          lastPlayedIdRef.current = currentAppleId;
+          playbackStartedAtRef.current = Date.now();
+          setIsPlaying(music.playbackState === 2); // 2 = playing
+        }
+      }
     }
     setup();
-    return () => { mounted = false; };
+    return () => { mountedRef.current = false; };
   }, []);
 
   // ── Safe stop helper ──
@@ -95,8 +108,8 @@ export default function VenuePlayer() {
 
       if (venueCode) api.reportPlaying(venueCode, String(appleId)).catch(() => {});
 
-      completedLockRef.current = false;
       isTransitioningRef.current = false;
+      setTimeout(() => { completedLockRef.current = false; }, 3000);
       return true;
     } catch (err) {
       console.error('playSong error:', err);
@@ -108,8 +121,8 @@ export default function VenuePlayer() {
         setIsPlaying(true);
         setPlaybackBlocked(false);
         if (venueCode) api.reportPlaying(venueCode, String(appleId)).catch(() => {});
-        completedLockRef.current = false;
         isTransitioningRef.current = false;
+        setTimeout(() => { completedLockRef.current = false; }, 3000);
         return true;
       } catch (e2) {
         console.error('playSong fallback error:', e2);
@@ -150,12 +163,20 @@ export default function VenuePlayer() {
 
   // ── Playback completed handler (song finished) ──
   const handlePlaybackCompleted = useCallback(async () => {
+    if (!mountedRef.current) return;
     if (completedLockRef.current || isTransitioningRef.current) return;
 
     const playedMs = playbackStartedAtRef.current ? Date.now() - playbackStartedAtRef.current : 0;
 
-    // Ignore false 'completed' events that fire within 10s of starting
-    if (playedMs > 0 && playedMs < 10000) return;
+    // Ignore false 'completed' events: no start time recorded, or within 10s of starting
+    if (!playbackStartedAtRef.current || playedMs < 10000) return;
+
+    // Double-check MusicKit isn't actually still playing
+    const music = getMusicInstance();
+    if (music) {
+      const ps = music.playbackState;
+      if (ps === 2 || ps === 1 || ps === 6 || ps === 7 || ps === 8) return;
+    }
 
     completedLockRef.current = true;
 
@@ -301,13 +322,24 @@ export default function VenuePlayer() {
         const music = getMusicInstance();
         if (!music?.isAuthorized || isTransitioningRef.current) return;
 
+        // Check if MusicKit is already playing this song (e.g. after returning to page)
+        const mkNowId = music.nowPlayingItem ? String(music.nowPlayingItem.id || '') : null;
+        const mkIsPlaying = music.playbackState === 2;
+
         if (serverNowId && currentId && serverNowId !== currentId) {
           await playSong(serverNowId, res.data);
           return;
         }
 
-        if (serverNowId && !currentId && autoplayRef.current) {
-          await playSong(serverNowId, res.data);
+        if (serverNowId && !currentId) {
+          if (mkNowId === serverNowId && mkIsPlaying) {
+            // MusicKit already playing this song -- just sync refs, don't restart
+            lastPlayedIdRef.current = serverNowId;
+            playbackStartedAtRef.current = playbackStartedAtRef.current || Date.now();
+            setIsPlaying(true);
+          } else if (autoplayRef.current) {
+            await playSong(serverNowId, res.data);
+          }
           return;
         }
 
@@ -326,6 +358,21 @@ export default function VenuePlayer() {
     const interval = setInterval(load, POLL_INTERVAL);
     return () => clearInterval(interval);
   }, [venueCode, playSong, tryAutofill]);
+
+  // ── Progress tracker ──
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const music = getMusicInstance();
+      if (!music) return;
+      try {
+        const t = music.currentPlaybackTime || 0;
+        const d = music.currentPlaybackDuration || 0;
+        setCurrentTime(t);
+        setDuration(d);
+      } catch (_) {}
+    }, 500);
+    return () => clearInterval(tick);
+  }, [isAuthorized]);
 
   // ── Volume ──
   useEffect(() => {
@@ -501,6 +548,26 @@ export default function VenuePlayer() {
                   <SkipForward className="h-5 w-5" />
                 </button>
               </div>
+
+              {/* Progress bar */}
+              {duration > 0 && (
+                <div className="mb-5">
+                  <div className="w-full h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-brand-500 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min((currentTime / duration) * 100, 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between mt-1.5">
+                    <span className="text-xs text-zinc-500 tabular-nums">
+                      {Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, '0')}
+                    </span>
+                    <span className="text-xs text-zinc-500 tabular-nums">
+                      {Math.floor(duration / 60)}:{String(Math.floor(duration % 60)).padStart(2, '0')}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center gap-3">
                 <Volume2 className="h-5 w-5 text-zinc-500 shrink-0" />
