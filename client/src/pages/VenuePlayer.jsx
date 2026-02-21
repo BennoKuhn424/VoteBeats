@@ -142,6 +142,9 @@ export default function VenuePlayer() {
 
     try {
       const res = await api.autofillQueue(venueCode);
+      // #region agent log
+      fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:autofill-result',message:'autofill response',data:{filled:res.data?.filled,songId:res.data?.song?.appleId,songTitle:res.data?.song?.title},timestamp:Date.now(),hypothesisId:'F'})}).catch(()=>{}); console.warn('[VB_DEBUG] autofill result',{filled:res.data?.filled,songId:res.data?.song?.appleId,title:res.data?.song?.title});
+      // #endregion
       if (res.data?.filled && res.data?.song) {
         const q = { nowPlaying: res.data.song, upcoming: [] };
         setQueue(q);
@@ -296,6 +299,9 @@ export default function VenuePlayer() {
         const mkIsPlaying = music.playbackState === 2;
 
         if (serverNowId && currentId && serverNowId !== currentId) {
+          // #region agent log
+          fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:poll-diff',message:'POLL: server song CHANGED, switching',data:{serverNowId,currentId,mkNowId,mkIsPlaying},timestamp:Date.now(),hypothesisId:'F'})}).catch(()=>{}); console.warn('[VB_DEBUG] POLL: server changed song',{serverNowId,currentId});
+          // #endregion
           await playSong(serverNowId, res.data);
           return;
         }
@@ -314,6 +320,9 @@ export default function VenuePlayer() {
 
         const queueEmpty = !serverNowId && (!res.data?.upcoming || res.data.upcoming.length === 0);
         if (queueEmpty && autoplayRef.current && !autofillDisabledRef.current) {
+          // #region agent log
+          fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:poll-autofill',message:'POLL: queue empty, calling autofill',data:{serverNowId,currentId,mkNowId},timestamp:Date.now(),hypothesisId:'F'})}).catch(()=>{}); console.warn('[VB_DEBUG] POLL: queue empty, autofilling');
+          // #endregion
           await tryAutofill();
         }
 

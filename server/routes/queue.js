@@ -150,6 +150,9 @@ router.post('/:venueCode/playing', (req, res) => {
 router.post('/:venueCode/advance', (req, res) => {
   const { venueCode } = req.params;
   const queue = db.getQueue(venueCode);
+  // #region agent log
+  console.warn('[VB_DEBUG_SERVER] advance called', { venueCode, nowPlaying: queue.nowPlaying?.appleId, upcomingCount: (queue.upcoming||[]).length, stack: new Error().stack?.split('\n').slice(0,3).join(' | ') });
+  // #endregion
   if (!queue.nowPlaying && (!queue.upcoming || queue.upcoming.length === 0)) {
     return res.json({ success: true });
   }
