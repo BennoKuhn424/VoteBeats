@@ -138,12 +138,12 @@ router.post('/:venueCode/playing', (req, res) => {
 
   const queue = db.getQueue(venueCode);
   if (!queue.nowPlaying || (queue.nowPlaying.id !== songId && String(queue.nowPlaying.appleId) !== String(songId))) {
-    return res.status(400).json({ error: 'Song not currently playing' });
+    return res.json({ success: true, matched: false });
   }
 
   queue.nowPlaying.startedAt = Date.now();
   db.updateQueue(venueCode, queue);
-  res.json({ success: true });
+  res.json({ success: true, matched: true });
 });
 
 // POST /api/queue/:venueCode/advance - Venue player reports song ended (MusicKit completed)

@@ -151,10 +151,15 @@ export default function VenuePlayer() {
   // ── Playback completed handler (song finished) ──
   const handlePlaybackCompleted = useCallback(async () => {
     if (completedLockRef.current || isTransitioningRef.current) return;
+
+    const playedMs = playbackStartedAtRef.current ? Date.now() - playbackStartedAtRef.current : 0;
+
+    // Ignore false 'completed' events that fire within 10s of starting
+    if (playedMs > 0 && playedMs < 10000) return;
+
     completedLockRef.current = true;
 
     const expectedSec = expectedDurationRef.current || 0;
-    const playedMs = playbackStartedAtRef.current ? Date.now() - playbackStartedAtRef.current : 0;
     const playedSec = playedMs / 1000;
     if (expectedSec > 60 && playedSec > 0 && playedSec < 45) setPreviewDetected(true);
 
