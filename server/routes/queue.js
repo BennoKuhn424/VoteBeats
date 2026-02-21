@@ -314,10 +314,12 @@ router.get('/:venueCode/autofill', async (req, res) => {
   const venue = db.getVenue(venueCode);
   if (!venue) return res.status(404).json({ error: 'Venue not found' });
 
-  const genre = venue.settings?.autoplayGenre;
-  if (!genre) {
+  const genreSetting = venue.settings?.autoplayGenre;
+  const genres = Array.isArray(genreSetting) ? genreSetting : (genreSetting ? [genreSetting] : []);
+  if (genres.length === 0) {
     return res.status(400).json({ error: 'No autoplay genre configured' });
   }
+  const genre = genres[Math.floor(Math.random() * genres.length)];
 
   const queue = db.getQueue(venueCode);
   if (queue.nowPlaying || (queue.upcoming && queue.upcoming.length > 0)) {

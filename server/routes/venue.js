@@ -35,7 +35,14 @@ router.put('/:venueCode/settings', authMiddleware, (req, res) => {
   }
   if (typeof autoplayQueue === 'boolean') venue.settings.autoplayQueue = autoplayQueue;
   if (req.body.autoplayGenre !== undefined) {
-    venue.settings.autoplayGenre = req.body.autoplayGenre || null;
+    const ag = req.body.autoplayGenre;
+    if (Array.isArray(ag) && ag.length > 0) {
+      venue.settings.autoplayGenre = ag;
+    } else if (typeof ag === 'string' && ag) {
+      venue.settings.autoplayGenre = [ag];
+    } else {
+      venue.settings.autoplayGenre = null;
+    }
   }
 
   db.saveVenue(venue.code, venue);

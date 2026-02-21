@@ -9,15 +9,33 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
   const [requirePaymentForRequest, setRequirePaymentForRequest] = useState(false);
   const [requestPriceCents, setRequestPriceCents] = useState(1000);
   const [autoplayQueue, setAutoplayQueue] = useState(true);
-  const [autoplayGenre, setAutoplayGenre] = useState('');
+  const [autoplayGenres, setAutoplayGenres] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  const GENRE_OPTIONS = [
-    '', 'Pop', 'Rock', 'Hip-Hop', 'R&B', 'Electronic', 'Jazz', 'Classical',
-    'Country', 'Folk', 'Reggae', 'Latin', 'Afrikaans', 'Afrobeat', 'Amapiano',
-    'House', 'Dance', 'Indie', 'Alternative', 'Punk', 'Metal', 'Soul', 'Funk',
-    'Blues', 'Gospel', 'Lo-Fi', 'Ambient', 'Techno', 'EDM', 'Trap',
+  const GENRE_SECTIONS = [
+    {
+      label: 'Genres',
+      items: [
+        'Pop', 'Rock', 'Hip-Hop', 'R&B', 'Electronic', 'Jazz', 'Classical',
+        'Country', 'Folk', 'Reggae', 'Latin', 'Afrobeat', 'Amapiano',
+        'House', 'Dance', 'Indie', 'Alternative', 'Punk', 'Metal', 'Soul', 'Funk',
+        'Blues', 'Gospel', 'Lo-Fi', 'Ambient', 'Techno', 'EDM', 'Trap', 'Kwaito',
+      ],
+    },
+    {
+      label: 'Languages',
+      items: [
+        'Afrikaans', 'English', 'Spanish', 'French', 'Portuguese', 'German', 'Italian',
+        'Zulu', 'Xhosa', 'Sotho', 'Tswana', 'Korean', 'Japanese', 'Arabic', 'Hindi',
+      ],
+    },
   ];
+
+  function toggleGenre(g) {
+    setAutoplayGenres((prev) =>
+      prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]
+    );
+  }
 
   useEffect(() => {
     if (!venueCode) return;
@@ -31,7 +49,8 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
         setRequirePaymentForRequest(s.requirePaymentForRequest ?? false);
         setRequestPriceCents(s.requestPriceCents ?? 1000);
         setAutoplayQueue(s.autoplayQueue ?? true);
-        setAutoplayGenre(s.autoplayGenre || '');
+        const ag = s.autoplayGenre;
+        setAutoplayGenres(Array.isArray(ag) ? ag : (ag ? [ag] : []));
       })
       .catch(console.error);
   }, [venueCode]);
@@ -49,7 +68,7 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
         requirePaymentForRequest,
         requestPriceCents: Math.max(500, Math.min(5000, requestPriceCents)) || 1000,
         autoplayQueue,
-        autoplayGenre: autoplayGenre || null,
+        autoplayGenre: autoplayGenres.length > 0 ? autoplayGenres : null,
       });
       onSaved?.();
     } catch (err) {
@@ -117,22 +136,49 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
           {autoplayQueue && (
             <div>
               <label className={`block text-sm font-medium mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>
-                Auto-play genre (when queue is empty)
+                Auto-play categories (when queue is empty)
               </label>
-              <select
-                value={autoplayGenre}
-                onChange={(e) => setAutoplayGenre(e.target.value)}
-                className={`w-full min-h-touch px-4 py-3 rounded-xl focus:ring-2 focus:ring-brand-500 ${
-                  isLight ? 'bg-white border border-zinc-300 text-zinc-900' : 'bg-dark-700 border border-dark-600 text-white'
-                }`}
-              >
-                <option value="">None (stop when empty)</option>
-                {GENRE_OPTIONS.filter(Boolean).map((g) => (
-                  <option key={g} value={g}>{g}</option>
-                ))}
-              </select>
+              {autoplayGenres.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {autoplayGenres.map((g) => (
+                    <span
+                      key={g}
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-brand-500 text-white text-sm font-medium cursor-pointer hover:bg-brand-600"
+                      onClick={() => toggleGenre(g)}
+                    >
+                      {g}
+                      <span className="text-white/80 text-xs ml-0.5">✕</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {GENRE_SECTIONS.map((section) => (
+                <div key={section.label} className="mb-3">
+                  <p className={`text-xs font-semibold uppercase tracking-wide mb-2 ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>
+                    {section.label}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {section.items.map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => toggleGenre(g)}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                          autoplayGenres.includes(g)
+                            ? 'bg-brand-500 text-white border-brand-500'
+                            : isLight
+                              ? 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                              : 'bg-dark-700 text-dark-200 border-dark-500 hover:bg-dark-600'
+                        }`}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
               <p className={`text-xs mt-1 ${isLight ? 'text-zinc-500' : 'text-dark-500'}`}>
-                Pick a genre and songs will auto-play when nobody requests
+                Pick one or more — songs will auto-play from these when nobody requests
               </p>
             </div>
           )}
