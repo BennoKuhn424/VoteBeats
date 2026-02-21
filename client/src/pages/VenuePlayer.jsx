@@ -25,15 +25,25 @@ export default function VenuePlayer() {
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(70);
+  const [playbackBlocked, setPlaybackBlocked] = useState(false);
+  const [previewDetected, setPreviewDetected] = useState(false);
+
   const lastPlayedIdRef = useRef(null);
   const playbackListenerRef = useRef(null);
   const autoplayFromServerRef = useRef(false);
-  const startPlaybackWithQueueRef = useRef(null);
-  const [playbackBlocked, setPlaybackBlocked] = useState(false);
-  const [previewDetected, setPreviewDetected] = useState(false);
+  const autoplayRef = useRef(autoplay);
+  autoplayRef.current = autoplay;
+
   const playbackStartedAtRef = useRef(null);
   const expectedDurationRef = useRef(null);
 
+  // Guards to prevent concurrent operations and double-fires
+  const isTransitioningRef = useRef(false);
+  const completedLockRef = useRef(false);
+  const autofillCooldownRef = useRef(0);
+  const autofillDisabledRef = useRef(false);
+
+  // ── MusicKit init ──
   useEffect(() => {
     let mounted = true;
     async function setup() {
@@ -46,192 +56,185 @@ export default function VenuePlayer() {
     return () => { mounted = false; };
   }, []);
 
-  const autofillCooldownRef = useRef(0);
-
-  useEffect(() => {
-    if (!venueCode) return;
-    async function load() {
-      try {
-        const res = await api.getQueue(venueCode);
-        const serverNowId = res.data?.nowPlaying?.appleId ? String(res.data.nowPlaying.appleId) : null;
-        const lastId = lastPlayedIdRef.current ? String(lastPlayedIdRef.current) : null;
-        if (serverNowId && lastId && lastId !== serverNowId && getMusicInstance()?.isAuthorized) {
-          startPlaybackWithQueueRef.current?.(res.data);
-        }
-        setQueue(res.data);
-        if (!autoplayFromServerRef.current) {
-          const fromServer = res.data?.requestSettings?.autoplayQueue;
-          if (fromServer !== undefined) {
-            setAutoplay(fromServer);
-            autoplayFromServerRef.current = true;
-          }
-        }
-
-        const queueEmpty = !res.data?.nowPlaying && (!res.data?.upcoming || res.data.upcoming.length === 0);
-        const music = getMusicInstance();
-        if (queueEmpty && autoplayRef.current && music?.isAuthorized && Date.now() > autofillCooldownRef.current) {
-          autofillCooldownRef.current = Date.now() + 15000;
-          try {
-            const fill = await api.autofillQueue(venueCode);
-            if (fill.data?.filled && fill.data?.song) {
-              const q = { nowPlaying: fill.data.song, upcoming: [] };
-              setQueue(q);
-              startPlaybackWithQueueRef.current?.(q);
-            }
-          } catch (_) {}
-        }
-
-        setError(null);
-      } catch (err) {
-        setError('Could not load queue');
-      }
-    }
-    load();
-    const interval = setInterval(load, POLL_INTERVAL);
-    return () => clearInterval(interval);
-  }, [venueCode]);
-
-  const startPlaybackWithQueue = useCallback((queueData) => {
+  // ── Safe stop helper ──
+  const safeStop = useCallback(async () => {
     const music = getMusicInstance();
-    if (!music || !music.isAuthorized) return;
-    const q = queueData || queue;
-    const ids = [];
-    if (q?.nowPlaying?.appleId) ids.push(String(q.nowPlaying.appleId));
-    (q?.upcoming || []).forEach((s) => { if (s?.appleId) ids.push(String(s.appleId)); });
-    if (ids.length === 0) return;
-
-    const opts = ids.length > 1 ? { songs: ids, startPlaying: true } : { song: ids[0], startPlaying: true };
-    const expectedSec = (queueData || queue)?.nowPlaying?.duration ? Number((queueData || queue).nowPlaying.duration) : 0;
-    expectedDurationRef.current = expectedSec;
-
-    music.setQueue(opts).then(() => {
-      playbackStartedAtRef.current = Date.now();
-      lastPlayedIdRef.current = ids[0];
-      setPlaybackBlocked(false);
-      setIsPlaying(true);
-      if (venueCode && ids[0]) api.reportPlaying(venueCode, ids[0]).catch(() => {});
-    }).catch((err) => {
-      if (ids.length > 1) {
-        music.setQueue({ song: ids[0] }).then(() => music.play()).then(() => {
-          playbackStartedAtRef.current = Date.now();
-          expectedDurationRef.current = (queueData || queue)?.nowPlaying?.duration ? Number((queueData || queue).nowPlaying.duration) : 0;
-          lastPlayedIdRef.current = ids[0];
-          setPlaybackBlocked(false);
-          setIsPlaying(true);
-          if (venueCode && ids[0]) api.reportPlaying(venueCode, ids[0]).catch(() => {});
-        }).catch((e) => {
-          console.error('Playback error:', e);
-          setPlaybackBlocked(true);
-        });
-      } else {
-        console.error('Playback error:', err);
-        setPlaybackBlocked(true);
-      }
-    });
-  }, [venueCode, queue?.nowPlaying?.appleId, queue?.upcoming]);
-
-  startPlaybackWithQueueRef.current = startPlaybackWithQueue;
-  const startPlayback = useCallback(() => startPlaybackWithQueue(null), [startPlaybackWithQueue]);
-
-  const handleSkip = useCallback(async () => {
+    if (!music) return;
     try {
-      await api.advanceQueue(venueCode);
-      const res = await api.getQueue(venueCode);
-      setQueue(res.data);
-      const music = getMusicInstance();
-      if (music?.isAuthorized && (res.data?.nowPlaying || res.data?.upcoming?.length > 0)) {
-        startPlaybackWithQueue(res.data);
-      }
+      if (typeof music.stop === 'function') await music.stop();
+      else if (typeof music.pause === 'function') music.pause();
     } catch (_) {}
-  }, [venueCode, startPlaybackWithQueue]);
+  }, []);
 
-  const handlePlaybackCompleted = useCallback(async () => {
-    const expectedSec = expectedDurationRef.current || 0;
-    const playedMs = playbackStartedAtRef.current ? Date.now() - playbackStartedAtRef.current : 0;
-    const playedSec = playedMs / 1000;
-    if (expectedSec > 60 && playedSec > 0 && playedSec < 45) setPreviewDetected(true);
-    playbackStartedAtRef.current = null;
-    expectedDurationRef.current = null;
-    lastPlayedIdRef.current = null;
-    setIsPlaying(false);
-    await api.advanceQueue(venueCode).catch(() => {});
+  // ── Core playback function: stops current, sets queue, plays ──
+  const playSong = useCallback(async (appleId, queueData) => {
+    const music = getMusicInstance();
+    if (!music || !music.isAuthorized || !appleId) return false;
 
-    if (autoplayRef.current) {
-      const music = getMusicInstance();
-      let continued = false;
+    if (isTransitioningRef.current) return false;
+    isTransitioningRef.current = true;
+    completedLockRef.current = true;
+
+    try {
+      await safeStop();
+      await new Promise((r) => setTimeout(r, 100));
+
+      const ids = [String(appleId)];
+      const upcoming = queueData?.upcoming || [];
+      upcoming.forEach((s) => { if (s?.appleId) ids.push(String(s.appleId)); });
+
+      await music.setQueue(ids.length > 1 ? { songs: ids } : { song: ids[0] });
+      await music.play();
+
+      const dur = queueData?.nowPlaying?.duration ? Number(queueData.nowPlaying.duration) : 0;
+      expectedDurationRef.current = dur;
+      playbackStartedAtRef.current = Date.now();
+      lastPlayedIdRef.current = String(appleId);
+      setIsPlaying(true);
+      setPlaybackBlocked(false);
+
+      if (venueCode) api.reportPlaying(venueCode, String(appleId)).catch(() => {});
+
+      completedLockRef.current = false;
+      isTransitioningRef.current = false;
+      return true;
+    } catch (err) {
+      console.error('playSong error:', err);
       try {
-        if (typeof music?.skipToNextItem === 'function') {
-          await music.skipToNextItem();
-          await music.play();
-          playbackStartedAtRef.current = Date.now();
-          setIsPlaying(true);
-          continued = true;
-        }
-      } catch (_) {}
-
-      if (!continued) {
-        try {
-          const res = await api.getQueue(venueCode);
-          const q = res.data;
-          const hasMore = q?.nowPlaying?.appleId || (q?.upcoming?.length ?? 0) > 0;
-          if (hasMore) {
-            setQueue(q);
-            startPlaybackWithQueue(q);
-          } else {
-            await tryAutofill();
-          }
-        } catch (_) {}
-      } else {
-        try {
-          const res = await api.getQueue(venueCode);
-          setQueue(res.data);
-          if (res.data?.nowPlaying?.appleId) lastPlayedIdRef.current = String(res.data.nowPlaying.appleId);
-        } catch (_) {}
+        await music.setQueue({ song: String(appleId) });
+        await music.play();
+        lastPlayedIdRef.current = String(appleId);
+        playbackStartedAtRef.current = Date.now();
+        setIsPlaying(true);
+        setPlaybackBlocked(false);
+        if (venueCode) api.reportPlaying(venueCode, String(appleId)).catch(() => {});
+        completedLockRef.current = false;
+        isTransitioningRef.current = false;
+        return true;
+      } catch (e2) {
+        console.error('playSong fallback error:', e2);
+        setPlaybackBlocked(true);
+        completedLockRef.current = false;
+        isTransitioningRef.current = false;
+        return false;
       }
     }
-  }, [venueCode, startPlaybackWithQueue]);
+  }, [venueCode, safeStop]);
 
+  // ── Try autofill: fetch a song from venue's autoplay genre ──
   const tryAutofill = useCallback(async () => {
+    if (autofillDisabledRef.current) return false;
+    if (Date.now() < autofillCooldownRef.current) return false;
+
+    autofillCooldownRef.current = Date.now() + 20000;
+
     try {
       const res = await api.autofillQueue(venueCode);
       if (res.data?.filled && res.data?.song) {
         const q = { nowPlaying: res.data.song, upcoming: [] };
         setQueue(q);
-        startPlaybackWithQueue(q);
+        const ok = await playSong(res.data.song.appleId, q);
+        return ok;
+      }
+      return false;
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 400) {
+        autofillDisabledRef.current = true;
+      } else {
+        autofillCooldownRef.current = Date.now() + 30000;
+      }
+      return false;
+    }
+  }, [venueCode, playSong]);
+
+  // ── Playback completed handler (song finished) ──
+  const handlePlaybackCompleted = useCallback(async () => {
+    if (completedLockRef.current || isTransitioningRef.current) return;
+    completedLockRef.current = true;
+
+    const expectedSec = expectedDurationRef.current || 0;
+    const playedMs = playbackStartedAtRef.current ? Date.now() - playbackStartedAtRef.current : 0;
+    const playedSec = playedMs / 1000;
+    if (expectedSec > 60 && playedSec > 0 && playedSec < 45) setPreviewDetected(true);
+
+    playbackStartedAtRef.current = null;
+    expectedDurationRef.current = null;
+    lastPlayedIdRef.current = null;
+    setIsPlaying(false);
+
+    await api.advanceQueue(venueCode).catch(() => {});
+
+    if (!autoplayRef.current) {
+      completedLockRef.current = false;
+      return;
+    }
+
+    try {
+      const res = await api.getQueue(venueCode);
+      const q = res.data;
+      const nextId = q?.nowPlaying?.appleId;
+
+      if (nextId) {
+        setQueue(q);
+        await playSong(nextId, q);
+      } else {
+        setQueue(q);
+        const filled = await tryAutofill();
+        if (!filled) {
+          completedLockRef.current = false;
+        }
+      }
+    } catch (_) {
+      completedLockRef.current = false;
+    }
+  }, [venueCode, playSong, tryAutofill]);
+
+  // ── Skip button ──
+  const handleSkip = useCallback(async () => {
+    if (isTransitioningRef.current) return;
+
+    await safeStop();
+    lastPlayedIdRef.current = null;
+    setIsPlaying(false);
+
+    try {
+      await api.advanceQueue(venueCode);
+      const res = await api.getQueue(venueCode);
+      const q = res.data;
+      setQueue(q);
+
+      const nextId = q?.nowPlaying?.appleId;
+      if (nextId) {
+        await playSong(nextId, q);
+      } else if (autoplayRef.current) {
+        await tryAutofill();
       }
     } catch (_) {}
-  }, [venueCode, startPlaybackWithQueue]);
+  }, [venueCode, playSong, tryAutofill, safeStop]);
 
-  const autoplayRef = useRef(autoplay);
-  autoplayRef.current = autoplay;
-
-  useEffect(() => {
-    const music = getMusicInstance();
-    if (!music || !music.isAuthorized || !venueCode) return;
-    const handler = (e) => {
-      if (e.state === 'completed') handlePlaybackCompleted();
-      else if (e.state === 'playing') setIsPlaying(true);
-      else if (e.state === 'paused' || e.state === 'stopped') setIsPlaying(false);
-    };
-    playbackListenerRef.current = handler;
-    music.addEventListener('playbackStateDidChange', handler);
-    return () => music.removeEventListener('playbackStateDidChange', playbackListenerRef.current);
-  }, [isAuthorized, venueCode, handlePlaybackCompleted]);
-
-  const togglePlayPause = useCallback(() => {
+  // ── Play/Pause toggle ──
+  const togglePlayPause = useCallback(async () => {
     const music = getMusicInstance();
     if (!music?.isAuthorized) return;
+
     if (isPlaying) {
-      music.pause();
+      try { music.pause(); } catch (_) {}
       setIsPlaying(false);
-    } else {
-      if (queue?.nowPlaying || queue?.upcoming?.length > 0) {
-        startPlayback();
-      } else {
-        music.play().then(() => setIsPlaying(true)).catch(() => {});
-      }
+      return;
     }
-  }, [isPlaying, queue?.nowPlaying, queue?.upcoming?.length, startPlayback]);
+
+    const nowId = queue?.nowPlaying?.appleId;
+    if (nowId) {
+      if (lastPlayedIdRef.current === String(nowId)) {
+        try { await music.play(); setIsPlaying(true); } catch (_) {}
+      } else {
+        await playSong(nowId, queue);
+      }
+    } else if (autoplayRef.current) {
+      await tryAutofill();
+    }
+  }, [isPlaying, queue, playSong, tryAutofill]);
 
   const handlePrev = useCallback(() => {
     const music = getMusicInstance();
@@ -240,14 +243,93 @@ export default function VenuePlayer() {
     }
   }, []);
 
+  // ── MusicKit event listener ──
+  useEffect(() => {
+    const music = getMusicInstance();
+    if (!music || !music.isAuthorized || !venueCode) return;
+
+    const handler = (e) => {
+      if (e.state === 'completed') {
+        handlePlaybackCompleted();
+      } else if (e.state === 'playing') {
+        setIsPlaying(true);
+      } else if (e.state === 'paused') {
+        setIsPlaying(false);
+      }
+    };
+
+    playbackListenerRef.current = handler;
+    music.addEventListener('playbackStateDidChange', handler);
+    return () => {
+      if (playbackListenerRef.current) {
+        music.removeEventListener('playbackStateDidChange', playbackListenerRef.current);
+      }
+    };
+  }, [isAuthorized, venueCode, handlePlaybackCompleted]);
+
+  // ── Polling loop ──
+  useEffect(() => {
+    if (!venueCode) return;
+
+    async function load() {
+      try {
+        const res = await api.getQueue(venueCode);
+        const serverNowId = res.data?.nowPlaying?.appleId ? String(res.data.nowPlaying.appleId) : null;
+        const currentId = lastPlayedIdRef.current ? String(lastPlayedIdRef.current) : null;
+
+        setQueue(res.data);
+
+        if (!autoplayFromServerRef.current) {
+          const fromServer = res.data?.requestSettings?.autoplayQueue;
+          if (fromServer !== undefined) {
+            setAutoplay(fromServer);
+            autoplayFromServerRef.current = true;
+          }
+        }
+
+        if (res.data?.requestSettings?.hasAutoplayGenre === false) {
+          autofillDisabledRef.current = true;
+        } else if (res.data?.requestSettings?.hasAutoplayGenre === true) {
+          autofillDisabledRef.current = false;
+        }
+
+        const music = getMusicInstance();
+        if (!music?.isAuthorized || isTransitioningRef.current) return;
+
+        if (serverNowId && currentId && serverNowId !== currentId) {
+          await playSong(serverNowId, res.data);
+          return;
+        }
+
+        if (serverNowId && !currentId && autoplayRef.current) {
+          await playSong(serverNowId, res.data);
+          return;
+        }
+
+        const queueEmpty = !serverNowId && (!res.data?.upcoming || res.data.upcoming.length === 0);
+        if (queueEmpty && autoplayRef.current && !autofillDisabledRef.current) {
+          await tryAutofill();
+        }
+
+        setError(null);
+      } catch (err) {
+        setError('Could not load queue');
+      }
+    }
+
+    load();
+    const interval = setInterval(load, POLL_INTERVAL);
+    return () => clearInterval(interval);
+  }, [venueCode, playSong, tryAutofill]);
+
+  // ── Volume ──
   useEffect(() => {
     const music = getMusicInstance();
     if (!music) return;
-    try {
-      music.volume = volume / 100;
-    } catch (_) {}
+    try { music.volume = volume / 100; } catch (_) {}
   }, [volume]);
 
+  // ── Apple Music authorization ──
   async function handleAuthorize() {
     const music = getMusicInstance();
     if (!music) {
@@ -257,6 +339,7 @@ export default function VenuePlayer() {
     try {
       await music.authorize();
       setIsAuthorized(music.isAuthorized);
+      autofillDisabledRef.current = false;
     } catch (err) {
       setError(err.message || 'Authorization failed');
     }
@@ -272,7 +355,6 @@ export default function VenuePlayer() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 pb-safe">
-      {/* Header */}
       <header className="bg-white border-b border-zinc-200">
         <div className="max-w-md mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -331,14 +413,16 @@ export default function VenuePlayer() {
               </div>
             )}
 
-            {/* Autoplay toggle */}
             <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   role="switch"
                   aria-checked={autoplay}
-                  onClick={() => setAutoplay(!autoplay)}
+                  onClick={() => {
+                    setAutoplay(!autoplay);
+                    if (!autoplay) autofillDisabledRef.current = false;
+                  }}
                   className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors ${
                     autoplay ? 'bg-brand-500' : 'bg-zinc-200'
                   }`}
@@ -354,7 +438,6 @@ export default function VenuePlayer() {
               </div>
             </div>
 
-            {/* Now Playing card */}
             <div className={`bg-white rounded-2xl border border-zinc-200 shadow-sm p-6 mb-6 ${!isAuthorized ? 'opacity-50 pointer-events-none' : ''}`}>
               <h2 className="text-sm font-semibold text-zinc-600 uppercase tracking-wide mb-4">Now Playing</h2>
               {queue.nowPlaying ? (
@@ -373,21 +456,23 @@ export default function VenuePlayer() {
                 <div className="flex flex-col items-center justify-center py-8 mb-4">
                   <Music2 className="h-24 w-24 text-zinc-300 mb-3" />
                   <p className="text-zinc-900 font-medium">No song playing</p>
-                  <p className="text-sm text-zinc-500 mt-1">Tap Play once – queue plays automatically</p>
+                  <p className="text-sm text-zinc-500 mt-1">Songs will auto-play when autoplay is on</p>
                 </div>
               )}
 
               {playbackBlocked && (queue?.nowPlaying || queue?.upcoming?.length) && (
                 <button
                   type="button"
-                  onClick={startPlayback}
+                  onClick={() => {
+                    const id = queue?.nowPlaying?.appleId;
+                    if (id) playSong(id, queue);
+                  }}
                   className="mb-4 w-full py-3 px-4 rounded-xl bg-amber-100 border-2 border-amber-400 text-amber-800 font-bold text-center hover:bg-amber-200"
                 >
                   Tap to start playback
                 </button>
               )}
 
-              {/* Playback controls */}
               <div className="flex items-center justify-center gap-4 mb-6">
                 <button
                   type="button"
@@ -412,7 +497,6 @@ export default function VenuePlayer() {
                 </button>
               </div>
 
-              {/* Volume */}
               <div className="flex items-center gap-3">
                 <Volume2 className="h-5 w-5 text-zinc-500 shrink-0" />
                 <input
@@ -427,7 +511,6 @@ export default function VenuePlayer() {
               </div>
             </div>
 
-            {/* Upcoming */}
             <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-6">
               <h3 className="text-sm font-semibold text-zinc-600 uppercase tracking-wide mb-3">Upcoming</h3>
               {queue.upcoming?.length > 0 ? (
