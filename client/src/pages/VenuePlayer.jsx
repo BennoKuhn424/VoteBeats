@@ -165,9 +165,15 @@ export default function VenuePlayer() {
   const handleSongEnd = useCallback(async () => {
     if (!mountedRef.current || isTransitioningRef.current) return;
     if (songEndHandledRef.current) return;
+
+    // Final safety: verify MusicKit actually finished (not mid-transition)
+    const _m = getMusicInstance();
+    const _ps = _m?.playbackState;
+    if (_ps === 2 || _ps === 1 || _ps === 6 || _ps === 8) return;
+
     songEndHandledRef.current = true;
     // #region agent log
-    const _m = getMusicInstance(); fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:handleSongEnd',message:'handleSongEnd CALLED - song will be removed',data:{lastPlayedId:lastPlayedIdRef.current,playbackStartedAt:playbackStartedAtRef.current,elapsed:playbackStartedAtRef.current?(Date.now()-playbackStartedAtRef.current)/1000:null,mkTime:_m?.currentPlaybackTime,mkDuration:_m?.currentPlaybackDuration,mkState:_m?.playbackState,mkNowPlaying:_m?.nowPlayingItem?.id},timestamp:Date.now(),hypothesisId:'ABC'})}).catch(()=>{}); console.warn('[VB_DEBUG] handleSongEnd CALLED',{lastId:lastPlayedIdRef.current,elapsed:playbackStartedAtRef.current?(Date.now()-playbackStartedAtRef.current)/1000:null,mkTime:_m?.currentPlaybackTime,mkDur:_m?.currentPlaybackDuration,mkState:_m?.playbackState});
+    fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:handleSongEnd',message:'handleSongEnd CALLED - song will be removed',data:{lastPlayedId:lastPlayedIdRef.current,elapsed:playbackStartedAtRef.current?(Date.now()-playbackStartedAtRef.current)/1000:null,mkTime:_m?.currentPlaybackTime,mkDur:_m?.currentPlaybackDuration,mkState:_ps},timestamp:Date.now(),hypothesisId:'verified'})}).catch(()=>{}); console.warn('[VB_DEBUG] handleSongEnd CALLED',{lastId:lastPlayedIdRef.current,mkState:_ps,mkTime:_m?.currentPlaybackTime,mkDur:_m?.currentPlaybackDuration});
     // #endregion
 
     const expectedSec = expectedDurationRef.current || 0;
@@ -358,18 +364,7 @@ export default function VenuePlayer() {
           handleSongEnd();
         }
 
-        // Also detect if MusicKit stopped and time reset (preview mode / stall)
-        if (lastPlayedIdRef.current && !songEndHandledRef.current && playbackStartedAtRef.current) {
-          const ps = music.playbackState;
-          const elapsed = (Date.now() - playbackStartedAtRef.current) / 1000;
-          // If playback state is stopped/completed/ended AND we've been playing for >15s AND time is near 0
-          if ((ps === 0 || ps === 4 || ps === 5 || ps === 9 || ps === 10) && elapsed > 15 && t < 2) {
-            // #region agent log
-            fetch('http://127.0.0.1:7848/ingest/1b5cee5d-f79e-40b3-af13-4867a90cb5b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b2b520'},body:JSON.stringify({sessionId:'b2b520',location:'VenuePlayer.jsx:timer-stall',message:'STALL condition triggered',data:{ps,elapsed,t,d,lastId:lastPlayedIdRef.current},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{}); console.warn('[VB_DEBUG] STALL trigger',{ps,elapsed,t,d});
-            // #endregion
-            handleSongEnd();
-          }
-        }
+        // Stall detection REMOVED - was causing false song removals during transitions
       } catch (_) {}
     }, 500);
     return () => clearInterval(tick);
