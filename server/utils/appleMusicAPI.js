@@ -12,6 +12,65 @@ function getToken() {
   return getDeveloperToken() || APPLE_MUSIC_DEVELOPER_TOKEN;
 }
 
+// Matches the "Languages" section labels in Settings.jsx.
+// When any selected autoplay genre is a language, it becomes a mandatory
+// filter: songs must match at least one selected language AND at least one
+// selected regular genre (if regular genres are also selected).
+const LANGUAGE_GENRES = new Set([
+  'afrikaans', 'english', 'spanish', 'french', 'portuguese', 'german', 'italian',
+  'zulu', 'xhosa', 'sotho', 'tswana', 'korean', 'japanese', 'arabic', 'hindi',
+]);
+
+// Per-venue ring buffer of recently autofilled appleIds (in-memory, last 20).
+// Prevents the same song from being picked twice in a row during autofill.
+const recentlyPlayedByVenue = new Map();
+
+function getRecentPool(venueCode) {
+  if (!recentlyPlayedByVenue.has(venueCode)) recentlyPlayedByVenue.set(venueCode, []);
+  return recentlyPlayedByVenue.get(venueCode);
+}
+
+function recordAutofillPlay(venueCode, appleId) {
+  const pool = getRecentPool(venueCode);
+  const idx = pool.indexOf(appleId);
+  if (idx !== -1) pool.splice(idx, 1);
+  pool.push(appleId);
+  if (pool.length > 20) pool.shift();
+}
+
+// Pick a song not heard recently; fall back to full pool when everything is recent.
+function pickFreshSong(songs, venueCode) {
+  if (!songs.length) return null;
+  const recent = getRecentPool(venueCode);
+  const fresh = songs.filter((s) => !recent.includes(s.appleId));
+  const chosen = fresh.length > 0
+    ? fresh[Math.floor(Math.random() * fresh.length)]
+    : songs[Math.floor(Math.random() * songs.length)];
+  if (chosen && venueCode) recordAutofillPlay(venueCode, chosen.appleId);
+  return chosen;
+}
+
+// Returns true if a song satisfies the venue's genre selection rules.
+//   - Only regular genres selected  → song matches any of them (OR)
+//   - Only language genres selected  → song matches any of them (OR)
+//   - Both groups selected           → song must match ≥1 language AND ≥1 regular genre (AND)
+function songMatchesGenreRules(song, languageGenres, regularGenres) {
+  const songGenre = (song.genre || '').toLowerCase();
+  const hasLang = languageGenres.length > 0;
+  const hasRegular = regularGenres.length > 0;
+
+  if (hasLang && hasRegular) {
+    return (
+      languageGenres.some((g) => songGenre.includes(g.toLowerCase())) &&
+      regularGenres.some((g) => songGenre.includes(g.toLowerCase()))
+    );
+  }
+  if (hasLang) {
+    return languageGenres.some((g) => songGenre.includes(g.toLowerCase()));
+  }
+  return regularGenres.some((g) => songGenre.includes(g.toLowerCase()));
+}
+
 // Mock catalog for development when no Apple Music API token is set
 const MOCK_CATALOG = [
   { appleId: 'song_001', title: 'Midnight Groove', artist: 'The Velvet Keys', albumArt: 'https://picsum.photos/200', duration: 210, genre: 'Jazz' },
@@ -318,7 +377,8 @@ async function searchAppleMusic(query, venueCode) {
         artist: s.attributes.artistName,
         albumArt: s.attributes.artwork?.url?.replace(/\{w\}/g, '300').replace(/\{h\}/g, '300') || '',
         duration: Math.round(s.attributes.durationInMillis / 1000),
-        genre: s.attributes.genreNames?.[0] || '',
+        // Join ALL genre tags so downstream filters catch secondary tags (e.g. 'Afrikaans').
+        genre: (s.attributes.genreNames || []).join(' '),
       }));
       return filterByVenueSettings(songs, venue);
     } catch (err) {
@@ -341,55 +401,65 @@ function mockSearch(query, venue) {
   return filterByVenueSettings(matched.length ? matched : MOCK_CATALOG.slice(0, 5), venue);
 }
 
-async function searchByGenre(genre, venueCode) {
+// genres: string[] — full autoplayGenre array from venue settings.
+// Splits genres into language vs regular, then applies the AND/OR rules.
+async function searchByGenre(genres, venueCode) {
   const db = require('./database');
   const venue = venueCode ? db.getVenue(venueCode) : null;
   const token = getToken();
 
-  const searchTerms = [genre];
+  const allGenres = Array.isArray(genres) ? genres : [genres];
+  const languageGenres = allGenres.filter((g) => LANGUAGE_GENRES.has(g.toLowerCase()));
+  const regularGenres = allGenres.filter((g) => !LANGUAGE_GENRES.has(g.toLowerCase()));
+
+  // Use regular genres as Apple Music search terms when available — they yield
+  // broader results that we then filter by language. Fall back to language terms
+  // when no regular genres are selected.
+  const searchPool = regularGenres.length > 0 ? regularGenres : languageGenres;
+  if (searchPool.length === 0) return null;
 
   if (token) {
-    try {
-      const term = searchTerms[Math.floor(Math.random() * searchTerms.length)];
-      const offset = Math.floor(Math.random() * 50);
-      const res = await fetch(
-        `https://api.music.apple.com/v1/catalog/us/search?types=songs&term=${encodeURIComponent(term)}&limit=25&offset=${offset}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+    // Shuffle so repeated calls rotate through all selected genres.
+    const shuffled = [...searchPool].sort(() => Math.random() - 0.5);
+    for (const term of shuffled) {
+      try {
+        const offset = Math.floor(Math.random() * 50);
+        const res = await fetch(
+          `https://api.music.apple.com/v1/catalog/us/search?types=songs&term=${encodeURIComponent(term)}&limit=25&offset=${offset}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        const data = await res.json();
+        const songs = (data.results?.songs?.data || []).map((s) => ({
+          appleId: s.id,
+          title: s.attributes.name,
+          artist: s.attributes.artistName,
+          albumArt: s.attributes.artwork?.url?.replace(/\{w\}/g, '300').replace(/\{h\}/g, '300') || '',
+          duration: Math.round(s.attributes.durationInMillis / 1000),
+          // Join ALL genre tags so 'Afrikaans' is caught even when it's not the primary tag.
+          genre: (s.attributes.genreNames || []).join(' '),
+        }));
+
+        const matched = songs.filter((s) => songMatchesGenreRules(s, languageGenres, regularGenres));
+        const pool = filterByVenueSettings(matched, venue);
+        if (pool.length > 0) {
+          return pickFreshSong(pool, venueCode);
         }
-      );
-      const data = await res.json();
-      const songs = (data.results?.songs?.data || []).map((s) => ({
-        appleId: s.id,
-        title: s.attributes.name,
-        artist: s.attributes.artistName,
-        albumArt: s.attributes.artwork?.url?.replace(/\{w\}/g, '300').replace(/\{h\}/g, '300') || '',
-        duration: Math.round(s.attributes.durationInMillis / 1000),
-        genre: s.attributes.genreNames?.[0] || '',
-      }));
-      const genreLower = genre.toLowerCase();
-      const genreMatched = songs.filter(
-        (s) => s.genre && s.genre.toLowerCase().includes(genreLower)
-      );
-      const filtered = filterByVenueSettings(genreMatched.length > 0 ? genreMatched : songs, venue);
-      if (filtered.length > 0) {
-        return filtered[Math.floor(Math.random() * filtered.length)];
+      } catch (err) {
+        console.error('Apple Music genre search error:', err);
       }
-    } catch (err) {
-      console.error('Apple Music genre search error:', err);
     }
   }
 
-  const genreLower = genre.toLowerCase();
-  const matched = MOCK_CATALOG.filter(
-    (s) => s.genre && s.genre.toLowerCase().includes(genreLower)
-  );
+  // Mock catalog fallback
+  const matched = MOCK_CATALOG.filter((s) => songMatchesGenreRules(s, languageGenres, regularGenres));
   if (matched.length === 0) return null;
   const pool = filterByVenueSettings(matched, venue);
-  return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : null;
+  return pickFreshSong(pool, venueCode);
 }
 
 module.exports = { searchAppleMusic, searchByGenre };

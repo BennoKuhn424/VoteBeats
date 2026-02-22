@@ -323,7 +323,6 @@ router.get('/:venueCode/autofill', async (req, res) => {
   if (genres.length === 0) {
     return res.status(400).json({ error: 'No autoplay genre configured' });
   }
-  const genre = genres[Math.floor(Math.random() * genres.length)];
 
   const queue = db.getQueue(venueCode);
   if (queue.nowPlaying || (queue.upcoming && queue.upcoming.length > 0)) {
@@ -331,7 +330,9 @@ router.get('/:venueCode/autofill', async (req, res) => {
   }
 
   try {
-    const song = await searchByGenre(genre, venueCode);
+    // Pass the full genres array so searchByGenre can apply the
+    // language-AND-regular-genre rule (see appleMusicAPI.js).
+    const song = await searchByGenre(genres, venueCode);
     if (!song) {
       return res.status(404).json({ error: 'No songs found for genre' });
     }
