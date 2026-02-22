@@ -335,6 +335,19 @@ export default function VenuePlayer() {
         }
 
         if (serverNowId && !currentId) {
+          // Stale-song guard: if the server's nowPlaying has been "playing" longer
+          // than its own duration (+ 15 s grace), it's a leftover from a previous
+          // session. Auto-advance past it instead of restarting it.
+          const nowP = res.data?.nowPlaying;
+          if (nowP?.startedAt && nowP?.duration && !mkIsPlaying) {
+            const elapsedMs = Date.now() - nowP.startedAt;
+            const expectedMs = Number(nowP.duration) * 1000;
+            if (elapsedMs > expectedMs + 15000) {
+              await api.advanceQueue(venueCode).catch(() => {});
+              return; // next poll will see the updated queue
+            }
+          }
+
           if (mkNowId === serverNowId && mkIsPlaying) {
             lastPlayedIdRef.current = serverNowId;
             playbackStartedAtRef.current = playbackStartedAtRef.current || Date.now();

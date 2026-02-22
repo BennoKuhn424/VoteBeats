@@ -362,7 +362,7 @@ async function searchAppleMusic(query, venueCode) {
   if (token) {
     try {
       const res = await fetch(
-        `https://api.music.apple.com/v1/catalog/us/search?types=songs&term=${encodeURIComponent(query)}&limit=20`,
+        `https://api.music.apple.com/v1/catalog/za/search?types=songs&term=${encodeURIComponent(query)}&limit=20`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -425,7 +425,7 @@ async function searchByGenre(genres, venueCode) {
       try {
         const offset = Math.floor(Math.random() * 50);
         const res = await fetch(
-          `https://api.music.apple.com/v1/catalog/us/search?types=songs&term=${encodeURIComponent(term)}&limit=25&offset=${offset}`,
+          `https://api.music.apple.com/v1/catalog/za/search?types=songs&term=${encodeURIComponent(term)}&limit=25&offset=${offset}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
