@@ -319,10 +319,8 @@ router.get('/:venueCode/autofill', async (req, res) => {
   if (!venue) return res.status(404).json({ error: 'Venue not found' });
 
   const genreSetting = venue.settings?.autoplayGenre;
+  // Empty array → no genre filter → searchByGenre will pick any song (all genres ok)
   const genres = Array.isArray(genreSetting) ? genreSetting : (genreSetting ? [genreSetting] : []);
-  if (genres.length === 0) {
-    return res.status(400).json({ error: 'No autoplay genre configured' });
-  }
 
   const queue = db.getQueue(venueCode);
   if (queue.nowPlaying || (queue.upcoming && queue.upcoming.length > 0)) {

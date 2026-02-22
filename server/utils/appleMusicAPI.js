@@ -21,7 +21,7 @@ const LANGUAGE_GENRES = new Set([
   'zulu', 'xhosa', 'sotho', 'tswana', 'korean', 'japanese', 'arabic', 'hindi',
 ]);
 
-// Per-venue ring buffer of recently autofilled appleIds (in-memory, last 20).
+// Per-venue ring buffer of recently autofilled appleIds (in-memory, last 50).
 // Prevents the same song from being picked twice in a row during autofill.
 const recentlyPlayedByVenue = new Map();
 
@@ -35,8 +35,37 @@ function recordAutofillPlay(venueCode, appleId) {
   const idx = pool.indexOf(appleId);
   if (idx !== -1) pool.splice(idx, 1);
   pool.push(appleId);
-  if (pool.length > 20) pool.shift();
+  if (pool.length > 50) pool.shift();
 }
+
+// Used when no genre is selected — search terms rotate so we get a wide variety.
+const BROAD_SEARCH_TERMS = [
+  'pop', 'rock', 'hip hop', 'r&b', 'alternative', 'indie',
+  'electronic', 'dance', 'soul', 'country', 'folk', 'jazz',
+  'afrobeat', 'amapiano', 'reggae', 'funk', 'blues', 'latin',
+  'new music', 'top hits', 'chart hits',
+];
+
+// Per-language artist/keyword pools.  When a language is selected without any
+// regular genre filter we rotate through these instead of just the language name,
+// giving access to thousands more songs in that language.
+const LANGUAGE_SEARCH_TERMS = {
+  afrikaans: [
+    'afrikaans',
+    'Gstring', 'Bok van Blerk', 'Kurt Darren', 'Droomsindroom', 'Elandré',
+    'Juanita du Plessis', 'Karen Zoid', 'Steve Hofmeyr', 'Die Heuwels Fantasties',
+    'Bouwer Bosch', 'Riana Nel', 'Francois van Coke', 'Chris Chameleon',
+    'Valiant Swart', 'Laurika Rauch', 'Koos Kombuis', 'Bobby van Jaarsveld',
+    'Ruan José', 'Robbie Wessels', 'Straatligkinders', 'Spoegwolf',
+    'Foto na Dans', 'Dozi', 'Coenie de Villiers', 'Johannes Kerkorrel',
+    'Anton Goosen', 'Fokofpolisiekar', 'Nicholis Louw', 'Amore Bekker',
+    'Carike Keuzenkamp', 'Lochner de Kock', 'Theuns Jordaan', 'Mathys Roets',
+    'Andre Visser', 'Stef Bos', 'Manie Jackson', 'Die Tuindwergies',
+    'Sunstroke', 'Liezel Pieters', 'Awie van Wyk', 'Groep Twee',
+    'Dan Patlansky afrikaans', 'Ou Skool afrikaans', 'afrikaanse treffers',
+    'nuwe afrikaans', 'afrikaans pop', 'afrikaans rock', 'lekker afrikaans',
+  ],
+};
 
 // Pick a song not heard recently; fall back to full pool when everything is recent.
 function pickFreshSong(songs, venueCode) {
@@ -51,13 +80,18 @@ function pickFreshSong(songs, venueCode) {
 }
 
 // Returns true if a song satisfies the venue's genre selection rules.
+//   - No genres selected             → accept every song (no filter)
 //   - Only regular genres selected  → song matches any of them (OR)
 //   - Only language genres selected  → song matches any of them (OR)
 //   - Both groups selected           → song must match ≥1 language AND ≥1 regular genre (AND)
 function songMatchesGenreRules(song, languageGenres, regularGenres) {
-  const songGenre = (song.genre || '').toLowerCase();
   const hasLang = languageGenres.length > 0;
   const hasRegular = regularGenres.length > 0;
+
+  // No genre filter at all — every song qualifies
+  if (!hasLang && !hasRegular) return true;
+
+  const songGenre = (song.genre || '').toLowerCase();
 
   if (hasLang && hasRegular) {
     return (
@@ -414,16 +448,33 @@ async function searchByGenre(genres, venueCode) {
 
   // Use regular genres as Apple Music search terms when available — they yield
   // broader results that we then filter by language. Fall back to language terms
-  // when no regular genres are selected.
-  const searchPool = regularGenres.length > 0 ? regularGenres : languageGenres;
-  if (searchPool.length === 0) return null;
+  // when only language genres are selected. When no genres are selected at all,
+  // rotate through broad popular terms so any song can be returned.
+  let searchTerms = regularGenres.length > 0 ? regularGenres : languageGenres;
+  if (searchTerms.length === 0) {
+    // No genre filter: shuffle broad terms so each autofill call tries different ones
+    searchTerms = [...BROAD_SEARCH_TERMS].sort(() => Math.random() - 0.5).slice(0, 5);
+  }
+
+  // For language-only selections, replace the single language name with the full
+  // artist/keyword pool for that language — gives access to thousands more songs.
+  if (languageGenres.length > 0 && regularGenres.length === 0) {
+    const expanded = [];
+    for (const lang of languageGenres) {
+      const terms = LANGUAGE_SEARCH_TERMS[lang.toLowerCase()];
+      if (terms) expanded.push(...terms);
+    }
+    if (expanded.length > 0) searchTerms = expanded;
+  }
 
   if (token) {
     // Shuffle so repeated calls rotate through all selected genres.
-    const shuffled = [...searchPool].sort(() => Math.random() - 0.5);
+    const shuffled = [...searchTerms].sort(() => Math.random() - 0.5);
     for (const term of shuffled) {
       try {
-        const offset = Math.floor(Math.random() * 50);
+        // Use a large random offset so every autofill call reaches a different
+        // slice of Apple Music's catalog (thousands of songs available at offset 0-200).
+        const offset = Math.floor(Math.random() * 200);
         const res = await fetch(
           `https://api.music.apple.com/v1/catalog/za/search?types=songs&term=${encodeURIComponent(term)}&limit=25&offset=${offset}`,
           {
@@ -448,6 +499,18 @@ async function searchByGenre(genres, venueCode) {
         const pool = filterByVenueSettings(matched, venue);
         if (pool.length > 0) {
           return pickFreshSong(pool, venueCode);
+        }
+
+        // Language-only fallback: Apple Music's search for e.g. "afrikaans" already
+        // surfaces Afrikaans songs, but many are tagged "Pop" / "Singer/Songwriter"
+        // rather than "Afrikaans" in their genre metadata. If the strict genre-tag
+        // filter matched nothing, trust Apple Music's own relevance ranking and use
+        // all returned songs (they ARE the right language, just loosely tagged).
+        if (languageGenres.length > 0 && regularGenres.length === 0 && songs.length > 0) {
+          const fallbackPool = filterByVenueSettings(songs, venue);
+          if (fallbackPool.length > 0) {
+            return pickFreshSong(fallbackPool, venueCode);
+          }
         }
       } catch (err) {
         console.error('Apple Music genre search error:', err);

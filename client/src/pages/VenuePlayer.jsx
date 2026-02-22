@@ -317,11 +317,8 @@ export default function VenuePlayer() {
           }
         }
 
-        if (res.data?.requestSettings?.hasAutoplayGenre === false) {
-          autofillDisabledRef.current = true;
-        } else if (res.data?.requestSettings?.hasAutoplayGenre === true) {
-          autofillDisabledRef.current = false;
-        }
+        // hasAutoplayGenre === false means no genre selected → any song qualifies.
+        // Never disable autofill based on this flag; it's only disabled on a 400 error.
 
         const music = getMusicInstance();
         if (!music?.isAuthorized || isTransitioningRef.current) return;
