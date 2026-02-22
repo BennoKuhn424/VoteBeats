@@ -122,8 +122,23 @@ export default function VenuePlayer() {
         return true;
       } catch (e2) {
         console.error('playSong fallback error:', e2);
+        // Set lastPlayedIdRef so the 5-second polling loop sees serverNowId === currentId
+        // and stops retrying this unresolvable song immediately.
+        lastPlayedIdRef.current = String(appleId);
         setPlaybackBlocked(true);
         isTransitioningRef.current = false;
+
+        // Auto-advance past the broken song after 3 s so playback recovers without
+        // user intervention (handles mock IDs stuck in the database from dev mode).
+        if (autoplayRef.current && venueCode && mountedRef.current) {
+          setTimeout(async () => {
+            if (!mountedRef.current) return;
+            if (lastPlayedIdRef.current !== String(appleId)) return; // something else took over
+            await api.advanceQueue(venueCode).catch(() => {});
+            lastPlayedIdRef.current = null; // let polling loop pick up the next song
+            if (mountedRef.current) setPlaybackBlocked(false);
+          }, 3000);
+        }
         return false;
       }
     }

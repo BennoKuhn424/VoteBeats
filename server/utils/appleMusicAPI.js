@@ -455,7 +455,11 @@ async function searchByGenre(genres, venueCode) {
     }
   }
 
-  // Mock catalog fallback
+  // Mock catalog fallback — only used when no real Apple Music token is configured
+  // (i.e. development mode). Mock song IDs like "song_117" are fake and MusicKit
+  // will throw NOT_FOUND if we try to play them with a real subscription.
+  if (token) return null;
+
   const matched = MOCK_CATALOG.filter((s) => songMatchesGenreRules(s, languageGenres, regularGenres));
   if (matched.length === 0) return null;
   const pool = filterByVenueSettings(matched, venue);
