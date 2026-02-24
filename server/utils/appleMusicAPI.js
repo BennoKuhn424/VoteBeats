@@ -62,8 +62,118 @@ const LANGUAGE_SEARCH_TERMS = {
     'Carike Keuzenkamp', 'Lochner de Kock', 'Theuns Jordaan', 'Mathys Roets',
     'Andre Visser', 'Stef Bos', 'Manie Jackson', 'Die Tuindwergies',
     'Sunstroke', 'Liezel Pieters', 'Awie van Wyk', 'Groep Twee',
-    'Dan Patlansky afrikaans', 'Ou Skool afrikaans', 'afrikaanse treffers',
-    'nuwe afrikaans', 'afrikaans pop', 'afrikaans rock', 'lekker afrikaans',
+    'afrikaanse treffers', 'nuwe afrikaans', 'afrikaans pop', 'afrikaans rock',
+  ],
+
+  // English has no genre tag in Apple Music — songs are labelled Pop/Rock/etc.
+  // Use popular artists + genre terms so we get a wide variety of English songs.
+  english: [
+    'pop', 'rock', 'hip hop', 'r&b', 'alternative', 'indie',
+    'electronic', 'dance', 'soul', 'country', 'folk', 'jazz',
+    'Taylor Swift', 'Ed Sheeran', 'The Weeknd', 'Billie Eilish',
+    'Ariana Grande', 'Bruno Mars', 'Dua Lipa', 'Harry Styles',
+    'Post Malone', 'Drake', 'Adele', 'Coldplay', 'Imagine Dragons',
+    'Olivia Rodrigo', 'Doja Cat', 'Justin Bieber', 'Sam Smith',
+    'Lewis Capaldi', 'Charlie Puth', 'Shawn Mendes', 'Lizzo',
+    'top hits', 'chart hits', 'new music', 'singer songwriter',
+  ],
+
+  spanish: [
+    'latin', 'reggaeton', 'latin pop', 'salsa', 'bachata', 'cumbia',
+    'Bad Bunny', 'J Balvin', 'Shakira', 'Maluma', 'Daddy Yankee',
+    'Ricky Martin', 'Enrique Iglesias', 'Luis Fonsi', 'Ozuna',
+    'Anuel AA', 'Karol G', 'Becky G', 'Nicky Jam', 'Farruko',
+    'Peso Pluma', 'Rauw Alejandro', 'Myke Towers', 'Sebastián Yatra',
+    'Rosalía', 'Anitta spanish', 'C. Tangana', 'Alejandro Sanz',
+  ],
+
+  french: [
+    'chanson française', 'french pop', 'musique française',
+    'Stromae', 'Aya Nakamura', 'Indochine', 'Mylène Farmer', 'Céline Dion',
+    'Christine and the Queens', 'Zaz', 'MC Solaar', 'Soprano',
+    'Maître Gims', 'PNL', 'Angèle', 'Clara Luciani', 'Louane',
+    'Francis Cabrel', 'Edith Piaf', 'Serge Gainsbourg', 'Ninho',
+    'Nekfeu', 'Julien Doré', 'Grand Corps Malade', 'Patrick Bruel',
+  ],
+
+  portuguese: [
+    'sertanejo', 'forró', 'bossa nova', 'fado', 'brazilian music',
+    'Anitta', 'Caetano Veloso', 'Jorge Ben Jor', 'Roberto Carlos',
+    'Marília Mendonça', 'Wesley Safadão', 'Ludmilla', 'Ivete Sangalo',
+    'Gusttavo Lima', 'Luan Santana', 'Gloria Groove', 'Pabllo Vittar',
+    'Salvador Sobral', 'Ana Moura', 'Dulce Pontes', 'Madredeus',
+  ],
+
+  german: [
+    'deutsch pop', 'deutschrock', 'schlager', 'german music',
+    'Rammstein', 'Die Toten Hosen', 'Kraftwerk', 'Nena', 'Falco',
+    'Helene Fischer', 'Mark Forster', 'Clueso', 'Silbermond',
+    'Adel Tawil', 'Lena Meyer-Landrut', 'Andreas Gabalier',
+    'Herbert Grönemeyer', 'Udo Jürgens', 'Sarah Connor', 'Revolverheld',
+  ],
+
+  italian: [
+    'musica italiana', 'canzone italiana', 'italian pop',
+    'Laura Pausini', 'Eros Ramazzotti', 'Tiziano Ferro', 'Andrea Bocelli',
+    'Zucchero', 'Jovanotti', 'Elisa', 'Marco Mengoni', 'Emma Marrone',
+    'Mahmood', 'Blanco', 'Måneskin', 'Fedez', 'Giorgia', 'Vasco Rossi',
+    'Lucio Battisti', 'Fabrizio De André', 'Pino Daniele',
+  ],
+
+  zulu: [
+    'maskandi', 'gqom', 'zulu music', 'isicathamiya',
+    'Ladysmith Black Mambazo', 'Sjava', 'Big Zulu', 'Busta 929',
+    'Mlindo The Vocalist', 'Mthunzi', 'Mnqobi Yazo', 'Imithente',
+    'Phuzekhemisi', 'Mfaz Omnyama', 'Thokozani Langa', 'afro house',
+  ],
+
+  xhosa: [
+    'xhosa music', 'xhosa gospel', 'imibongo',
+    'Miriam Makeba', 'Brenda Fassie', 'Thandiswa Mazwai',
+    'Zahara', 'Langa Mavuso', 'Nathi', 'xhosa pop',
+  ],
+
+  sotho: [
+    'sotho music', 'sesotho', 'lesotho music', 'sotho gospel',
+    'Mahlathini', 'The Mahotella Queens', 'Ntate Stunna',
+    'Nkosazana Daughter', 'Morija', 'sotho traditional',
+  ],
+
+  tswana: [
+    'setswana', 'tswana music', 'botswana music', 'tswana gospel',
+    'Vee Mampeezy', 'Charma Gal', 'Zeus', 'ATI', 'tswana pop',
+  ],
+
+  korean: [
+    'kpop', 'k-pop', 'korean pop', 'korean music',
+    'BTS', 'BLACKPINK', 'Stray Kids', 'EXO', 'TWICE', 'IU',
+    'Aespa', 'NewJeans', 'PSY', 'Epik High', 'Zico', 'G-Dragon',
+    'SHINee', 'SEVENTEEN', 'ITZY', 'Red Velvet', 'NCT 127',
+    'Monsta X', 'Sunmi', 'HyunA', 'LE SSERAFIM', 'fromis_9',
+  ],
+
+  japanese: [
+    'jpop', 'j-pop', 'japanese music', 'anime music', 'j-rock',
+    'Fujii Kaze', 'Kenshi Yonezu', 'Aimyon', 'King Gnu', 'Yoasobi',
+    'Official HIGE DANdism', 'Mrs GREEN APPLE', 'Yorushika', 'Aimer',
+    'Bump of Chicken', 'One OK Rock', 'Utada Hikaru', 'Perfume', 'LiSA',
+    'Radwimps', 'Eve', 'Vaundy', 'Ado', 'Creepy Nuts',
+  ],
+
+  arabic: [
+    'arabic music', 'arabic pop', 'khaleeji', 'arab music',
+    'Amr Diab', 'Nancy Ajram', 'Fairuz', 'Kadim Al Sahir',
+    'Elissa', 'Haifa Wehbe', 'Mohamed Hamaki', 'Sherine',
+    'Tamer Hosny', 'Assala', 'Wael Jassar', 'Ragheb Alama',
+    'Balqees', 'Hussain Al Jassmi', 'Mohammed Abdu',
+  ],
+
+  hindi: [
+    'bollywood', 'hindi songs', 'indian music', 'punjabi music',
+    'Arijit Singh', 'A.R. Rahman', 'Shreya Ghoshal', 'Badshah',
+    'Neha Kakkar', 'Sonu Nigam', 'Atif Aslam', 'Jubin Nautiyal',
+    'Pritam', 'desi pop', 'bhangra', 'Yo Yo Honey Singh',
+    'Diljit Dosanjh', 'Guru Randhawa', 'Armaan Malik',
   ],
 };
 
@@ -93,16 +203,27 @@ function songMatchesGenreRules(song, languageGenres, regularGenres) {
 
   const songGenre = (song.genre || '').toLowerCase();
 
-  if (hasLang && hasRegular) {
+  // 'English' is never stored as a genre tag in Apple Music — songs are tagged
+  // 'Pop', 'Rock', 'Hip-Hop' etc.  Exclude it from language checks so that
+  // English (alone or combined with regular genres) doesn't block all results.
+  const checkableLangs = languageGenres.filter((g) => g.toLowerCase() !== 'english');
+  const hasCheckableLang = checkableLangs.length > 0;
+
+  if (hasCheckableLang && hasRegular) {
     return (
-      languageGenres.some((g) => songGenre.includes(g.toLowerCase())) &&
+      checkableLangs.some((g) => songGenre.includes(g.toLowerCase())) &&
       regularGenres.some((g) => songGenre.includes(g.toLowerCase()))
     );
   }
-  if (hasLang) {
-    return languageGenres.some((g) => songGenre.includes(g.toLowerCase()));
+  if (hasCheckableLang) {
+    return checkableLangs.some((g) => songGenre.includes(g.toLowerCase()));
   }
-  return regularGenres.some((g) => songGenre.includes(g.toLowerCase()));
+  // Only English selected (no other checkable language): fall through to regular genre check
+  if (hasRegular) {
+    return regularGenres.some((g) => songGenre.includes(g.toLowerCase()));
+  }
+  // English-only, no regular genres → any song qualifies
+  return true;
 }
 
 // Mock catalog for development when no Apple Music API token is set
