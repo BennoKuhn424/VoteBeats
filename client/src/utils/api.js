@@ -50,6 +50,9 @@ export default {
   search: (query, venueCode) =>
     api.get(`/search`, { params: { q: query, venueCode: venueCode || undefined } }),
 
+  getLyrics: (title, artist, duration) =>
+    api.get('/lyrics', { params: { title, artist, duration: duration || undefined } }),
+
   getDeveloperToken: () => api.get('/token'),
 
   login: (email, password) => api.post('/auth/login', { email, password }),

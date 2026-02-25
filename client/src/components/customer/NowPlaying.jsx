@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { formatDuration } from '../../utils/helpers';
 
-export default function NowPlaying({ song }) {
+export default function NowPlaying({ song, hasLyrics, onLyrics }) {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
+    if (!song) return;
     const updateProgress = () => {
       const elapsed = Date.now() - (song.startedAt || 0);
       const duration = (song.duration || 0) * 1000;
@@ -16,6 +17,8 @@ export default function NowPlaying({ song }) {
     const interval = setInterval(updateProgress, 1000);
     return () => clearInterval(interval);
   }, [song]);
+
+  if (!song) return null;
 
   return (
     <div className="bg-white rounded-xl p-6 mb-8 border border-carbon-200 shadow-card">
@@ -38,12 +41,22 @@ export default function NowPlaying({ song }) {
         </div>
       </div>
 
-      <div className="w-full bg-carbon-100 rounded-full h-2 overflow-hidden">
+      <div className="w-full bg-carbon-100 rounded-full h-2 overflow-hidden mb-4">
         <div
           className="bg-gradient-to-r from-amethyst-400 to-amethyst-900 rounded-full h-2 transition-all duration-1000"
           style={{ width: `${progress}%` }}
         />
       </div>
+
+      {hasLyrics && (
+        <button
+          type="button"
+          onClick={onLyrics}
+          className="w-full py-2.5 rounded-xl bg-black text-white font-semibold text-sm flex items-center justify-center gap-2 active:opacity-80 transition-opacity"
+        >
+          🎤 Lyrics
+        </button>
+      )}
     </div>
   );
 }

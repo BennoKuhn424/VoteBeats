@@ -18,6 +18,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/token', require('./routes/token'));
 app.use('/api/queue', require('./routes/queue'));
 app.use('/api/search', require('./routes/search'));
+app.use('/api/lyrics', require('./routes/lyrics'));
 app.use('/api/music', require('./routes/music'));
 app.use('/api/venue', require('./routes/venue'));
 app.use('/api/admin', require('./routes/admin'));

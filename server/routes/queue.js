@@ -230,10 +230,11 @@ router.post('/:venueCode/create-payment', async (req, res) => {
       }),
     });
 
-    const data = await response.json();
     if (!response.ok) {
-      return res.status(response.status).json({ error: data.message || 'Payment creation failed' });
+      const errData = await response.json().catch(() => ({}));
+      return res.status(response.status).json({ error: errData.message || 'Payment creation failed' });
     }
+    const data = await response.json();
 
     const checkoutId = data.id;
     const redirectUrl = data.redirectUrl;

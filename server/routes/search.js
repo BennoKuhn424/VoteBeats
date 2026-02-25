@@ -23,7 +23,7 @@ router.get('/', async (req, res) => {
     const results = songs.map((s) => ({
       trackName: s.title,
       artistName: s.artist,
-      artwork: (s.albumArt || '').replace(/\{w\}/g, '300').replace(/\{h\}/g, '300'),
+      artwork: s.albumArt || '',
       songId: s.appleId,
       duration: s.duration,
       genre: s.genre,

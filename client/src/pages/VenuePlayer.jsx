@@ -25,7 +25,10 @@ export default function VenuePlayer() {
   const [musicReady, setMusicReady] = useState(false);
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [volume, setVolume] = useState(70);
+  const [volume, setVolume] = useState(() => {
+    const saved = localStorage.getItem('votebeats_volume');
+    return saved !== null ? Number(saved) : 70;
+  });
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const [previewDetected, setPreviewDetected] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -396,6 +399,7 @@ export default function VenuePlayer() {
 
   // ── Volume ──
   useEffect(() => {
+    localStorage.setItem('votebeats_volume', String(volume));
     const music = getMusicInstance();
     if (!music) return;
     try { music.volume = volume / 100; } catch (_) {}

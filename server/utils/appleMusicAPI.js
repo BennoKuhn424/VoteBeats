@@ -488,8 +488,7 @@ function filterByVenueSettings(songs, venue) {
   let filtered = songs;
 
   if (venue.settings.allowExplicit === false) {
-    // In real API, filter by contentRating; for mock we keep all
-    filtered = filtered;
+    filtered = filtered.filter((s) => !s.isExplicit);
   }
 
   if (venue.settings.genreFilters?.length) {
@@ -525,6 +524,7 @@ async function searchAppleMusic(query, venueCode) {
           },
         }
       );
+      if (!res.ok) throw new Error(`Apple Music search error: ${res.status}`);
       const data = await res.json();
       const songs = (data.results?.songs?.data || []).map((s) => ({
         appleId: s.id,
@@ -534,6 +534,7 @@ async function searchAppleMusic(query, venueCode) {
         duration: Math.round(s.attributes.durationInMillis / 1000),
         // Join ALL genre tags so downstream filters catch secondary tags (e.g. 'Afrikaans').
         genre: (s.attributes.genreNames || []).join(' '),
+        isExplicit: s.attributes.contentRating === 'explicit',
       }));
       return filterByVenueSettings(songs, venue);
     } catch (err) {
@@ -605,6 +606,7 @@ async function searchByGenre(genres, venueCode) {
             },
           }
         );
+        if (!res.ok) throw new Error(`Apple Music autofill error: ${res.status}`);
         const data = await res.json();
         const songs = (data.results?.songs?.data || []).map((s) => ({
           appleId: s.id,
@@ -614,6 +616,7 @@ async function searchByGenre(genres, venueCode) {
           duration: Math.round(s.attributes.durationInMillis / 1000),
           // Join ALL genre tags so 'Afrikaans' is caught even when it's not the primary tag.
           genre: (s.attributes.genreNames || []).join(' '),
+          isExplicit: s.attributes.contentRating === 'explicit',
         }));
 
         const matched = songs.filter((s) => songMatchesGenreRules(s, languageGenres, regularGenres));

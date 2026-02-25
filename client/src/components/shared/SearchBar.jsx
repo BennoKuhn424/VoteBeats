@@ -3,7 +3,7 @@ import api from '../../utils/api';
 
 export default function SearchBar({ venueCode, onRequestSong, requestSettings }) {
   const requiresPayment = requestSettings?.requirePaymentForRequest ?? false;
-  const priceRand = requestSettings?.requestPriceCents ? requestSettings.requestPriceCents / 100 : 10;
+  const priceRand = (requestSettings?.requestPriceCents ?? 1000) / 100;
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);

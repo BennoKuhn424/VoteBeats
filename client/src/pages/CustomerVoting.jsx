@@ -5,6 +5,7 @@ import { getDeviceId } from '../utils/deviceId';
 import NowPlaying from '../components/customer/NowPlaying';
 import UpcomingQueue from '../components/customer/UpcomingQueue';
 import SearchBar from '../components/shared/SearchBar';
+import LyricsView from '../components/customer/LyricsView';
 
 export default function CustomerVoting() {
   const { venueCode } = useParams();
@@ -12,7 +13,23 @@ export default function CustomerVoting() {
   const [queue, setQueue] = useState({ nowPlaying: null, upcoming: [], requestSettings: {} });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showLyrics, setShowLyrics] = useState(false);
+  const [lyricsData, setLyricsData] = useState(null); // pre-fetched lyrics for current song
   const deviceId = getDeviceId();
+
+  // Pre-fetch lyrics whenever the playing song changes so the button only shows when lyrics exist
+  useEffect(() => {
+    const song = queue.nowPlaying;
+    setShowLyrics(false); // close overlay whenever the song changes
+    if (!song) { setLyricsData(null); return; }
+    setLyricsData(null);
+    api.getLyrics(song.title, song.artist, song.duration)
+      .then((res) => {
+        const { syncedLyrics, plainLyrics } = res.data;
+        setLyricsData(syncedLyrics || plainLyrics ? { syncedLyrics, plainLyrics } : null);
+      })
+      .catch(() => setLyricsData(null));
+  }, [queue.nowPlaying?.appleId]);
 
   useEffect(() => {
     if (!venueCode) return;
@@ -42,17 +59,20 @@ export default function CustomerVoting() {
     try {
       if (paymentInfo?.requiresPayment) {
         const res = await api.createPayment(venueCode, song, deviceId);
-      if (res.data?.redirectUrl) {
-        if (res.data.checkoutId) {
-          const key = `votebeats_checkout_${venueCode}`;
-          const id = res.data.checkoutId;
-          sessionStorage.setItem(key, id);
-          localStorage.setItem(key, id);
-          document.cookie = `votebeats_checkout_${venueCode}=${id}; path=/; max-age=600; SameSite=Lax`;
-        }
-        window.location.href = res.data.redirectUrl;
+        if (res.data?.redirectUrl) {
+          if (res.data.checkoutId) {
+            const key = `votebeats_checkout_${venueCode}`;
+            const id = res.data.checkoutId;
+            sessionStorage.setItem(key, id);
+            localStorage.setItem(key, id);
+            document.cookie = `votebeats_checkout_${venueCode}=${id}; path=/; max-age=600; SameSite=Lax`;
+          }
+          window.location.href = res.data.redirectUrl;
           return;
         }
+        // Payment API responded but gave no redirect — treat as a server error
+        alert('Payment could not be started. Please try again.');
+        return;
       } else {
         await api.requestSong(venueCode, song, deviceId);
         fetchQueue();
@@ -90,7 +110,21 @@ export default function CustomerVoting() {
           requestSettings={queue.requestSettings}
         />
 
-        {queue.nowPlaying && <NowPlaying song={queue.nowPlaying} />}
+        {queue.nowPlaying && (
+          <NowPlaying
+            song={queue.nowPlaying}
+            hasLyrics={!!lyricsData}
+            onLyrics={() => setShowLyrics(true)}
+          />
+        )}
+
+        {showLyrics && queue.nowPlaying && (
+          <LyricsView
+            song={queue.nowPlaying}
+            lyricsData={lyricsData}
+            onClose={() => setShowLyrics(false)}
+          />
+        )}
 
         <UpcomingQueue songs={queue.upcoming} />
       </div>
