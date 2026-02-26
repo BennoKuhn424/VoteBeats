@@ -38,6 +38,39 @@ function recordAutofillPlay(venueCode, appleId) {
   if (pool.length > 50) pool.shift();
 }
 
+// Maps venue genre labels (from Settings.jsx) to what Apple Music actually stores
+// in genre metadata. Apple Music's tags often differ from common genre names —
+// e.g. "Indie" songs are tagged "Alternative", "Hip-Hop" songs are "Hip-Hop/Rap", etc.
+// Both the search term expansion AND the songMatchesGenreRules matching use this map.
+const GENRE_ALIASES = {
+  'indie':       ['indie', 'alternative', 'indie pop', 'indie rock', 'alternative & indie'],
+  'hip-hop':     ['hip-hop', 'hip hop', 'rap', 'hip-hop/rap', 'urban contemporary'],
+  'r&b':         ['r&b', 'r&b/soul', 'soul', 'urban contemporary'],
+  'soul':        ['soul', 'r&b/soul', 'r&b'],
+  'electronic':  ['electronic', 'dance', 'electronica', 'edm'],
+  'dance':       ['dance', 'electronic', 'edm', 'house'],
+  'edm':         ['edm', 'electronic', 'dance', 'house'],
+  'house':       ['house', 'afro house', 'deep house', 'electronic'],
+  'amapiano':    ['amapiano', 'afrobeat', 'house', 'afro house'],
+  'kwaito':      ['kwaito', 'afrobeat', 'african'],
+  'afrobeat':    ['afrobeat', 'afro', 'afro pop', 'world'],
+  'metal':       ['metal', 'heavy metal', 'hard rock'],
+  'punk':        ['punk', 'punk rock', 'alternative'],
+  'folk':        ['folk', 'contemporary folk', 'singer/songwriter', 'acoustic'],
+  'blues':       ['blues', 'blues/r&b'],
+  'gospel':      ['gospel', 'christian', 'religious'],
+  'trap':        ['trap', 'hip-hop', 'hip-hop/rap', 'rap'],
+  'lo-fi':       ['lo-fi', 'lo fi', 'lofi', 'alternative', 'chillhop'],
+  'classical':   ['classical', 'orchestral', 'opera'],
+  'reggae':      ['reggae', 'reggae/dancehall', 'dancehall'],
+  'latin':       ['latin', 'urbano latino', 'latin pop', 'reggaeton'],
+  'funk':        ['funk', 'soul', 'r&b'],
+  'jazz':        ['jazz', 'smooth jazz', 'vocal jazz'],
+  'ambient':     ['ambient', 'new age', 'electronic'],
+  'techno':      ['techno', 'electronic', 'dance'],
+  'alternative': ['alternative', 'indie', 'indie pop', 'indie rock', 'alternative & indie'],
+};
+
 // Used when no genre is selected — search terms rotate so we get a wide variety.
 const BROAD_SEARCH_TERMS = [
   'pop', 'rock', 'hip hop', 'r&b', 'alternative', 'indie',
@@ -189,6 +222,12 @@ function pickFreshSong(songs, venueCode) {
   return chosen;
 }
 
+// Expands a genre label to all Apple Music genre tags it should match.
+// e.g. 'Indie' → ['indie', 'alternative', 'indie pop', 'indie rock', 'alternative & indie']
+function expandGenre(genre) {
+  return GENRE_ALIASES[genre.toLowerCase()] || [genre.toLowerCase()];
+}
+
 // Returns true if a song satisfies the venue's genre selection rules.
 //   - No genres selected             → accept every song (no filter)
 //   - Only regular genres selected  → song matches any of them (OR)
@@ -203,6 +242,9 @@ function songMatchesGenreRules(song, languageGenres, regularGenres) {
 
   const songGenre = (song.genre || '').toLowerCase();
 
+  // Check if a song's genre string matches a given genre label (with aliases).
+  const matchesRegular = (g) => expandGenre(g).some((alias) => songGenre.includes(alias));
+
   // 'English' is never stored as a genre tag in Apple Music — songs are tagged
   // 'Pop', 'Rock', 'Hip-Hop' etc.  Exclude it from language checks so that
   // English (alone or combined with regular genres) doesn't block all results.
@@ -212,7 +254,7 @@ function songMatchesGenreRules(song, languageGenres, regularGenres) {
   if (hasCheckableLang && hasRegular) {
     return (
       checkableLangs.some((g) => songGenre.includes(g.toLowerCase())) &&
-      regularGenres.some((g) => songGenre.includes(g.toLowerCase()))
+      regularGenres.some(matchesRegular)
     );
   }
   if (hasCheckableLang) {
@@ -220,7 +262,7 @@ function songMatchesGenreRules(song, languageGenres, regularGenres) {
   }
   // Only English selected (no other checkable language): fall through to regular genre check
   if (hasRegular) {
-    return regularGenres.some((g) => songGenre.includes(g.toLowerCase()));
+    return regularGenres.some(matchesRegular);
   }
   // English-only, no regular genres → any song qualifies
   return true;
@@ -569,10 +611,13 @@ async function searchByGenre(genres, venueCode) {
   const regularGenres = allGenres.filter((g) => !LANGUAGE_GENRES.has(g.toLowerCase()));
 
   // Use regular genres as Apple Music search terms when available — they yield
-  // broader results that we then filter by language. Fall back to language terms
-  // when only language genres are selected. When no genres are selected at all,
-  // rotate through broad popular terms so any song can be returned.
-  let searchTerms = regularGenres.length > 0 ? regularGenres : languageGenres;
+  // broader results that we then filter by language. Expand each genre label to
+  // its Apple Music aliases so we cast a wide net (e.g. 'Indie' → also 'alternative').
+  // Fall back to language terms when only language genres are selected. When no
+  // genres are selected at all, rotate through broad popular terms.
+  let searchTerms = regularGenres.length > 0
+    ? [...new Set(regularGenres.flatMap(expandGenre))]
+    : languageGenres;
   if (searchTerms.length === 0) {
     // No genre filter: shuffle broad terms so each autofill call tries different ones
     searchTerms = [...BROAD_SEARCH_TERMS].sort(() => Math.random() - 0.5).slice(0, 5);
