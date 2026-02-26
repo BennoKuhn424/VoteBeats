@@ -610,28 +610,31 @@ async function searchByGenre(genres, venueCode) {
   const languageGenres = allGenres.filter((g) => LANGUAGE_GENRES.has(g.toLowerCase()));
   const regularGenres = allGenres.filter((g) => !LANGUAGE_GENRES.has(g.toLowerCase()));
 
-  // Use regular genres as Apple Music search terms when available — they yield
-  // broader results that we then filter by language. Expand each genre label to
-  // its Apple Music aliases so we cast a wide net (e.g. 'Indie' → also 'alternative').
-  // Fall back to language terms when only language genres are selected. When no
-  // genres are selected at all, rotate through broad popular terms.
-  let searchTerms = regularGenres.length > 0
-    ? [...new Set(regularGenres.flatMap(expandGenre))]
-    : languageGenres;
-  if (searchTerms.length === 0) {
-    // No genre filter: shuffle broad terms so each autofill call tries different ones
-    searchTerms = [...BROAD_SEARCH_TERMS].sort(() => Math.random() - 0.5).slice(0, 5);
-  }
+  // Determine which language genres actually have genre tags in Apple Music.
+  // 'English' is never a genre tag — songs are tagged Pop/Rock/etc. — so exclude
+  // it from language checks; it only acts as a pass-through.
+  const checkableLangs = languageGenres.filter((g) => g.toLowerCase() !== 'english');
 
-  // For language-only selections, replace the single language name with the full
-  // artist/keyword pool for that language — gives access to thousands more songs.
-  if (languageGenres.length > 0 && regularGenres.length === 0) {
+  // Build search terms:
+  //  • Non-English language selected (with or without regular genre):
+  //      → search using the per-language artist/keyword pool so Apple Music
+  //        returns songs actually in that language, then filter by genre.
+  //  • English + regular genre (or regular genre only):
+  //      → search using expanded genre aliases (e.g. 'Indie' → 'alternative').
+  //  • No selections at all:
+  //      → rotate through broad popular terms for maximum variety.
+  let searchTerms;
+  if (checkableLangs.length > 0) {
     const expanded = [];
-    for (const lang of languageGenres) {
+    for (const lang of checkableLangs) {
       const terms = LANGUAGE_SEARCH_TERMS[lang.toLowerCase()];
       if (terms) expanded.push(...terms);
     }
-    if (expanded.length > 0) searchTerms = expanded;
+    searchTerms = expanded.length > 0 ? expanded : checkableLangs;
+  } else if (regularGenres.length > 0) {
+    searchTerms = [...new Set(regularGenres.flatMap(expandGenre))];
+  } else {
+    searchTerms = [...BROAD_SEARCH_TERMS].sort(() => Math.random() - 0.5).slice(0, 5);
   }
 
   if (token) {
@@ -670,12 +673,13 @@ async function searchByGenre(genres, venueCode) {
           return pickFreshSong(pool, venueCode);
         }
 
-        // Language-only fallback: Apple Music's search for e.g. "afrikaans" already
-        // surfaces Afrikaans songs, but many are tagged "Pop" / "Singer/Songwriter"
-        // rather than "Afrikaans" in their genre metadata. If the strict genre-tag
-        // filter matched nothing, trust Apple Music's own relevance ranking and use
-        // all returned songs (they ARE the right language, just loosely tagged).
-        if (languageGenres.length > 0 && regularGenres.length === 0 && songs.length > 0) {
+        // Language fallback: when we searched via LANGUAGE_SEARCH_TERMS the results
+        // ARE in the right language, but many songs are loosely tagged (e.g. an Afrikaans
+        // pop song tagged "Pop" not "Afrikaans", or a Zulu hip-hop song tagged "Hip-Hop"
+        // not "Zulu"). If the strict genre+language filter matched nothing, trust Apple
+        // Music's own search relevance and accept any song from those results.
+        // This applies for both language-only AND language+genre selections.
+        if (checkableLangs.length > 0 && songs.length > 0) {
           const fallbackPool = filterByVenueSettings(songs, venue);
           if (fallbackPool.length > 0) {
             return pickFreshSong(fallbackPool, venueCode);
