@@ -126,30 +126,55 @@ router.post('/:venueCode/playlist/generate-checkout', authMiddleware, async (req
 router.post('/:venueCode/playlist/generate', authMiddleware, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
-  const { checkoutId } = req.body;
+  const { checkoutId, prompt: bodyPrompt } = req.body;
   if (!checkoutId) return res.status(400).json({ error: 'checkoutId required' });
 
   const pending = db.getPendingPayment(checkoutId);
-  if (!pending) return res.status(404).json({ error: 'Payment not found or already used' });
-  if (pending.venueCode !== req.params.venueCode) return res.status(403).json({ error: 'Invalid checkout' });
 
-  // Verify with Yoco
-  const yocoSecret = process.env.YOCO_SECRET_KEY;
-  if (yocoSecret) {
+  // If pending payment is missing (e.g. server restarted), fall back to Yoco-only verification
+  // with the prompt provided by the client (saved in localStorage before redirect)
+  let resolvedPrompt;
+  if (!pending) {
+    if (!bodyPrompt?.trim()) {
+      return res.status(404).json({ error: 'Payment not found. Please try again.' });
+    }
+    // Verify with Yoco directly
+    const yocoSecret = process.env.YOCO_SECRET_KEY;
+    if (!yocoSecret) return res.status(404).json({ error: 'Payment not found. Please try again.' });
     try {
       const yocoRes = await fetch(`https://payments.yoco.com/api/checkouts/${checkoutId}`, {
         headers: { Authorization: `Bearer ${yocoSecret}` },
       });
-      if (yocoRes.ok) {
-        const d = await yocoRes.json();
-        const status = (d.status || '').toLowerCase();
-        const paid = status === 'completed' || status === 'succeeded' || status.includes('complete') || !!(d.paymentId || d.payment?.id);
-        if (!paid) return res.status(402).json({ error: 'Payment not completed yet' });
-      }
-    } catch (err) { console.warn('Yoco verify failed:', err.message); }
+      if (!yocoRes.ok) return res.status(402).json({ error: 'Payment could not be verified. Please try again.' });
+      const d = await yocoRes.json();
+      const status = (d.status || '').toLowerCase();
+      const paid = status === 'completed' || status === 'succeeded' || status.includes('complete') || !!(d.paymentId || d.payment?.id);
+      if (!paid) return res.status(402).json({ error: 'Payment not completed yet.' });
+    } catch (err) {
+      console.warn('Yoco verify fallback failed:', err.message);
+      return res.status(402).json({ error: 'Payment could not be verified. Please try again.' });
+    }
+    resolvedPrompt = bodyPrompt.trim();
+  } else {
+    if (pending.venueCode !== req.params.venueCode) return res.status(403).json({ error: 'Invalid checkout' });
+    // Verify with Yoco
+    const yocoSecret = process.env.YOCO_SECRET_KEY;
+    if (yocoSecret) {
+      try {
+        const yocoRes = await fetch(`https://payments.yoco.com/api/checkouts/${checkoutId}`, {
+          headers: { Authorization: `Bearer ${yocoSecret}` },
+        });
+        if (yocoRes.ok) {
+          const d = await yocoRes.json();
+          const status = (d.status || '').toLowerCase();
+          const paid = status === 'completed' || status === 'succeeded' || status.includes('complete') || !!(d.paymentId || d.payment?.id);
+          if (!paid) return res.status(402).json({ error: 'Payment not completed yet' });
+        }
+      } catch (err) { console.warn('Yoco verify failed:', err.message); }
+    }
+    db.removePendingPayment(checkoutId);
+    resolvedPrompt = pending.prompt;
   }
-
-  db.removePendingPayment(checkoutId);
 
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   if (!anthropicKey) return res.status(503).json({ error: 'AI generation not configured. Set ANTHROPIC_API_KEY.' });
@@ -162,7 +187,7 @@ router.post('/:venueCode/playlist/generate', authMiddleware, async (req, res) =>
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
         system: 'You are a music curator for a venue. Given a vibe/style description, return 25 well-known popular songs that match. Return ONLY valid JSON: {"songs":[{"title":"Song Title","artist":"Artist Name"}]}. No markdown. Only songs available on major streaming platforms.',
-        messages: [{ role: 'user', content: `Generate a playlist for this vibe: ${pending.prompt}` }],
+        messages: [{ role: 'user', content: `Generate a playlist for this vibe: ${resolvedPrompt}` }],
       }),
     });
     if (!claudeRes.ok) throw new Error(`Claude API error: ${claudeRes.status}`);

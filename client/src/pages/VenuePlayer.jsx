@@ -23,6 +23,7 @@ export default function VenuePlayer() {
   const [playbackDuration, setPlaybackDuration] = useState(0);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [musicReady, setMusicReady] = useState(false);
+  const [waitingForGesture, setWaitingForGesture] = useState(false);
   const [volume, setVolume] = useState(() => {
     const saved = localStorage.getItem('votebeats_volume');
     return saved !== null ? Number(saved) : 70;
@@ -102,12 +103,14 @@ export default function VenuePlayer() {
 
     const checkoutId = localStorage.getItem(`votebeats_generate_${venueCode}`);
     if (!checkoutId) return;
+    const savedPrompt = localStorage.getItem(`votebeats_generate_prompt_${venueCode}`) || '';
     localStorage.removeItem(`votebeats_generate_${venueCode}`);
+    localStorage.removeItem(`votebeats_generate_prompt_${venueCode}`);
 
     setActiveTab('playlist');
     setGenerateStatus('generating');
 
-    api.generatePlaylist(venueCode, checkoutId)
+    api.generatePlaylist(venueCode, checkoutId, savedPrompt)
       .then((res) => setGenerateStatus({ added: res.data.added?.length ?? 0 }))
       .catch((err) => setGenerateStatus({ error: err.response?.data?.error || 'Generation failed' }));
   }, [venueCode]);
@@ -135,9 +138,15 @@ export default function VenuePlayer() {
       try { await music.stop(); } catch {}   // clear any residual audio before loading new track
       await music.setQueue({ songs: [song.appleId] });
       await music.play();
+      setWaitingForGesture(false);
       await api.reportPlaying(venueCode, song.id);
     } catch (err) {
-      console.error('Play error:', err);
+      // Browser autoplay policy blocks play() without a prior user gesture
+      if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
+        setWaitingForGesture(true);
+      } else {
+        console.error('Play error:', err);
+      }
       isTransitioningRef.current = false;
     }
   }, [venueCode]);
@@ -214,6 +223,7 @@ export default function VenuePlayer() {
   async function handlePlayPause() {
     const music = musicRef.current;
     if (!music) return;
+    setWaitingForGesture(false);
     if (music.playbackState === 2) await music.pause();
     else await music.play();
   }
@@ -352,15 +362,22 @@ export default function VenuePlayer() {
               >
                 <SkipBack className="h-5 w-5" />
               </button>
-              <button
-                type="button"
-                onClick={handlePlayPause}
-                className="w-12 h-12 flex items-center justify-center rounded-full bg-brand-500 text-white hover:bg-brand-600 transition-colors"
-              >
-                {isPlaying
-                  ? <Pause className="h-5 w-5" />
-                  : <Play className="h-5 w-5 ml-0.5" />}
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={handlePlayPause}
+                  className="w-12 h-12 flex items-center justify-center rounded-full bg-brand-500 text-white hover:bg-brand-600 transition-colors"
+                >
+                  {isPlaying
+                    ? <Pause className="h-5 w-5" />
+                    : <Play className="h-5 w-5 ml-0.5" />}
+                </button>
+                {waitingForGesture && (
+                  <span className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs bg-zinc-800 text-white px-2 py-1 rounded-md pointer-events-none">
+                    Tap to play
+                  </span>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={handleSkip}

@@ -82,6 +82,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
       const res = await api.generatePlaylistCheckout(venueCode, generatePrompt.trim());
       const { redirectUrl, checkoutId } = res.data;
       localStorage.setItem(`votebeats_generate_${venueCode}`, checkoutId);
+      localStorage.setItem(`votebeats_generate_prompt_${venueCode}`, generatePrompt.trim());
       window.location.href = redirectUrl;
     } catch (err) {
       setGenerateError(err.response?.data?.error || 'Could not start payment. Try again.');
