@@ -4,22 +4,38 @@ const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-// GET /api/venue/:venueCode (requires auth)
-router.get('/:venueCode', authMiddleware, (req, res) => {
-  if (req.venue.code !== req.params.venueCode) {
-    return res.status(403).json({ error: 'Unauthorized' });
+// ── Migrate single-playlist venues to multi-playlist format ──────────────────
+function normalizePlaylists(venue) {
+  if (!Array.isArray(venue.playlists)) {
+    venue.playlists = [];
+    if (Array.isArray(venue.playlist) && venue.playlist.length > 0) {
+      venue.playlists.push({ id: 'pl_default', name: 'My Playlist', songs: venue.playlist });
+    }
+    delete venue.playlist;
   }
+  // Ensure every playlist has a songs array
+  venue.playlists = venue.playlists.map((p) => ({ ...p, songs: p.songs || [] }));
+  if (!venue.activePlaylistId && venue.playlists.length > 0) {
+    venue.activePlaylistId = venue.playlists[0].id;
+  }
+  return venue;
+}
 
-  const venue = { ...req.venue };
-  delete venue.owner;
-  res.json(venue);
+// GET /api/venue/:venueCode
+router.get('/:venueCode', authMiddleware, (req, res) => {
+  if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
+  const raw = db.getVenue(req.params.venueCode);
+  const hadOldFormat = !Array.isArray(raw.playlists);
+  const venue = normalizePlaylists({ ...raw });
+  if (hadOldFormat) db.saveVenue(venue.code, venue);
+  const out = { ...venue };
+  delete out.owner;
+  res.json(out);
 });
 
 // PUT /api/venue/:venueCode/settings
 router.put('/:venueCode/settings', authMiddleware, (req, res) => {
-  if (req.venue.code !== req.params.venueCode) {
-    return res.status(403).json({ error: 'Unauthorized' });
-  }
+  if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   const { allowExplicit, maxSongsPerUser, genreFilters, blockedArtists, requirePaymentForRequest, requestPriceCents, autoplayQueue, autoplayMode } = req.body;
   const venue = db.getVenue(req.params.venueCode);
@@ -52,38 +68,109 @@ router.put('/:venueCode/settings', authMiddleware, (req, res) => {
   res.json(venue.settings);
 });
 
-// POST /api/venue/:venueCode/playlist/add – add a song to the venue playlist
-router.post('/:venueCode/playlist/add', authMiddleware, (req, res) => {
-  if (req.venue.code !== req.params.venueCode) {
-    return res.status(403).json({ error: 'Unauthorized' });
-  }
+// ── Multi-playlist CRUD ──────────────────────────────────────────────────────
 
-  const { id, appleId, title, artist, albumArt, duration } = req.body;
-  if (!appleId || !title) {
-    return res.status(400).json({ error: 'appleId and title are required' });
-  }
+// POST /api/venue/:venueCode/playlists – create a new named playlist
+router.post('/:venueCode/playlists', authMiddleware, (req, res) => {
+  if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
+  const { name } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
 
-  const venue = db.getVenue(req.params.venueCode);
-  if (!Array.isArray(venue.playlist)) venue.playlist = [];
-
-  // Dedupe by appleId
-  if (!venue.playlist.some((s) => s.appleId === appleId)) {
-    if (venue.playlist.length >= 500) {
-      return res.status(400).json({ error: 'Playlist limit reached (500 songs)' });
-    }
-    venue.playlist.push({ id: id || `pl_${Date.now()}`, appleId, title, artist, albumArt, duration });
-    db.saveVenue(venue.code, venue);
-  }
-
-  res.json({ playlist: venue.playlist });
+  const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
+  const playlist = { id: `pl_${Date.now()}`, name: name.trim(), songs: [] };
+  venue.playlists.push(playlist);
+  if (!venue.activePlaylistId) venue.activePlaylistId = playlist.id;
+  db.saveVenue(venue.code, venue);
+  res.json({ playlist, playlists: venue.playlists, activePlaylistId: venue.activePlaylistId });
 });
 
-// POST /api/venue/:venueCode/playlist/generate-checkout – create R50 Yoco checkout to generate AI playlist
-router.post('/:venueCode/playlist/generate-checkout', authMiddleware, async (req, res) => {
+// DELETE /api/venue/:venueCode/playlists/:playlistId – delete a playlist
+router.delete('/:venueCode/playlists/:playlistId', authMiddleware, (req, res) => {
+  if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
+
+  const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
+  venue.playlists = venue.playlists.filter((p) => p.id !== req.params.playlistId);
+  if (venue.activePlaylistId === req.params.playlistId) {
+    venue.activePlaylistId = venue.playlists[0]?.id || null;
+  }
+  db.saveVenue(venue.code, venue);
+  res.json({ playlists: venue.playlists, activePlaylistId: venue.activePlaylistId });
+});
+
+// PUT /api/venue/:venueCode/playlists/:playlistId/activate – set as active (used by autofill)
+router.put('/:venueCode/playlists/:playlistId/activate', authMiddleware, (req, res) => {
+  if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
+
+  const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
+  if (!venue.playlists.some((p) => p.id === req.params.playlistId)) {
+    return res.status(404).json({ error: 'Playlist not found' });
+  }
+  venue.activePlaylistId = req.params.playlistId;
+  db.saveVenue(venue.code, venue);
+  res.json({ activePlaylistId: venue.activePlaylistId });
+});
+
+// PUT /api/venue/:venueCode/playlists/:playlistId/rename – rename a playlist
+router.put('/:venueCode/playlists/:playlistId/rename', authMiddleware, (req, res) => {
+  if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
+  const { name } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
+
+  const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
+  const pl = venue.playlists.find((p) => p.id === req.params.playlistId);
+  if (!pl) return res.status(404).json({ error: 'Playlist not found' });
+  pl.name = name.trim();
+  db.saveVenue(venue.code, venue);
+  res.json({ playlists: venue.playlists });
+});
+
+// ── Per-playlist song management ─────────────────────────────────────────────
+
+// POST /api/venue/:venueCode/playlists/:playlistId/songs – add a song
+router.post('/:venueCode/playlists/:playlistId/songs', authMiddleware, (req, res) => {
+  if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
+
+  const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
+  const pl = venue.playlists.find((p) => p.id === req.params.playlistId);
+  if (!pl) return res.status(404).json({ error: 'Playlist not found' });
+
+  const { id, appleId, title, artist, albumArt, duration } = req.body;
+  if (!appleId || !title) return res.status(400).json({ error: 'appleId and title are required' });
+
+  if (pl.songs.some((s) => s.appleId === appleId)) return res.json({ playlist: pl });
+  if (pl.songs.length >= 500) return res.status(400).json({ error: 'Playlist limit reached (500 songs)' });
+
+  pl.songs.push({ id: id || `pl_${Date.now()}`, appleId, title, artist, albumArt, duration });
+  db.saveVenue(venue.code, venue);
+  res.json({ playlist: pl });
+});
+
+// DELETE /api/venue/:venueCode/playlists/:playlistId/songs/:appleId – remove a song
+router.delete('/:venueCode/playlists/:playlistId/songs/:appleId', authMiddleware, (req, res) => {
+  if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
+
+  const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
+  const pl = venue.playlists.find((p) => p.id === req.params.playlistId);
+  if (!pl) return res.status(404).json({ error: 'Playlist not found' });
+
+  pl.songs = pl.songs.filter((s) => s.appleId !== req.params.appleId);
+  db.saveVenue(venue.code, venue);
+  res.json({ playlist: pl });
+});
+
+// ── AI Playlist generation (R50) ─────────────────────────────────────────────
+
+// POST /api/venue/:venueCode/playlists/:playlistId/generate-checkout
+router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddleware, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   const { prompt } = req.body;
   if (!prompt?.trim()) return res.status(400).json({ error: 'Prompt is required' });
+
+  const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
+  if (!venue.playlists.some((p) => p.id === req.params.playlistId)) {
+    return res.status(404).json({ error: 'Playlist not found' });
+  }
 
   const yocoSecret = process.env.YOCO_SECRET_KEY;
   if (!yocoSecret) return res.status(503).json({ error: 'Payment not configured' });
@@ -114,7 +201,12 @@ router.post('/:venueCode/playlist/generate-checkout', authMiddleware, async (req
     const { id: checkoutId, redirectUrl } = data;
     if (!checkoutId || !redirectUrl) return res.status(500).json({ error: 'Invalid payment response' });
 
-    db.setPendingPayment(checkoutId, { venueCode, amountCents: 5000, prompt: prompt.trim() });
+    db.setPendingPayment(checkoutId, {
+      venueCode,
+      playlistId: req.params.playlistId,
+      amountCents: 5000,
+      prompt: prompt.trim(),
+    });
     res.json({ redirectUrl, checkoutId });
   } catch (err) {
     console.error('Generate checkout error:', err);
@@ -122,8 +214,8 @@ router.post('/:venueCode/playlist/generate-checkout', authMiddleware, async (req
   }
 });
 
-// POST /api/venue/:venueCode/playlist/generate – verify payment, call Claude, add songs to playlist
-router.post('/:venueCode/playlist/generate', authMiddleware, async (req, res) => {
+// POST /api/venue/:venueCode/playlists/:playlistId/generate – verify payment, call Claude, add songs
+router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   const { checkoutId, prompt: bodyPrompt } = req.body;
@@ -131,14 +223,12 @@ router.post('/:venueCode/playlist/generate', authMiddleware, async (req, res) =>
 
   const pending = db.getPendingPayment(checkoutId);
 
-  // If pending payment is missing (e.g. server restarted), fall back to Yoco-only verification
-  // with the prompt provided by the client (saved in localStorage before redirect)
   let resolvedPrompt;
+  let resolvedPlaylistId = req.params.playlistId;
+
   if (!pending) {
-    if (!bodyPrompt?.trim()) {
-      return res.status(404).json({ error: 'Payment not found. Please try again.' });
-    }
-    // Verify with Yoco directly
+    // Server restarted — fall back to Yoco verification + client-supplied prompt
+    if (!bodyPrompt?.trim()) return res.status(404).json({ error: 'Payment not found. Please try again.' });
     const yocoSecret = process.env.YOCO_SECRET_KEY;
     if (!yocoSecret) return res.status(404).json({ error: 'Payment not found. Please try again.' });
     try {
@@ -157,7 +247,7 @@ router.post('/:venueCode/playlist/generate', authMiddleware, async (req, res) =>
     resolvedPrompt = bodyPrompt.trim();
   } else {
     if (pending.venueCode !== req.params.venueCode) return res.status(403).json({ error: 'Invalid checkout' });
-    // Verify with Yoco
+    resolvedPlaylistId = pending.playlistId || req.params.playlistId;
     const yocoSecret = process.env.YOCO_SECRET_KEY;
     if (yocoSecret) {
       try {
@@ -206,12 +296,21 @@ router.post('/:venueCode/playlist/generate', authMiddleware, async (req, res) =>
     }
 
     const { searchAppleMusic } = require('../utils/appleMusicAPI');
-    const venue = db.getVenue(req.params.venueCode);
-    if (!Array.isArray(venue.playlist)) venue.playlist = [];
-    const existingIds = new Set(venue.playlist.map((s) => s.appleId));
+    const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
+    let pl = venue.playlists.find((p) => p.id === resolvedPlaylistId);
+    if (!pl) {
+      // Playlist deleted since payment — add to active or create a new one
+      pl = venue.playlists.find((p) => p.id === venue.activePlaylistId);
+      if (!pl) {
+        pl = { id: `pl_${Date.now()}`, name: 'AI Generated', songs: [] };
+        venue.playlists.push(pl);
+        venue.activePlaylistId = pl.id;
+      }
+    }
+
+    const existingIds = new Set(pl.songs.map((s) => s.appleId));
     const added = [];
 
-    // Search Apple Music in parallel batches of 5
     for (let i = 0; i < suggestions.length; i += 5) {
       const batch = suggestions.slice(i, i + 5);
       const results = await Promise.all(batch.map(async ({ title, artist }) => {
@@ -222,40 +321,25 @@ router.post('/:venueCode/playlist/generate', authMiddleware, async (req, res) =>
         } catch { return null; }
       }));
       for (const song of results) {
-        if (!song || venue.playlist.length >= 500) continue;
+        if (!song || pl.songs.length >= 500) continue;
         const entry = { id: `pl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, appleId: song.appleId, title: song.title, artist: song.artist, albumArt: song.albumArt, duration: song.duration };
-        venue.playlist.push(entry);
+        pl.songs.push(entry);
         existingIds.add(song.appleId);
         added.push(entry);
       }
     }
 
     db.saveVenue(venue.code, venue);
-    res.json({ added, total: venue.playlist.length });
+    res.json({ added, total: pl.songs.length, playlistId: pl.id });
   } catch (err) {
     console.error('Generate playlist error:', err);
     res.status(500).json({ error: 'Failed to generate playlist' });
   }
 });
 
-// DELETE /api/venue/:venueCode/playlist/:appleId – remove a song from the playlist
-router.delete('/:venueCode/playlist/:appleId', authMiddleware, (req, res) => {
-  if (req.venue.code !== req.params.venueCode) {
-    return res.status(403).json({ error: 'Unauthorized' });
-  }
-
-  const venue = db.getVenue(req.params.venueCode);
-  venue.playlist = (venue.playlist || []).filter((s) => s.appleId !== req.params.appleId);
-  db.saveVenue(venue.code, venue);
-
-  res.json({ playlist: venue.playlist });
-});
-
-// GET /api/venue/:venueCode/earnings – monthly pay-to-play earnings (auth required)
+// GET /api/venue/:venueCode/earnings
 router.get('/:venueCode/earnings', authMiddleware, (req, res) => {
-  if (req.venue.code !== req.params.venueCode) {
-    return res.status(403).json({ error: 'Unauthorized' });
-  }
+  if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   const now = new Date();
   const year = parseInt(req.query.year, 10) || now.getFullYear();

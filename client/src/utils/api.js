@@ -60,14 +60,24 @@ export default {
     api.post('/auth/register', { email, password, venueName, location }),
 
   getVenue: (venueCode) => api.get(`/venue/${venueCode}`),
-  addToPlaylist: (venueCode, song) =>
-    api.post(`/venue/${venueCode}/playlist/add`, song),
-  removeFromPlaylist: (venueCode, appleId) =>
-    api.delete(`/venue/${venueCode}/playlist/${appleId}`),
-  generatePlaylistCheckout: (venueCode, prompt) =>
-    api.post(`/venue/${venueCode}/playlist/generate-checkout`, { prompt }),
-  generatePlaylist: (venueCode, checkoutId, prompt) =>
-    api.post(`/venue/${venueCode}/playlist/generate`, { checkoutId, prompt }),
+
+  // Multi-playlist management
+  createPlaylist: (venueCode, name) =>
+    api.post(`/venue/${venueCode}/playlists`, { name }),
+  deletePlaylist: (venueCode, playlistId) =>
+    api.delete(`/venue/${venueCode}/playlists/${playlistId}`),
+  activatePlaylist: (venueCode, playlistId) =>
+    api.put(`/venue/${venueCode}/playlists/${playlistId}/activate`),
+  renamePlaylist: (venueCode, playlistId, name) =>
+    api.put(`/venue/${venueCode}/playlists/${playlistId}/rename`, { name }),
+  addToPlaylist: (venueCode, playlistId, song) =>
+    api.post(`/venue/${venueCode}/playlists/${playlistId}/songs`, song),
+  removeFromPlaylist: (venueCode, playlistId, appleId) =>
+    api.delete(`/venue/${venueCode}/playlists/${playlistId}/songs/${appleId}`),
+  generatePlaylistCheckout: (venueCode, playlistId, prompt) =>
+    api.post(`/venue/${venueCode}/playlists/${playlistId}/generate-checkout`, { prompt }),
+  generatePlaylist: (venueCode, playlistId, checkoutId, prompt) =>
+    api.post(`/venue/${venueCode}/playlists/${playlistId}/generate`, { checkoutId, prompt }),
   updateSettings: (venueCode, settings) =>
     api.put(`/venue/${venueCode}/settings`, settings),
   getVenueEarnings: (venueCode, year, month) =>

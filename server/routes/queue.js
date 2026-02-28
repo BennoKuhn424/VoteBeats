@@ -21,7 +21,8 @@ async function serverAutofill(venueCode, venue) {
     const genreSetting = venue?.settings?.autoplayGenre;
     const genres = Array.isArray(genreSetting) ? genreSetting : (genreSetting ? [genreSetting] : []);
     const autoplayMode = venue?.settings?.autoplayMode || 'playlist';
-    const playlist = venue?.playlist || [];
+    const activePl = (venue?.playlists || []).find((p) => p.id === venue?.activePlaylistId);
+    const playlist = activePl?.songs || venue?.playlist || [];
 
     let song = null;
     if (autoplayMode !== 'random' && playlist.length > 0) {
@@ -388,7 +389,8 @@ router.get('/:venueCode/autofill', async (req, res) => {
     const autoplayMode = venue.settings?.autoplayMode || 'playlist';
 
     // If mode is 'playlist' and the venue has a curated playlist, pick from it.
-    const playlist = venue.playlist || [];
+    const activePl = (venue.playlists || []).find((p) => p.id === venue.activePlaylistId);
+    const playlist = activePl?.songs || venue.playlist || [];
     let song = null;
     if (autoplayMode !== 'random' && playlist.length > 0) {
       song = pickFromPlaylist(playlist, venueCode);
