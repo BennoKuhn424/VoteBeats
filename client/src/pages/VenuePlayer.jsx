@@ -108,6 +108,7 @@ export default function VenuePlayer() {
     try {
       if (!music.isAuthorized) await music.authorize();
       setIsAuthorized(music.isAuthorized);
+      try { await music.stop(); } catch {}   // clear any residual audio before loading new track
       await music.setQueue({ songs: [song.appleId] });
       await music.play();
       await api.reportPlaying(venueCode, song.id);
@@ -149,7 +150,7 @@ export default function VenuePlayer() {
         }
       }
 
-      if (!nowPlaying && autoplayModeRef.current !== 'off') {
+      if (!nowPlaying && autoplayModeRef.current !== 'off' && !isTransitioningRef.current) {
         await tryAutofill();
       }
     } catch (err) {
@@ -172,11 +173,12 @@ export default function VenuePlayer() {
     async function onStateChange() {
       if (music.playbackState === 5 && currentSongIdRef.current) {
         currentSongIdRef.current = null;
-        isTransitioningRef.current = false;
+        isTransitioningRef.current = true;   // block poller until transition completes
         try {
           await api.advanceQueue(venueCode);
           if (autoplayModeRef.current !== 'off') await tryAutofill();
         } catch {}
+        isTransitioningRef.current = false;
       }
     }
 

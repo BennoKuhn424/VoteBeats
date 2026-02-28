@@ -36,21 +36,32 @@ export default function LyricsView({ song, lyricsData, onClose }) {
   const [isSynced, setIsSynced] = useState(init.isSynced);
   const [currentIdx, setCurrentIdx] = useState(0);
   const lineRefs = useRef([]);
+  // Ref so the tick always reads the latest startedAt without restarting the interval
+  const startedAtRef = useRef(song?.startedAt ?? null);
+
+  // Keep startedAtRef in sync whenever the prop updates (e.g. after reportPlaying)
+  useEffect(() => {
+    startedAtRef.current = song?.startedAt ?? null;
+  }, [song?.startedAt]);
 
   // Re-parse if song or lyricsData changes while the overlay is mounted
   useEffect(() => {
     if (!song) return;
     setCurrentIdx(0);
+    startedAtRef.current = song.startedAt ?? null;
     const { lines: newLines, isSynced: newSynced } = initFromLyricsData(lyricsData);
     setLines(newLines);
     setIsSynced(newSynced);
   }, [song?.appleId, lyricsData]);
 
-  // Tick every 300ms to find the current lyric line
+  // Tick every 300ms to find the current lyric line.
+  // Reads startedAt from a ref so a server-side update never restarts the timer.
   useEffect(() => {
-    if (!isSynced || !lines?.length || !song?.startedAt) return;
+    if (!isSynced || !lines?.length) return;
     const tick = setInterval(() => {
-      const elapsed = (Date.now() - song.startedAt) / 1000;
+      const startedAt = startedAtRef.current;
+      if (!startedAt) return;
+      const elapsed = (Date.now() - startedAt) / 1000;
       let idx = 0;
       for (let i = 0; i < lines.length; i++) {
         if (lines[i].time <= elapsed) idx = i;
@@ -59,7 +70,7 @@ export default function LyricsView({ song, lyricsData, onClose }) {
       setCurrentIdx(idx);
     }, 300);
     return () => clearInterval(tick);
-  }, [isSynced, lines, song?.startedAt]);
+  }, [isSynced, lines]);
 
   // Scroll the active line into view smoothly
   useEffect(() => {
