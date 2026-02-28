@@ -31,6 +31,9 @@ export default function VenuePlayer() {
   // Autoplay mode: 'off' | 'playlist' | 'random'
   const [autoplayMode, setAutoplayMode] = useState('playlist');
 
+  // AI playlist generation state
+  const [generateStatus, setGenerateStatus] = useState(null); // null | 'generating' | { added: number } | { error: string }
+
   const musicRef = useRef(null);
   const currentSongIdRef = useRef(null);
   const isTransitioningRef = useRef(false);
@@ -87,6 +90,27 @@ export default function VenuePlayer() {
     localStorage.setItem('votebeats_volume', String(volume));
     if (musicRef.current) musicRef.current.volume = volume / 100;
   }, [volume]);
+
+  // ── Detect ?generatePlaylist=1 after Yoco redirect, call generate endpoint ──
+  useEffect(() => {
+    if (!venueCode) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('generatePlaylist') !== '1') return;
+
+    // Strip the query param from the URL without reloading
+    window.history.replaceState({}, '', window.location.pathname);
+
+    const checkoutId = localStorage.getItem(`votebeats_generate_${venueCode}`);
+    if (!checkoutId) return;
+    localStorage.removeItem(`votebeats_generate_${venueCode}`);
+
+    setActiveTab('playlist');
+    setGenerateStatus('generating');
+
+    api.generatePlaylist(venueCode, checkoutId)
+      .then((res) => setGenerateStatus({ added: res.data.added?.length ?? 0 }))
+      .catch((err) => setGenerateStatus({ error: err.response?.data?.error || 'Generation failed' }));
+  }, [venueCode]);
 
   // ── Fetch venue + load saved autoplayMode ────────────────────────────────
   useEffect(() => {
@@ -198,11 +222,15 @@ export default function VenuePlayer() {
     const music = musicRef.current;
     if (music) { try { await music.stop(); } catch {} }
     currentSongIdRef.current = null;
-    isTransitioningRef.current = false;
+    isTransitioningRef.current = true;  // block poller until skip resolves
     try {
       await api.skipSong(venueCode);
+      isTransitioningRef.current = false;  // allow fetchQueue to play next song
       await fetchQueue();
-    } catch (err) { console.error('Skip error:', err); }
+    } catch (err) {
+      console.error('Skip error:', err);
+      isTransitioningRef.current = false;
+    }
   }
 
   async function handlePrev() {
@@ -407,6 +435,24 @@ export default function VenuePlayer() {
           </div>
         </div>
       </div>
+
+      {/* ── Generate playlist status banner ── */}
+      {generateStatus && (
+        <div className={`shrink-0 border-b border-zinc-200 ${generateStatus === 'generating' ? 'bg-blue-50' : generateStatus.error ? 'bg-red-50' : 'bg-green-50'}`}>
+          <div className="max-w-3xl mx-auto px-4 py-2 flex items-center justify-between gap-3">
+            <p className={`text-sm font-medium ${generateStatus === 'generating' ? 'text-blue-700' : generateStatus.error ? 'text-red-700' : 'text-green-700'}`}>
+              {generateStatus === 'generating'
+                ? '✨ Generating your AI playlist… this takes ~30 seconds'
+                : generateStatus.error
+                  ? `Generation failed: ${generateStatus.error}`
+                  : `✅ Added ${generateStatus.added} songs to your playlist!`}
+            </p>
+            {generateStatus !== 'generating' && (
+              <button type="button" onClick={() => setGenerateStatus(null)} className="text-xs text-zinc-400 hover:text-zinc-600 shrink-0">Dismiss</button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Tab content ── */}
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-6">

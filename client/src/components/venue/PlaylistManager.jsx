@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ListMusic, Search, Plus, Check, X, Loader2 } from 'lucide-react';
+import { ListMusic, Search, Plus, Check, X, Loader2, Sparkles } from 'lucide-react';
 import api from '../../utils/api';
 
 export default function PlaylistManager({ venueCode, variant = 'dark' }) {
@@ -11,6 +11,10 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState(null);
   const [addedIds, setAddedIds] = useState(new Set());
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [generatePrompt, setGeneratePrompt] = useState('');
+  const [generatingCheckout, setGeneratingCheckout] = useState(false);
+  const [generateError, setGenerateError] = useState(null);
 
   useEffect(() => {
     api.getVenue(venueCode)
@@ -66,6 +70,22 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
       });
     } catch (err) {
       alert(err.response?.data?.error || 'Could not remove song');
+    }
+  }
+
+  async function handleGenerateCheckout(e) {
+    e.preventDefault();
+    if (!generatePrompt.trim()) return;
+    setGeneratingCheckout(true);
+    setGenerateError(null);
+    try {
+      const res = await api.generatePlaylistCheckout(venueCode, generatePrompt.trim());
+      const { redirectUrl, checkoutId } = res.data;
+      localStorage.setItem(`votebeats_generate_${venueCode}`, checkoutId);
+      window.location.href = redirectUrl;
+    } catch (err) {
+      setGenerateError(err.response?.data?.error || 'Could not start payment. Try again.');
+      setGeneratingCheckout(false);
     }
   }
 
@@ -154,6 +174,59 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* Generate AI Playlist */}
+      <div className={cardClass}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className={headingClass}>Generate AI Playlist</h3>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isLight ? 'bg-brand-100 text-brand-700' : 'bg-brand-500/20 text-brand-400'}`}>
+            R50
+          </span>
+        </div>
+
+        {!showGenerate ? (
+          <button
+            type="button"
+            onClick={() => setShowGenerate(true)}
+            className="flex items-center gap-2 w-full justify-center px-4 py-2.5 bg-brand-500 text-white rounded-lg font-semibold text-sm hover:bg-brand-600 transition-colors"
+          >
+            <Sparkles className="h-4 w-4" />
+            Generate playlist with AI
+          </button>
+        ) : (
+          <form onSubmit={handleGenerateCheckout} className="space-y-3">
+            <p className={`text-sm ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>
+              Describe the vibe — e.g. "Afrikaans hits", "2000s pop", "upbeat dancehall for a Friday night".
+              Claude will pick 25 songs and add them to your playlist.
+            </p>
+            <textarea
+              value={generatePrompt}
+              onChange={(e) => { setGeneratePrompt(e.target.value); setGenerateError(null); }}
+              placeholder="Describe your playlist vibe..."
+              rows={3}
+              className={`w-full px-4 py-2.5 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 ${isLight ? 'bg-zinc-50 border border-zinc-300 text-zinc-900 placeholder-zinc-400' : 'bg-dark-700 border border-dark-500 text-white placeholder-dark-400'}`}
+            />
+            {generateError && <p className="text-red-500 text-xs">{generateError}</p>}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={generatingCheckout || !generatePrompt.trim()}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-500 text-white rounded-lg font-semibold text-sm hover:bg-brand-600 transition-colors disabled:opacity-50"
+              >
+                {generatingCheckout ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {generatingCheckout ? 'Starting payment…' : 'Pay R50 & Generate'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowGenerate(false); setGeneratePrompt(''); setGenerateError(null); }}
+                className={`px-3 py-2.5 rounded-lg text-sm font-medium ${isLight ? 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200' : 'bg-dark-700 text-dark-300 hover:bg-dark-600'}`}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
         )}
       </div>
 

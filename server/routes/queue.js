@@ -8,12 +8,68 @@ const { searchByGenre, pickFromPlaylist } = require('../utils/appleMusicAPI');
 
 const router = express.Router();
 
+// ── Server-side autofill (keeps queue moving without VenuePlayer being open) ──
+const pendingAutofillVenues = new Set();
+
+async function serverAutofill(venueCode, venue) {
+  if (pendingAutofillVenues.has(venueCode)) return;
+  pendingAutofillVenues.add(venueCode);
+  try {
+    const currentQueue = db.getQueue(venueCode);
+    if (currentQueue.nowPlaying || (currentQueue.upcoming && currentQueue.upcoming.length > 0)) return;
+
+    const genreSetting = venue?.settings?.autoplayGenre;
+    const genres = Array.isArray(genreSetting) ? genreSetting : (genreSetting ? [genreSetting] : []);
+    const autoplayMode = venue?.settings?.autoplayMode || 'playlist';
+    const playlist = venue?.playlist || [];
+
+    let song = null;
+    if (autoplayMode !== 'random' && playlist.length > 0) {
+      song = pickFromPlaylist(playlist, venueCode);
+    }
+    if (!song) {
+      song = await searchByGenre(genres, venueCode);
+    }
+    if (!song) return;
+
+    db.updateQueue(venueCode, {
+      nowPlaying: {
+        ...song,
+        id: song.id || `autofill_${Date.now()}`,
+        votes: 0,
+        requestedBy: '__autofill__',
+        requestedAt: Date.now(),
+        startedAt: Date.now(),
+      },
+      upcoming: [],
+    });
+  } finally {
+    pendingAutofillVenues.delete(venueCode);
+  }
+}
+
 // GET /api/queue/:venueCode?deviceId=xxx (deviceId optional – returns myVotes for this device when provided)
 router.get('/:venueCode', (req, res) => {
   const { venueCode } = req.params;
   const { deviceId } = req.query;
-  const queue = db.getQueue(venueCode);
+  let queue = db.getQueue(venueCode);
   const venue = db.getVenue(venueCode);
+
+  // Auto-advance based on elapsed time so the queue keeps moving on any page
+  const np = queue.nowPlaying;
+  if (np?.startedAt && np?.duration) {
+    const endTime = np.startedAt + (np.duration + 5) * 1000; // 5s grace
+    if (Date.now() > endTime) {
+      advanceToNextSong(venueCode);
+      queue = db.getQueue(venueCode);
+      if (!queue.nowPlaying) {
+        const s = venue?.settings;
+        if (s?.autoplayMode !== 'off' && s?.autoplayQueue !== false) {
+          serverAutofill(venueCode, venue).catch(() => {});
+        }
+      }
+    }
+  }
 
   let myVotes = {};
   if (deviceId) {

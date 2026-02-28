@@ -78,6 +78,141 @@ router.post('/:venueCode/playlist/add', authMiddleware, (req, res) => {
   res.json({ playlist: venue.playlist });
 });
 
+// POST /api/venue/:venueCode/playlist/generate-checkout – create R50 Yoco checkout to generate AI playlist
+router.post('/:venueCode/playlist/generate-checkout', authMiddleware, async (req, res) => {
+  if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
+
+  const { prompt } = req.body;
+  if (!prompt?.trim()) return res.status(400).json({ error: 'Prompt is required' });
+
+  const yocoSecret = process.env.YOCO_SECRET_KEY;
+  if (!yocoSecret) return res.status(503).json({ error: 'Payment not configured' });
+
+  const venueCode = req.params.venueCode;
+  const base = (req.headers.origin || process.env.PUBLIC_URL || 'http://localhost:5173').replace(/\/$/, '');
+  const successUrl = `${base}/venue/player/${venueCode}?generatePlaylist=1`;
+  const cancelUrl = `${base}/venue/player/${venueCode}`;
+
+  try {
+    const response = await fetch('https://payments.yoco.com/api/checkouts', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${yocoSecret}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount: 5000,
+        currency: 'ZAR',
+        successUrl,
+        cancelUrl,
+        failureUrl: cancelUrl,
+        metadata: { venueCode },
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      return res.status(response.status).json({ error: err.message || 'Payment creation failed' });
+    }
+    const data = await response.json();
+    const { id: checkoutId, redirectUrl } = data;
+    if (!checkoutId || !redirectUrl) return res.status(500).json({ error: 'Invalid payment response' });
+
+    db.setPendingPayment(checkoutId, { venueCode, amountCents: 5000, prompt: prompt.trim() });
+    res.json({ redirectUrl, checkoutId });
+  } catch (err) {
+    console.error('Generate checkout error:', err);
+    res.status(500).json({ error: 'Could not create payment' });
+  }
+});
+
+// POST /api/venue/:venueCode/playlist/generate – verify payment, call Claude, add songs to playlist
+router.post('/:venueCode/playlist/generate', authMiddleware, async (req, res) => {
+  if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
+
+  const { checkoutId } = req.body;
+  if (!checkoutId) return res.status(400).json({ error: 'checkoutId required' });
+
+  const pending = db.getPendingPayment(checkoutId);
+  if (!pending) return res.status(404).json({ error: 'Payment not found or already used' });
+  if (pending.venueCode !== req.params.venueCode) return res.status(403).json({ error: 'Invalid checkout' });
+
+  // Verify with Yoco
+  const yocoSecret = process.env.YOCO_SECRET_KEY;
+  if (yocoSecret) {
+    try {
+      const yocoRes = await fetch(`https://payments.yoco.com/api/checkouts/${checkoutId}`, {
+        headers: { Authorization: `Bearer ${yocoSecret}` },
+      });
+      if (yocoRes.ok) {
+        const d = await yocoRes.json();
+        const status = (d.status || '').toLowerCase();
+        const paid = status === 'completed' || status === 'succeeded' || status.includes('complete') || !!(d.paymentId || d.payment?.id);
+        if (!paid) return res.status(402).json({ error: 'Payment not completed yet' });
+      }
+    } catch (err) { console.warn('Yoco verify failed:', err.message); }
+  }
+
+  db.removePendingPayment(checkoutId);
+
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!anthropicKey) return res.status(503).json({ error: 'AI generation not configured. Set ANTHROPIC_API_KEY.' });
+
+  try {
+    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: 'You are a music curator for a venue. Given a vibe/style description, return 25 well-known popular songs that match. Return ONLY valid JSON: {"songs":[{"title":"Song Title","artist":"Artist Name"}]}. No markdown. Only songs available on major streaming platforms.',
+        messages: [{ role: 'user', content: `Generate a playlist for this vibe: ${pending.prompt}` }],
+      }),
+    });
+    if (!claudeRes.ok) throw new Error(`Claude API error: ${claudeRes.status}`);
+
+    const claudeData = await claudeRes.json();
+    let text = (claudeData?.content?.[0]?.text || '').trim();
+    if (text.startsWith('```')) text = text.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
+
+    let suggestions = [];
+    try { suggestions = JSON.parse(text).songs; } catch {
+      const m = text.match(/\{[\s\S]*\}/);
+      if (m) try { suggestions = JSON.parse(m[0]).songs; } catch {}
+    }
+    if (!Array.isArray(suggestions) || suggestions.length === 0) {
+      return res.status(500).json({ error: 'AI returned no song suggestions' });
+    }
+
+    const { searchAppleMusic } = require('../utils/appleMusicAPI');
+    const venue = db.getVenue(req.params.venueCode);
+    if (!Array.isArray(venue.playlist)) venue.playlist = [];
+    const existingIds = new Set(venue.playlist.map((s) => s.appleId));
+    const added = [];
+
+    // Search Apple Music in parallel batches of 5
+    for (let i = 0; i < suggestions.length; i += 5) {
+      const batch = suggestions.slice(i, i + 5);
+      const results = await Promise.all(batch.map(async ({ title, artist }) => {
+        try {
+          const songs = await searchAppleMusic(`${title} ${artist}`);
+          const match = songs[0];
+          return (match && !existingIds.has(match.appleId)) ? match : null;
+        } catch { return null; }
+      }));
+      for (const song of results) {
+        if (!song || venue.playlist.length >= 500) continue;
+        const entry = { id: `pl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, appleId: song.appleId, title: song.title, artist: song.artist, albumArt: song.albumArt, duration: song.duration };
+        venue.playlist.push(entry);
+        existingIds.add(song.appleId);
+        added.push(entry);
+      }
+    }
+
+    db.saveVenue(venue.code, venue);
+    res.json({ added, total: venue.playlist.length });
+  } catch (err) {
+    console.error('Generate playlist error:', err);
+    res.status(500).json({ error: 'Failed to generate playlist' });
+  }
+});
+
 // DELETE /api/venue/:venueCode/playlist/:appleId – remove a song from the playlist
 router.delete('/:venueCode/playlist/:appleId', authMiddleware, (req, res) => {
   if (req.venue.code !== req.params.venueCode) {
