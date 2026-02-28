@@ -21,7 +21,7 @@ router.put('/:venueCode/settings', authMiddleware, (req, res) => {
     return res.status(403).json({ error: 'Unauthorized' });
   }
 
-  const { allowExplicit, maxSongsPerUser, genreFilters, blockedArtists, requirePaymentForRequest, requestPriceCents, autoplayQueue } = req.body;
+  const { allowExplicit, maxSongsPerUser, genreFilters, blockedArtists, requirePaymentForRequest, requestPriceCents, autoplayQueue, autoplayMode } = req.body;
   const venue = db.getVenue(req.params.venueCode);
   if (!venue.settings) venue.settings = {};
 
@@ -34,6 +34,9 @@ router.put('/:venueCode/settings', authMiddleware, (req, res) => {
     venue.settings.requestPriceCents = requestPriceCents;
   }
   if (typeof autoplayQueue === 'boolean') venue.settings.autoplayQueue = autoplayQueue;
+  if (typeof autoplayMode === 'string' && ['off', 'playlist', 'random'].includes(autoplayMode)) {
+    venue.settings.autoplayMode = autoplayMode;
+  }
   if (req.body.autoplayGenre !== undefined) {
     const ag = req.body.autoplayGenre;
     if (Array.isArray(ag) && ag.length > 0) {

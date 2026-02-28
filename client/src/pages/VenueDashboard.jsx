@@ -110,20 +110,6 @@ export default function VenueDashboard() {
     }
   };
 
-  const autoplayQueue = queue.requestSettings?.autoplayQueue ?? true;
-  const setAutoplayQueue = async (val) => {
-    if (!venue) return;
-    try {
-      await api.updateSettings(venue.code, { autoplayQueue: val });
-      setQueue((q) => ({
-        ...q,
-        requestSettings: { ...q.requestSettings, autoplayQueue: val },
-      }));
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   if (!venue) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 flex justify-center items-center">
@@ -239,28 +225,6 @@ export default function VenueDashboard() {
               >
                 Open Venue Player →
               </button>
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => setAutoplayQueue(!autoplayQueue)}
-                onKeyDown={(e) => e.key === 'Enter' && setAutoplayQueue(!autoplayQueue)}
-                className="flex items-center gap-2 pt-2 cursor-pointer"
-              >
-                <span
-                  role="switch"
-                  aria-checked={autoplayQueue}
-                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors ${
-                    autoplayQueue ? 'bg-zinc-900' : 'bg-zinc-200'
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
-                      autoplayQueue ? 'translate-x-5' : 'translate-x-1'
-                    }`}
-                  />
-                </span>
-                <span className="text-sm text-zinc-700">Autoplay queue</span>
-              </div>
             </div>
           </div>
         </div>

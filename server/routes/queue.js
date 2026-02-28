@@ -329,14 +329,16 @@ router.get('/:venueCode/autofill', async (req, res) => {
   }
 
   try {
-    // If the venue has a curated playlist, pick from it instead of searching Apple Music.
+    const autoplayMode = venue.settings?.autoplayMode || 'playlist';
+
+    // If mode is 'playlist' and the venue has a curated playlist, pick from it.
     const playlist = venue.playlist || [];
     let song = null;
-    if (playlist.length > 0) {
+    if (autoplayMode !== 'random' && playlist.length > 0) {
       song = pickFromPlaylist(playlist, venueCode);
     }
 
-    // Fall back to genre-based Apple Music search when no playlist is set.
+    // Fall back to genre-based Apple Music search (always used for 'random' mode).
     if (!song) {
       song = await searchByGenre(genres, venueCode);
     }
