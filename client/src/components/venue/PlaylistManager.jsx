@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { ListMusic, Search, Plus, Check, X, Loader2 } from 'lucide-react';
 import api from '../../utils/api';
 
-export default function PlaylistManager({ venueCode }) {
+export default function PlaylistManager({ venueCode, variant = 'dark' }) {
+  const isLight = variant === 'light';
+
   const [playlist, setPlaylist] = useState([]);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -69,16 +71,46 @@ export default function PlaylistManager({ venueCode }) {
 
   const playlistAppleIds = new Set(playlist.map((s) => s.appleId));
 
+  const cardClass = isLight
+    ? 'bg-white rounded-xl border border-zinc-200 shadow-sm p-6'
+    : 'bg-dark-800 rounded-2xl border border-dark-600 p-6';
+  const headingClass = isLight ? 'text-zinc-900 font-semibold' : 'text-white font-semibold';
+  const countClass = isLight ? 'ml-2 text-sm text-zinc-500 font-normal' : 'ml-2 text-sm text-dark-400 font-normal';
+  const iconClass = isLight ? 'h-5 w-5 text-brand-600' : 'h-5 w-5 text-brand-400';
+  const emptyIconClass = isLight ? 'h-10 w-10 text-zinc-300 mx-auto mb-3' : 'h-10 w-10 text-dark-500 mx-auto mb-3';
+  const emptyTextClass = isLight ? 'text-zinc-500 text-sm' : 'text-dark-400 text-sm';
+  const emptySubtextClass = isLight ? 'text-zinc-400 text-xs mt-1' : 'text-dark-500 text-xs mt-1';
+  const rowClass = isLight
+    ? 'flex items-center gap-3 p-3 bg-zinc-50 rounded-xl group border border-zinc-100'
+    : 'flex items-center gap-3 p-3 bg-dark-700/50 rounded-xl group';
+  const indexClass = isLight ? 'text-zinc-400 text-sm font-bold w-6 text-right shrink-0' : 'text-dark-500 text-sm font-bold w-6 text-right shrink-0';
+  const artFallbackClass = isLight ? 'w-10 h-10 rounded-lg bg-zinc-200 shrink-0 flex items-center justify-center' : 'w-10 h-10 rounded-lg bg-dark-600 shrink-0 flex items-center justify-center';
+  const artFallbackIconClass = isLight ? 'h-4 w-4 text-zinc-400' : 'h-4 w-4 text-dark-400';
+  const songTitleClass = isLight ? 'font-semibold text-sm text-zinc-900 line-clamp-1' : 'font-semibold text-sm text-white line-clamp-1';
+  const songArtistClass = isLight ? 'text-xs text-zinc-500 line-clamp-1' : 'text-xs text-dark-400 line-clamp-1';
+  const removeClass = isLight
+    ? 'opacity-0 group-hover:opacity-100 transition-opacity w-7 h-7 flex items-center justify-center rounded-full bg-zinc-200 text-zinc-500 hover:bg-red-100 hover:text-red-500'
+    : 'opacity-0 group-hover:opacity-100 transition-opacity w-7 h-7 flex items-center justify-center rounded-full bg-dark-600 text-dark-300 hover:bg-red-500/20 hover:text-red-400';
+  const inputClass = isLight
+    ? 'flex-1 px-4 py-2.5 bg-zinc-50 border border-zinc-300 rounded-lg text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm'
+    : 'flex-1 px-4 py-2.5 bg-dark-700 border border-dark-500 rounded-lg text-white placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm';
+  const searchErrorClass = isLight ? 'text-zinc-500 text-sm text-center py-2' : 'text-dark-400 text-sm text-center py-2';
+  const resultRowClass = isLight
+    ? 'flex items-center gap-3 p-3 bg-zinc-50 rounded-xl border border-zinc-100'
+    : 'flex items-center gap-3 p-3 bg-dark-700/50 rounded-xl';
+  const resultTitleClass = isLight ? 'font-semibold text-sm text-zinc-900 line-clamp-1' : 'font-semibold text-sm text-white line-clamp-1';
+  const resultArtistClass = isLight ? 'text-xs text-zinc-500 line-clamp-1' : 'text-xs text-dark-400 line-clamp-1';
+
   return (
     <div className="space-y-6">
       {/* Current playlist */}
-      <div className="bg-dark-800 rounded-2xl border border-dark-600 p-6">
+      <div className={cardClass}>
         <div className="flex items-center gap-2 mb-4">
-          <ListMusic className="h-5 w-5 text-brand-400" />
-          <h3 className="text-white font-semibold">
+          <ListMusic className={iconClass} />
+          <h3 className={headingClass}>
             Playlist
             {playlist.length > 0 && (
-              <span className="ml-2 text-sm text-dark-400 font-normal">
+              <span className={countClass}>
                 {playlist.length} song{playlist.length !== 1 ? 's' : ''}
               </span>
             )}
@@ -87,20 +119,15 @@ export default function PlaylistManager({ venueCode }) {
 
         {playlist.length === 0 ? (
           <div className="py-8 text-center">
-            <ListMusic className="h-10 w-10 text-dark-500 mx-auto mb-3" />
-            <p className="text-dark-400 text-sm">No songs in playlist yet.</p>
-            <p className="text-dark-500 text-xs mt-1">Search below to add songs — autofill will play from this playlist.</p>
+            <ListMusic className={emptyIconClass} />
+            <p className={emptyTextClass}>No songs in playlist yet.</p>
+            <p className={emptySubtextClass}>Search below to add songs — autofill will play from this playlist.</p>
           </div>
         ) : (
           <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
             {playlist.map((song, i) => (
-              <div
-                key={song.appleId}
-                className="flex items-center gap-3 p-3 bg-dark-700/50 rounded-xl group"
-              >
-                <span className="text-dark-500 text-sm font-bold w-6 text-right shrink-0">
-                  {i + 1}
-                </span>
+              <div key={song.appleId} className={rowClass}>
+                <span className={indexClass}>{i + 1}</span>
                 {song.albumArt ? (
                   <img
                     src={song.albumArt}
@@ -108,18 +135,18 @@ export default function PlaylistManager({ venueCode }) {
                     className="w-10 h-10 rounded-lg object-cover shrink-0"
                   />
                 ) : (
-                  <div className="w-10 h-10 rounded-lg bg-dark-600 shrink-0 flex items-center justify-center">
-                    <ListMusic className="h-4 w-4 text-dark-400" />
+                  <div className={artFallbackClass}>
+                    <ListMusic className={artFallbackIconClass} />
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-white line-clamp-1">{song.title}</p>
-                  <p className="text-xs text-dark-400 line-clamp-1">{song.artist}</p>
+                  <p className={songTitleClass}>{song.title}</p>
+                  <p className={songArtistClass}>{song.artist}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => handleRemove(song.appleId)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity w-7 h-7 flex items-center justify-center rounded-full bg-dark-600 text-dark-300 hover:bg-red-500/20 hover:text-red-400"
+                  className={removeClass}
                   title="Remove from playlist"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -131,8 +158,8 @@ export default function PlaylistManager({ venueCode }) {
       </div>
 
       {/* Search to add songs */}
-      <div className="bg-dark-800 rounded-2xl border border-dark-600 p-6">
-        <h3 className="text-white font-semibold mb-4">Add Songs</h3>
+      <div className={cardClass}>
+        <h3 className={`${headingClass} mb-4`}>Add Songs</h3>
 
         <form onSubmit={handleSearch} className="flex gap-3 mb-4">
           <input
@@ -143,7 +170,7 @@ export default function PlaylistManager({ venueCode }) {
               if (searchError) setSearchError(null);
             }}
             placeholder="Search for a song to add..."
-            className="flex-1 px-4 py-2.5 bg-dark-700 border border-dark-500 rounded-lg text-white placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm"
+            className={inputClass}
           />
           <button
             type="submit"
@@ -156,7 +183,7 @@ export default function PlaylistManager({ venueCode }) {
         </form>
 
         {searchError && (
-          <p className="text-dark-400 text-sm text-center py-2">{searchError}</p>
+          <p className={searchErrorClass}>{searchError}</p>
         )}
 
         {results.length > 0 && (
@@ -165,22 +192,15 @@ export default function PlaylistManager({ venueCode }) {
               const appleId = item.songId ?? item.appleId;
               const inPlaylist = playlistAppleIds.has(appleId) || addedIds.has(appleId);
               return (
-                <div
-                  key={appleId}
-                  className="flex items-center gap-3 p-3 bg-dark-700/50 rounded-xl"
-                >
+                <div key={appleId} className={resultRowClass}>
                   <img
                     src={item.artwork || item.albumArt || ''}
                     alt={item.trackName || item.title}
                     className="w-10 h-10 rounded-lg object-cover shrink-0"
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm text-white line-clamp-1">
-                      {item.trackName ?? item.title}
-                    </p>
-                    <p className="text-xs text-dark-400 line-clamp-1">
-                      {item.artistName ?? item.artist}
-                    </p>
+                    <p className={resultTitleClass}>{item.trackName ?? item.title}</p>
+                    <p className={resultArtistClass}>{item.artistName ?? item.artist}</p>
                   </div>
                   <button
                     type="button"
@@ -188,7 +208,7 @@ export default function PlaylistManager({ venueCode }) {
                     onClick={() => handleAdd(item)}
                     className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                       inPlaylist
-                        ? 'bg-dark-600 text-dark-400 cursor-default'
+                        ? isLight ? 'bg-zinc-100 text-zinc-400 cursor-default' : 'bg-dark-600 text-dark-400 cursor-default'
                         : 'bg-brand-500 text-white hover:bg-brand-600'
                     }`}
                   >
