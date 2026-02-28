@@ -60,6 +60,10 @@ export default {
     api.post('/auth/register', { email, password, venueName, location }),
 
   getVenue: (venueCode) => api.get(`/venue/${venueCode}`),
+  addToPlaylist: (venueCode, song) =>
+    api.post(`/venue/${venueCode}/playlist/add`, song),
+  removeFromPlaylist: (venueCode, appleId) =>
+    api.delete(`/venue/${venueCode}/playlist/${appleId}`),
   updateSettings: (venueCode, settings) =>
     api.put(`/venue/${venueCode}/settings`, settings),
   getVenueEarnings: (venueCode, year, month) =>

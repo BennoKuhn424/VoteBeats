@@ -702,4 +702,11 @@ async function searchByGenre(genres, venueCode) {
   return pickFreshSong(pool, venueCode);
 }
 
-module.exports = { searchAppleMusic, searchByGenre };
+// Pick a random song from a venue's curated playlist, avoiding recently played songs.
+// Reuses the same ring-buffer dedup logic as searchByGenre autofill.
+function pickFromPlaylist(playlist, venueCode) {
+  if (!playlist || playlist.length === 0) return null;
+  return pickFreshSong(playlist, venueCode);
+}
+
+module.exports = { searchAppleMusic, searchByGenre, pickFromPlaylist };

@@ -49,6 +49,45 @@ router.put('/:venueCode/settings', authMiddleware, (req, res) => {
   res.json(venue.settings);
 });
 
+// POST /api/venue/:venueCode/playlist/add – add a song to the venue playlist
+router.post('/:venueCode/playlist/add', authMiddleware, (req, res) => {
+  if (req.venue.code !== req.params.venueCode) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+
+  const { id, appleId, title, artist, albumArt, duration } = req.body;
+  if (!appleId || !title) {
+    return res.status(400).json({ error: 'appleId and title are required' });
+  }
+
+  const venue = db.getVenue(req.params.venueCode);
+  if (!Array.isArray(venue.playlist)) venue.playlist = [];
+
+  // Dedupe by appleId
+  if (!venue.playlist.some((s) => s.appleId === appleId)) {
+    if (venue.playlist.length >= 500) {
+      return res.status(400).json({ error: 'Playlist limit reached (500 songs)' });
+    }
+    venue.playlist.push({ id: id || `pl_${Date.now()}`, appleId, title, artist, albumArt, duration });
+    db.saveVenue(venue.code, venue);
+  }
+
+  res.json({ playlist: venue.playlist });
+});
+
+// DELETE /api/venue/:venueCode/playlist/:appleId – remove a song from the playlist
+router.delete('/:venueCode/playlist/:appleId', authMiddleware, (req, res) => {
+  if (req.venue.code !== req.params.venueCode) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+
+  const venue = db.getVenue(req.params.venueCode);
+  venue.playlist = (venue.playlist || []).filter((s) => s.appleId !== req.params.appleId);
+  db.saveVenue(venue.code, venue);
+
+  res.json({ playlist: venue.playlist });
+});
+
 // GET /api/venue/:venueCode/earnings – monthly pay-to-play earnings (auth required)
 router.get('/:venueCode/earnings', authMiddleware, (req, res) => {
   if (req.venue.code !== req.params.venueCode) {

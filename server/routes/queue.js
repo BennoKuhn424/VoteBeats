@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const authMiddleware = require('../middleware/authMiddleware');
 const { advanceToNextSong } = require('../utils/queueAdvance');
 const { fulfillPaidRequest } = require('../utils/paymentFulfill');
-const { searchByGenre } = require('../utils/appleMusicAPI');
+const { searchByGenre, pickFromPlaylist } = require('../utils/appleMusicAPI');
 
 const router = express.Router();
 
@@ -329,11 +329,20 @@ router.get('/:venueCode/autofill', async (req, res) => {
   }
 
   try {
-    // Pass the full genres array so searchByGenre can apply the
-    // language-AND-regular-genre rule (see appleMusicAPI.js).
-    const song = await searchByGenre(genres, venueCode);
+    // If the venue has a curated playlist, pick from it instead of searching Apple Music.
+    const playlist = venue.playlist || [];
+    let song = null;
+    if (playlist.length > 0) {
+      song = pickFromPlaylist(playlist, venueCode);
+    }
+
+    // Fall back to genre-based Apple Music search when no playlist is set.
     if (!song) {
-      return res.status(404).json({ error: 'No songs found for genre' });
+      song = await searchByGenre(genres, venueCode);
+    }
+
+    if (!song) {
+      return res.status(404).json({ error: 'No songs found' });
     }
 
     const newSong = {
