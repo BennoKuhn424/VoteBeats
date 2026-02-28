@@ -44,20 +44,29 @@ export default function VenuePlayer() {
 
     async function init() {
       try {
-        const res = await api.getDeveloperToken();
-        const devToken = res.data?.token || res.data?.developerToken;
-        if (!devToken) return;
+        // Reuse existing instance if already configured (prevents resetting on navigation)
+        let music;
+        try { music = MusicKit.getInstance(); } catch {}
+        if (!music) {
+          const res = await api.getDeveloperToken();
+          const devToken = res.data?.token || res.data?.developerToken;
+          if (!devToken) return;
+          await MusicKit.configure({
+            developerToken: devToken,
+            app: { name: 'VoteBeats', build: '1.0' },
+          });
+          music = MusicKit.getInstance();
+        }
 
-        await MusicKit.configure({
-          developerToken: devToken,
-          app: { name: 'VoteBeats', build: '1.0' },
-        });
-
-        const music = MusicKit.getInstance();
         musicRef.current = music;
         music.volume = volume / 100;
         setIsAuthorized(music.isAuthorized);
         setMusicReady(true);
+
+        // Sync UI with current playback state (important after remount)
+        setIsPlaying(music.playbackState === 2);
+        setPlaybackTime(music.currentPlaybackTime || 0);
+        setPlaybackDuration(music.currentPlaybackDuration || 0);
 
         music.addEventListener('playbackStateDidChange', () => {
           setIsPlaying(music.playbackState === 2);
@@ -128,10 +137,16 @@ export default function VenuePlayer() {
       const nowPlaying = newQueue.nowPlaying;
 
       if (nowPlaying && nowPlaying.id !== currentSongIdRef.current && !isTransitioningRef.current) {
-        isTransitioningRef.current = true;
-        currentSongIdRef.current = nowPlaying.id;
-        await playSong(nowPlaying);
-        isTransitioningRef.current = false;
+        // If MusicKit is already playing this song (e.g. after navigating back), just sync the ref
+        const currentAppleId = musicRef.current?.nowPlayingItem?.id;
+        if (currentAppleId && String(currentAppleId) === String(nowPlaying.appleId)) {
+          currentSongIdRef.current = nowPlaying.id;
+        } else {
+          isTransitioningRef.current = true;
+          currentSongIdRef.current = nowPlaying.id;
+          await playSong(nowPlaying);
+          isTransitioningRef.current = false;
+        }
       }
 
       if (!nowPlaying && autoplayModeRef.current !== 'off') {
