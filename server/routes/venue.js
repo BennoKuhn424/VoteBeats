@@ -166,7 +166,7 @@ router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddlewar
 
   const { prompt, count: rawCount } = req.body;
   if (!prompt?.trim()) return res.status(400).json({ error: 'Prompt is required' });
-  const count = Math.min(Math.max(Math.round(Number(rawCount) || 100), 25), 200);
+  const count = Math.min(Math.max(Math.round(Number(rawCount) || 100), 25), 400);
 
   const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
   if (!venue.playlists.some((p) => p.id === req.params.playlistId)) {
@@ -248,11 +248,11 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async 
       return res.status(402).json({ error: 'Payment could not be verified. Please try again.' });
     }
     resolvedPrompt = bodyPrompt.trim();
-    resolvedCount = Math.min(Math.max(Math.round(Number(bodyCount) || 100), 25), 200);
+    resolvedCount = Math.min(Math.max(Math.round(Number(bodyCount) || 100), 25), 400);
   } else {
     if (pending.venueCode !== req.params.venueCode) return res.status(403).json({ error: 'Invalid checkout' });
     resolvedPlaylistId = pending.playlistId || req.params.playlistId;
-    resolvedCount = pending.count || Math.min(Math.max(Math.round(Number(bodyCount) || 100), 25), 200);
+    resolvedCount = pending.count || Math.min(Math.max(Math.round(Number(bodyCount) || 100), 25), 400);
     const yocoSecret = process.env.YOCO_SECRET_KEY;
     if (yocoSecret) {
       try {
@@ -276,13 +276,13 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async 
 
   try {
     // Ask Claude for 40% more songs than requested to account for Apple Music misses
-    const suggestCount = Math.min(Math.ceil(resolvedCount * 1.4), 280);
+    const suggestCount = Math.ceil(resolvedCount * 1.4);
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 4096,
+        max_tokens: 8192,
         system: `You are a music curator for a venue. Given a vibe/style description, return exactly ${suggestCount} well-known popular songs that match. Return ONLY valid JSON: {"songs":[{"title":"Song Title","artist":"Artist Name"}]}. No markdown, no explanation. Only songs available on major streaming platforms. Make sure songs are varied — no repeated artists unless essential.`,
         messages: [{ role: 'user', content: `Generate a playlist for this vibe: ${resolvedPrompt}` }],
       }),

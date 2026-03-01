@@ -356,7 +356,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
                 <div>
                   <p className={`text-xs font-semibold mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-300'}`}>How many songs?</p>
                   <div className="flex flex-wrap gap-2">
-                    {[25, 50, 75, 100, 150, 200].map((n) => (
+                    {[25, 50, 100, 150, 200, 300, 400].map((n) => (
                       <button
                         key={n}
                         type="button"
