@@ -227,9 +227,27 @@ export default function VenuePlayer() {
   async function handlePlayPause() {
     const music = musicRef.current;
     if (!music) return;
+    const wasWaiting = waitingForGesture;
     setWaitingForGesture(false);
-    if (music.playbackState === 2) await music.pause();
-    else await music.play();
+    const state = music.playbackState;
+    if (state === 2) {
+      await music.pause();
+    } else if (wasWaiting && nowPlaying) {
+      // Autoplay was blocked — re-trigger full song load now that the user has gestured
+      await playSong(nowPlaying);
+    } else if (state === 0 || state === 3 || state === 4 || state === 5) {
+      // Only call play() from valid states: none, paused, stopped, ended
+      // Ignore loading(1)/seeking(6)/waiting(7)/stalled(8) to avoid "play() called without stop/pause" error
+      try {
+        await music.play();
+      } catch (err) {
+        if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
+          setWaitingForGesture(true);
+        } else {
+          console.error('Play error:', err);
+        }
+      }
+    }
   }
 
   async function handleSkip() {
