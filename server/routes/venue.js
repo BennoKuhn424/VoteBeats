@@ -275,16 +275,18 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async 
   if (!anthropicKey) return res.status(503).json({ error: 'AI generation not configured. Set ANTHROPIC_API_KEY.' });
 
   try {
-    // Ask Claude for 40% more songs than requested to account for Apple Music misses
-    const suggestCount = Math.ceil(resolvedCount * 1.4);
+    // Ask Claude for search queries (artist names / keywords) rather than specific song titles.
+    // This avoids hallucinated songs that don't exist on Apple Music — we let Apple Music's
+    // catalog do the heavy lifting. Each query can return multiple real results.
+    const numQueries = Math.min(Math.ceil(resolvedCount / 4) * 2, 200);
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8192,
-        system: `You are a music curator for a venue. Given a vibe/style description, return exactly ${suggestCount} well-known popular songs that match. Return ONLY valid JSON: {"songs":[{"title":"Song Title","artist":"Artist Name"}]}. No markdown, no explanation. Only songs available on major streaming platforms. Make sure songs are varied — no repeated artists unless essential.`,
-        messages: [{ role: 'user', content: `Generate a playlist for this vibe: ${resolvedPrompt}` }],
+        max_tokens: 4096,
+        system: `You are a music curator. Given a vibe or genre description, return ${numQueries} Apple Music search queries that will find real, existing songs. Each query should be an artist name, a song title with artist, or a style keyword phrase. Return ONLY valid JSON: {"queries":["query1","query2",...]}. No markdown. Vary artists and styles broadly. Only include real artists you are confident exist.`,
+        messages: [{ role: 'user', content: `Search queries for: ${resolvedPrompt}` }],
       }),
     });
     if (!claudeRes.ok) throw new Error(`Claude API error: ${claudeRes.status}`);
@@ -293,13 +295,13 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async 
     let text = (claudeData?.content?.[0]?.text || '').trim();
     if (text.startsWith('```')) text = text.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
 
-    let suggestions = [];
-    try { suggestions = JSON.parse(text).songs; } catch {
+    let queries = [];
+    try { queries = JSON.parse(text).queries; } catch {
       const m = text.match(/\{[\s\S]*\}/);
-      if (m) try { suggestions = JSON.parse(m[0]).songs; } catch {}
+      if (m) try { queries = JSON.parse(m[0]).queries; } catch {}
     }
-    if (!Array.isArray(suggestions) || suggestions.length === 0) {
-      return res.status(500).json({ error: 'AI returned no song suggestions' });
+    if (!Array.isArray(queries) || queries.length === 0) {
+      return res.status(500).json({ error: 'AI returned no search queries' });
     }
 
     const { searchAppleMusic } = require('../utils/appleMusicAPI');
@@ -319,21 +321,21 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async 
     const added = [];
     const spotsLeft = Math.min(resolvedCount, 500 - pl.songs.length);
 
-    for (let i = 0; i < suggestions.length && added.length < spotsLeft; i += 5) {
-      const batch = suggestions.slice(i, i + 5);
-      const results = await Promise.all(batch.map(async ({ title, artist }) => {
-        try {
-          const songs = await searchAppleMusic(`${title} ${artist}`);
-          const match = songs[0];
-          return (match && !existingIds.has(match.appleId)) ? match : null;
-        } catch { return null; }
+    for (let i = 0; i < queries.length && added.length < spotsLeft; i += 5) {
+      const batch = queries.slice(i, i + 5);
+      // Each query returns multiple Apple Music results — collect them all
+      const batchResults = await Promise.all(batch.map(async (query) => {
+        try { return await searchAppleMusic(String(query)); } catch { return []; }
       }));
-      for (const song of results) {
-        if (!song || added.length >= spotsLeft || pl.songs.length >= 500) continue;
-        const entry = { id: `pl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, appleId: song.appleId, title: song.title, artist: song.artist, albumArt: song.albumArt, duration: song.duration };
-        pl.songs.push(entry);
-        existingIds.add(song.appleId);
-        added.push(entry);
+      for (const songs of batchResults) {
+        for (const song of songs) {
+          // Check existingIds here (not in the parallel callback) to catch duplicates within a batch
+          if (!song || existingIds.has(song.appleId) || added.length >= spotsLeft || pl.songs.length >= 500) continue;
+          const entry = { id: `pl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, appleId: song.appleId, title: song.title, artist: song.artist, albumArt: song.albumArt, duration: song.duration };
+          pl.songs.push(entry);
+          existingIds.add(song.appleId);
+          added.push(entry);
+        }
       }
     }
 
