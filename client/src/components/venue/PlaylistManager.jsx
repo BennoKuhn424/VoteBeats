@@ -25,6 +25,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
   // Generate
   const [showGenerate, setShowGenerate] = useState(false);
   const [generatePrompt, setGeneratePrompt] = useState('');
+  const [generateCount, setGenerateCount] = useState(100);
   const [generatingCheckout, setGeneratingCheckout] = useState(false);
   const [generateError, setGenerateError] = useState(null);
 
@@ -51,6 +52,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
     setAddedIds(new Set());
     setShowGenerate(false);
     setGeneratePrompt('');
+    setGenerateCount(100);
     setGenerateError(null);
   }
 
@@ -147,11 +149,12 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
     setGeneratingCheckout(true);
     setGenerateError(null);
     try {
-      const res = await api.generatePlaylistCheckout(venueCode, selectedId, generatePrompt.trim());
+      const res = await api.generatePlaylistCheckout(venueCode, selectedId, generatePrompt.trim(), generateCount);
       const { redirectUrl, checkoutId } = res.data;
       localStorage.setItem(`votebeats_generate_${venueCode}`, checkoutId);
       localStorage.setItem(`votebeats_generate_prompt_${venueCode}`, generatePrompt.trim());
       localStorage.setItem(`votebeats_generate_playlist_${venueCode}`, selectedId);
+      localStorage.setItem(`votebeats_generate_count_${venueCode}`, String(generateCount));
       window.location.href = redirectUrl;
     } catch (err) {
       setGenerateError(err.response?.data?.error || 'Could not start payment. Try again.');
@@ -329,7 +332,9 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
           <div className={card}>
             <div className="flex items-center justify-between mb-3">
               <h3 className={headingCls}>Generate AI Playlist</h3>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isLight ? 'bg-brand-100 text-brand-700' : 'bg-brand-500/20 text-brand-400'}`}>R50</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isLight ? 'bg-brand-100 text-brand-700' : 'bg-brand-500/20 text-brand-400'}`}>
+                R{generateCount}
+              </span>
             </div>
 
             {!showGenerate ? (
@@ -342,15 +347,36 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
                 Generate songs for "{selectedPlaylist.name}"
               </button>
             ) : (
-              <form onSubmit={handleGenerateCheckout} className="space-y-3">
+              <form onSubmit={handleGenerateCheckout} className="space-y-4">
                 <p className={`text-sm ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>
-                  Describe the vibe — e.g. "Afrikaans hits", "2000s pop", "upbeat dancehall for Friday night".
-                  Claude picks 25 songs and adds them to <strong>{selectedPlaylist.name}</strong>.
+                  Describe the vibe and choose how many songs. Claude picks matching tracks and adds them to <strong>{selectedPlaylist.name}</strong>.
                 </p>
+
+                {/* Song count picker */}
+                <div>
+                  <p className={`text-xs font-semibold mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-300'}`}>How many songs?</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[25, 50, 75, 100, 150, 200].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setGenerateCount(n)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                          generateCount === n
+                            ? 'bg-brand-500 text-white'
+                            : isLight ? 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200' : 'bg-dark-700 text-dark-300 hover:bg-dark-600'
+                        }`}
+                      >
+                        {n} songs · R{n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <textarea
                   value={generatePrompt}
                   onChange={(e) => { setGeneratePrompt(e.target.value); setGenerateError(null); }}
-                  placeholder="Describe your playlist vibe..."
+                  placeholder='e.g. "Afrikaans hits", "2000s pop", "upbeat dancehall for Friday night"…'
                   rows={3}
                   className={`w-full px-3 py-2.5 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 ${isLight ? 'bg-zinc-50 border border-zinc-300 text-zinc-900 placeholder-zinc-400' : 'bg-dark-700 border border-dark-500 text-white placeholder-dark-400'}`}
                 />
@@ -362,7 +388,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-500 text-white rounded-lg font-semibold text-sm hover:bg-brand-600 transition-colors disabled:opacity-50"
                   >
                     {generatingCheckout ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    {generatingCheckout ? 'Starting payment…' : 'Pay R50 & Generate'}
+                    {generatingCheckout ? 'Starting payment…' : `Pay R${generateCount} & Generate`}
                   </button>
                   <button
                     type="button"

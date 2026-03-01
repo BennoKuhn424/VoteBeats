@@ -74,10 +74,10 @@ export default {
     api.post(`/venue/${venueCode}/playlists/${playlistId}/songs`, song),
   removeFromPlaylist: (venueCode, playlistId, appleId) =>
     api.delete(`/venue/${venueCode}/playlists/${playlistId}/songs/${appleId}`),
-  generatePlaylistCheckout: (venueCode, playlistId, prompt) =>
-    api.post(`/venue/${venueCode}/playlists/${playlistId}/generate-checkout`, { prompt }),
-  generatePlaylist: (venueCode, playlistId, checkoutId, prompt) =>
-    api.post(`/venue/${venueCode}/playlists/${playlistId}/generate`, { checkoutId, prompt }),
+  generatePlaylistCheckout: (venueCode, playlistId, prompt, count) =>
+    api.post(`/venue/${venueCode}/playlists/${playlistId}/generate-checkout`, { prompt, count }),
+  generatePlaylist: (venueCode, playlistId, checkoutId, prompt, count) =>
+    api.post(`/venue/${venueCode}/playlists/${playlistId}/generate`, { checkoutId, prompt, count }),
   updateSettings: (venueCode, settings) =>
     api.put(`/venue/${venueCode}/settings`, settings),
   getVenueEarnings: (venueCode, year, month) =>

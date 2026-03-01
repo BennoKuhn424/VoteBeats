@@ -158,14 +158,15 @@ router.delete('/:venueCode/playlists/:playlistId/songs/:appleId', authMiddleware
   res.json({ playlist: pl });
 });
 
-// ── AI Playlist generation (R50) ─────────────────────────────────────────────
+// ── AI Playlist generation (R1 per song, min R25) ────────────────────────────
 
 // POST /api/venue/:venueCode/playlists/:playlistId/generate-checkout
 router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddleware, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
-  const { prompt } = req.body;
+  const { prompt, count: rawCount } = req.body;
   if (!prompt?.trim()) return res.status(400).json({ error: 'Prompt is required' });
+  const count = Math.min(Math.max(Math.round(Number(rawCount) || 100), 25), 200);
 
   const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
   if (!venue.playlists.some((p) => p.id === req.params.playlistId)) {
@@ -185,7 +186,7 @@ router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddlewar
       method: 'POST',
       headers: { Authorization: `Bearer ${yocoSecret}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        amount: 5000,
+        amount: count * 100, // R1 per song
         currency: 'ZAR',
         successUrl,
         cancelUrl,
@@ -204,7 +205,8 @@ router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddlewar
     db.setPendingPayment(checkoutId, {
       venueCode,
       playlistId: req.params.playlistId,
-      amountCents: 5000,
+      amountCents: count * 100,
+      count,
       prompt: prompt.trim(),
     });
     res.json({ redirectUrl, checkoutId });
@@ -218,16 +220,17 @@ router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddlewar
 router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
-  const { checkoutId, prompt: bodyPrompt } = req.body;
+  const { checkoutId, prompt: bodyPrompt, count: bodyCount } = req.body;
   if (!checkoutId) return res.status(400).json({ error: 'checkoutId required' });
 
   const pending = db.getPendingPayment(checkoutId);
 
   let resolvedPrompt;
   let resolvedPlaylistId = req.params.playlistId;
+  let resolvedCount = 100;
 
   if (!pending) {
-    // Server restarted — fall back to Yoco verification + client-supplied prompt
+    // Server restarted — fall back to Yoco verification + client-supplied data
     if (!bodyPrompt?.trim()) return res.status(404).json({ error: 'Payment not found. Please try again.' });
     const yocoSecret = process.env.YOCO_SECRET_KEY;
     if (!yocoSecret) return res.status(404).json({ error: 'Payment not found. Please try again.' });
@@ -245,9 +248,11 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async 
       return res.status(402).json({ error: 'Payment could not be verified. Please try again.' });
     }
     resolvedPrompt = bodyPrompt.trim();
+    resolvedCount = Math.min(Math.max(Math.round(Number(bodyCount) || 100), 25), 200);
   } else {
     if (pending.venueCode !== req.params.venueCode) return res.status(403).json({ error: 'Invalid checkout' });
     resolvedPlaylistId = pending.playlistId || req.params.playlistId;
+    resolvedCount = pending.count || Math.min(Math.max(Math.round(Number(bodyCount) || 100), 25), 200);
     const yocoSecret = process.env.YOCO_SECRET_KEY;
     if (yocoSecret) {
       try {
@@ -270,13 +275,15 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async 
   if (!anthropicKey) return res.status(503).json({ error: 'AI generation not configured. Set ANTHROPIC_API_KEY.' });
 
   try {
+    // Ask Claude for 40% more songs than requested to account for Apple Music misses
+    const suggestCount = Math.min(Math.ceil(resolvedCount * 1.4), 280);
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
-        system: 'You are a music curator for a venue. Given a vibe/style description, return 25 well-known popular songs that match. Return ONLY valid JSON: {"songs":[{"title":"Song Title","artist":"Artist Name"}]}. No markdown. Only songs available on major streaming platforms.',
+        max_tokens: 4096,
+        system: `You are a music curator for a venue. Given a vibe/style description, return exactly ${suggestCount} well-known popular songs that match. Return ONLY valid JSON: {"songs":[{"title":"Song Title","artist":"Artist Name"}]}. No markdown, no explanation. Only songs available on major streaming platforms. Make sure songs are varied — no repeated artists unless essential.`,
         messages: [{ role: 'user', content: `Generate a playlist for this vibe: ${resolvedPrompt}` }],
       }),
     });
@@ -310,8 +317,9 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async 
 
     const existingIds = new Set(pl.songs.map((s) => s.appleId));
     const added = [];
+    const spotsLeft = Math.min(resolvedCount, 500 - pl.songs.length);
 
-    for (let i = 0; i < suggestions.length; i += 5) {
+    for (let i = 0; i < suggestions.length && added.length < spotsLeft; i += 5) {
       const batch = suggestions.slice(i, i + 5);
       const results = await Promise.all(batch.map(async ({ title, artist }) => {
         try {
@@ -321,7 +329,7 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async 
         } catch { return null; }
       }));
       for (const song of results) {
-        if (!song || pl.songs.length >= 500) continue;
+        if (!song || added.length >= spotsLeft || pl.songs.length >= 500) continue;
         const entry = { id: `pl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, appleId: song.appleId, title: song.title, artist: song.artist, albumArt: song.albumArt, duration: song.duration };
         pl.songs.push(entry);
         existingIds.add(song.appleId);

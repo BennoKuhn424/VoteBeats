@@ -105,14 +105,16 @@ export default function VenuePlayer() {
     if (!checkoutId) return;
     const savedPrompt = localStorage.getItem(`votebeats_generate_prompt_${venueCode}`) || '';
     const savedPlaylistId = localStorage.getItem(`votebeats_generate_playlist_${venueCode}`) || 'pl_default';
+    const savedCount = Number(localStorage.getItem(`votebeats_generate_count_${venueCode}`)) || 100;
     localStorage.removeItem(`votebeats_generate_${venueCode}`);
     localStorage.removeItem(`votebeats_generate_prompt_${venueCode}`);
     localStorage.removeItem(`votebeats_generate_playlist_${venueCode}`);
+    localStorage.removeItem(`votebeats_generate_count_${venueCode}`);
 
     setActiveTab('playlist');
     setGenerateStatus('generating');
 
-    api.generatePlaylist(venueCode, savedPlaylistId, checkoutId, savedPrompt)
+    api.generatePlaylist(venueCode, savedPlaylistId, checkoutId, savedPrompt, savedCount)
       .then((res) => setGenerateStatus({ added: res.data.added?.length ?? 0 }))
       .catch((err) => setGenerateStatus({ error: err.response?.data?.error || 'Generation failed' }));
   }, [venueCode]);
