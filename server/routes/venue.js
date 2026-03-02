@@ -328,9 +328,11 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async 
 
     for (let i = 0; i < queries.length && added.length < spotsLeft; i += 5) {
       const batch = queries.slice(i, i + 5);
-      // Each query returns multiple Apple Music results — collect them all
+      // Take at most 3 results per query — the first results are most relevant.
+      // Taking all 20 caused off-genre songs with the same title to flood the playlist.
+      const MAX_PER_QUERY = 3;
       const batchResults = await Promise.all(batch.map(async (query) => {
-        try { return await searchAppleMusic(String(query)); } catch { return []; }
+        try { return (await searchAppleMusic(String(query))).slice(0, MAX_PER_QUERY); } catch { return []; }
       }));
       for (const songs of batchResults) {
         for (const song of songs) {
