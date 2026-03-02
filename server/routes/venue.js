@@ -317,7 +317,12 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async 
       }
     }
 
+    // Normalise title for dedup: strip version tags like "(Live at...)", "(2024 Remaster)", "(feat. ...)"
+    const normKey = (title, artist) =>
+      `${title}|${artist}`.toLowerCase().replace(/\s*[\(\[][^\)\]]*[\)\]]/g, '').replace(/[^a-z0-9|]/g, '');
+
     const existingIds = new Set(pl.songs.map((s) => s.appleId));
+    const existingKeys = new Set(pl.songs.map((s) => normKey(s.title, s.artist)));
     const added = [];
     const spotsLeft = Math.min(resolvedCount, 500 - pl.songs.length);
 
@@ -329,11 +334,13 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async 
       }));
       for (const songs of batchResults) {
         for (const song of songs) {
-          // Check existingIds here (not in the parallel callback) to catch duplicates within a batch
-          if (!song || existingIds.has(song.appleId) || added.length >= spotsLeft || pl.songs.length >= 500) continue;
+          const key = normKey(song.title, song.artist);
+          // Deduplicate by both appleId and normalised title+artist (catches remasters, live versions, etc.)
+          if (!song || existingIds.has(song.appleId) || existingKeys.has(key) || added.length >= spotsLeft || pl.songs.length >= 500) continue;
           const entry = { id: `pl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, appleId: song.appleId, title: song.title, artist: song.artist, albumArt: song.albumArt, duration: song.duration };
           pl.songs.push(entry);
           existingIds.add(song.appleId);
+          existingKeys.add(key);
           added.push(entry);
         }
       }
