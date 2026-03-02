@@ -1,7 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const DATA_DIR = path.join(__dirname, '../data');
+// Use DATA_DIR env var to point at a Render Persistent Disk (survives redeploys).
+// Falls back to the local ./data folder for development.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 function readJSON(filename) {
   const filepath = path.join(DATA_DIR, filename);
