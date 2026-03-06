@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import api from '../utils/api';
 import Button from '../components/shared/Button';
+import Logo from '../components/shared/Logo';
 
 export default function VenueLogin() {
   const [isRegister, setIsRegister] = useState(false);
@@ -48,9 +49,8 @@ export default function VenueLogin() {
         {/* Card Container */}
         <div className="bg-white rounded-xl shadow-xl border border-zinc-200 p-8">
           {/* Logo */}
-          <div className="flex items-center justify-center gap-3 mb-8">
-            <img src="/speeldit-logo.png" alt="Speeldit" className="h-10 w-10 rounded-xl object-contain" />
-            <h1 className="text-2xl font-semibold text-zinc-900">Speeldit</h1>
+          <div className="flex justify-center mb-8">
+            <Logo size="xl" />
           </div>
 
           {/* Welcome Text */}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Music2, ListMusic, LayoutList, ArrowLeft,
@@ -8,99 +8,45 @@ import api from '../utils/api';
 import QueueManager from '../components/venue/QueueManager';
 import PlaylistManager from '../components/venue/PlaylistManager';
 import { formatDuration } from '../utils/helpers';
+import { useVenuePlayback } from '../context/VenuePlaybackContext';
 
 export default function VenuePlayer() {
   const { venueCode } = useParams();
   const navigate = useNavigate();
+  const playback = useVenuePlayback();
 
   const [venue, setVenue] = useState(null);
-  const [queue, setQueue] = useState({ nowPlaying: null, upcoming: [] });
   const [activeTab, setActiveTab] = useState('playlist');
+  const [generateStatus, setGenerateStatus] = useState(null);
 
-  // Playback state
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackTime, setPlaybackTime] = useState(0);
-  const [playbackDuration, setPlaybackDuration] = useState(0);
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [musicReady, setMusicReady] = useState(false);
-  const [waitingForGesture, setWaitingForGesture] = useState(false);
-  const [volume, setVolume] = useState(() => {
-    const saved = localStorage.getItem('speeldit_volume');
-    return saved !== null ? Number(saved) : 70;
-  });
+  const {
+    queue,
+    fetchQueue,
+    isPlaying,
+    playbackTime,
+    playbackDuration,
+    isAuthorized,
+    musicReady,
+    waitingForGesture,
+    setWaitingForGesture,
+    volume,
+    setVolume,
+    autoplayMode,
+    setAutoplayMode,
+    autoplayModeRef,
+    playSong,
+    musicRef,
+    currentSongIdRef,
+    isTransitioningRef,
+  } = playback;
 
-  // Autoplay mode: 'off' | 'playlist' | 'random'
-  const [autoplayMode, setAutoplayMode] = useState('playlist');
-
-  // AI playlist generation state
-  const [generateStatus, setGenerateStatus] = useState(null); // null | 'generating' | { added: number } | { error: string }
-
-  const musicRef = useRef(null);
-  const currentSongIdRef = useRef(null);
-  const isTransitioningRef = useRef(false);
-  const autoplayModeRef = useRef(autoplayMode);
-  useEffect(() => { autoplayModeRef.current = autoplayMode; }, [autoplayMode]);
-
-  // ── Initialize MusicKit ──────────────────────────────────────────────────
-  useEffect(() => {
-    const token = localStorage.getItem('speeldit_token');
-    if (!token) { navigate('/venue/login'); return; }
-
-    async function init() {
-      try {
-        // Reuse existing instance if already configured (prevents resetting on navigation)
-        let music;
-        try { music = MusicKit.getInstance(); } catch {}
-        if (!music) {
-          const res = await api.getDeveloperToken();
-          const devToken = res.data?.token || res.data?.developerToken;
-          if (!devToken) return;
-          await MusicKit.configure({
-            developerToken: devToken,
-            app: { name: 'Speeldit', build: '1.0' },
-          });
-          music = MusicKit.getInstance();
-        }
-
-        musicRef.current = music;
-        music.volume = volume / 100;
-        setIsAuthorized(music.isAuthorized);
-        setMusicReady(true);
-
-        // Sync UI with current playback state (important after remount)
-        setIsPlaying(music.playbackState === 2);
-        setPlaybackTime(music.currentPlaybackTime || 0);
-        setPlaybackDuration(music.currentPlaybackDuration || 0);
-
-        music.addEventListener('playbackStateDidChange', () => {
-          setIsPlaying(music.playbackState === 2);
-        });
-        music.addEventListener('playbackTimeDidChange', () => {
-          setPlaybackTime(music.currentPlaybackTime || 0);
-          setPlaybackDuration(music.currentPlaybackDuration || 0);
-        });
-      } catch (err) {
-        console.error('MusicKit init error:', err);
-      }
-    }
-    init();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Volume sync ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    localStorage.setItem('speeldit_volume', String(volume));
-    if (musicRef.current) musicRef.current.volume = volume / 100;
-  }, [volume]);
-
-  // ── Detect ?generatePlaylist=1 after Yoco redirect, call generate endpoint ──
+  // ── Detect ?generatePlaylist=1 after Yoco redirect ────────────────────────
   useEffect(() => {
     if (!venueCode) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get('generatePlaylist') !== '1') return;
 
-    // Strip the query param from the URL without reloading
     window.history.replaceState({}, '', window.location.pathname);
-
     const checkoutId = localStorage.getItem(`speeldit_generate_${venueCode}`);
     if (!checkoutId) return;
     const savedPrompt = localStorage.getItem(`speeldit_generate_prompt_${venueCode}`) || '';
@@ -119,7 +65,7 @@ export default function VenuePlayer() {
       .catch((err) => setGenerateStatus({ error: err.response?.data?.error || 'Generation failed' }));
   }, [venueCode]);
 
-  // ── Fetch venue + load saved autoplayMode ────────────────────────────────
+  // ── Fetch venue + sync autoplayMode ───────────────────────────────────────
   useEffect(() => {
     if (!venueCode) return;
     api.getVenue(venueCode)
@@ -130,98 +76,7 @@ export default function VenuePlayer() {
         else if (res.data?.settings?.autoplayQueue === false) setAutoplayMode('off');
       })
       .catch(() => navigate('/venue/login'));
-  }, [venueCode, navigate]);
-
-  // ── Play a song via MusicKit ─────────────────────────────────────────────
-  const playSong = useCallback(async (song) => {
-    const music = musicRef.current;
-    if (!music || !song?.appleId) return;
-    try {
-      if (!music.isAuthorized) await music.authorize();
-      setIsAuthorized(music.isAuthorized);
-      try { await music.stop(); } catch {}   // clear any residual audio before loading new track
-      await music.setQueue({ songs: [song.appleId] });
-      await music.play();
-      setWaitingForGesture(false);
-      await api.reportPlaying(venueCode, song.id);
-    } catch (err) {
-      // Browser autoplay policy blocks play() without a prior user gesture
-      if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
-        setWaitingForGesture(true);
-      } else {
-        console.error('Play error:', err);
-      }
-      isTransitioningRef.current = false;
-    }
-  }, [venueCode]);
-
-  // ── Autofill ─────────────────────────────────────────────────────────────
-  const tryAutofill = useCallback(async () => {
-    if (autoplayModeRef.current === 'off') return;
-    try {
-      await api.autofillQueue(venueCode);
-    } catch (err) {
-      console.error('Autofill error:', err);
-    }
-  }, [venueCode]);
-
-  // ── Poll queue ───────────────────────────────────────────────────────────
-  const fetchQueue = useCallback(async () => {
-    try {
-      const res = await api.getQueue(venueCode);
-      const newQueue = res.data;
-      setQueue(newQueue);
-
-      const nowPlaying = newQueue.nowPlaying;
-
-      if (nowPlaying && nowPlaying.id !== currentSongIdRef.current && !isTransitioningRef.current) {
-        // If MusicKit is already playing this song (e.g. after navigating back), just sync the ref
-        const currentAppleId = musicRef.current?.nowPlayingItem?.id;
-        if (currentAppleId && String(currentAppleId) === String(nowPlaying.appleId)) {
-          currentSongIdRef.current = nowPlaying.id;
-        } else {
-          isTransitioningRef.current = true;
-          currentSongIdRef.current = nowPlaying.id;
-          await playSong(nowPlaying);
-          isTransitioningRef.current = false;
-        }
-      }
-
-      if (!nowPlaying && autoplayModeRef.current !== 'off' && !isTransitioningRef.current) {
-        await tryAutofill();
-      }
-    } catch (err) {
-      console.error('Queue poll error:', err);
-    }
-  }, [venueCode, playSong, tryAutofill]);
-
-  useEffect(() => {
-    if (!venueCode) return;
-    fetchQueue();
-    const interval = setInterval(fetchQueue, 2000);
-    return () => clearInterval(interval);
-  }, [venueCode, fetchQueue]);
-
-  // ── Song end → advance then autofill ─────────────────────────────────────
-  useEffect(() => {
-    const music = musicRef.current;
-    if (!music) return;
-
-    async function onStateChange() {
-      if (music.playbackState === 5 && currentSongIdRef.current) {
-        currentSongIdRef.current = null;
-        isTransitioningRef.current = true;   // block poller until transition completes
-        try {
-          await api.advanceQueue(venueCode);
-          if (autoplayModeRef.current !== 'off') await tryAutofill();
-        } catch {}
-        isTransitioningRef.current = false;
-      }
-    }
-
-    music.addEventListener('playbackStateDidChange', onStateChange);
-    return () => music.removeEventListener('playbackStateDidChange', onStateChange);
-  }, [venueCode, tryAutofill]);
+  }, [venueCode, navigate, setAutoplayMode]);
 
   // ── Player controls ──────────────────────────────────────────────────────
   async function handlePlayPause() {
@@ -230,14 +85,13 @@ export default function VenuePlayer() {
     const wasWaiting = waitingForGesture;
     setWaitingForGesture(false);
     const state = music.playbackState;
+    const nowPlaying = queue.nowPlaying;
+
     if (state === 2) {
       await music.pause();
     } else if (wasWaiting && nowPlaying) {
-      // Autoplay was blocked — re-trigger full song load now that the user has gestured
       await playSong(nowPlaying);
     } else if (state === 0 || state === 3 || state === 4 || state === 5) {
-      // Only call play() from valid states: none, paused, stopped, ended
-      // Ignore loading(1)/seeking(6)/waiting(7)/stalled(8) to avoid "play() called without stop/pause" error
       try {
         await music.play();
       } catch (err) {
@@ -254,10 +108,10 @@ export default function VenuePlayer() {
     const music = musicRef.current;
     if (music) { try { await music.stop(); } catch {} }
     currentSongIdRef.current = null;
-    isTransitioningRef.current = true;  // block poller until skip resolves
+    isTransitioningRef.current = true;
     try {
       await api.skipSong(venueCode);
-      isTransitioningRef.current = false;  // allow fetchQueue to play next song
+      isTransitioningRef.current = false;
       await fetchQueue();
     } catch (err) {
       console.error('Skip error:', err);
@@ -289,7 +143,7 @@ export default function VenuePlayer() {
     if (!music) return;
     try {
       await music.authorize();
-      setIsAuthorized(music.isAuthorized);
+      playback.setIsAuthorized(music.isAuthorized);
     } catch (err) { console.error('Auth error:', err); }
   }
 
@@ -310,7 +164,6 @@ export default function VenuePlayer() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 text-zinc-900 flex flex-col">
-      {/* ── Header ── */}
       <header className="border-b border-zinc-200 bg-white shrink-0">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -330,10 +183,8 @@ export default function VenuePlayer() {
         </div>
       </header>
 
-      {/* ── Now Playing Player ── */}
       <div className="bg-white border-b border-zinc-200 shrink-0">
         <div className="max-w-3xl mx-auto px-4 py-5">
-          {/* Song info row */}
           <div className="flex items-center gap-4 mb-4">
             <div className="w-16 h-16 rounded-xl shrink-0 overflow-hidden bg-zinc-100 flex items-center justify-center">
               {nowPlaying?.albumArt
@@ -359,7 +210,6 @@ export default function VenuePlayer() {
             )}
           </div>
 
-          {/* Progress bar */}
           <div className="mb-4">
             <div className="w-full bg-zinc-200 rounded-full h-1.5 overflow-hidden">
               <div
@@ -373,9 +223,7 @@ export default function VenuePlayer() {
             </div>
           </div>
 
-          {/* Controls + Volume */}
           <div className="flex items-center justify-between gap-4">
-            {/* Playback buttons */}
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -408,8 +256,6 @@ export default function VenuePlayer() {
                 <SkipForward className="h-5 w-5" />
               </button>
             </div>
-
-            {/* Volume */}
             <div className="flex items-center gap-2 flex-1 max-w-40">
               <Volume2 className="h-4 w-4 text-zinc-400 shrink-0" />
               <input
@@ -424,7 +270,6 @@ export default function VenuePlayer() {
             </div>
           </div>
 
-          {/* Autoplay mode */}
           <div className="flex items-center gap-2 mt-4 pt-4 border-t border-zinc-200">
             <span className="text-xs text-zinc-500 mr-1">Autoplay:</span>
             {[
@@ -449,7 +294,6 @@ export default function VenuePlayer() {
         </div>
       </div>
 
-      {/* ── Tabs ── */}
       <div className="border-b border-zinc-200 bg-white shrink-0">
         <div className="max-w-3xl mx-auto px-4">
           <div className="flex gap-1 py-2">
@@ -475,7 +319,6 @@ export default function VenuePlayer() {
         </div>
       </div>
 
-      {/* ── Generate playlist status banner ── */}
       {generateStatus && (
         <div className={`shrink-0 border-b border-zinc-200 ${generateStatus === 'generating' ? 'bg-blue-50' : generateStatus.error ? 'bg-red-50' : 'bg-green-50'}`}>
           <div className="max-w-3xl mx-auto px-4 py-2 flex items-center justify-between gap-3">
@@ -493,7 +336,6 @@ export default function VenuePlayer() {
         </div>
       )}
 
-      {/* ── Tab content ── */}
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-6">
         {activeTab === 'playlist' && <PlaylistManager venueCode={venueCode} variant="light" />}
         {activeTab === 'queue' && (
