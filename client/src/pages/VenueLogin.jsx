@@ -34,7 +34,11 @@ export default function VenueLogin() {
         navigate('/venue/dashboard');
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Something went wrong');
+      const msg = err.response?.data?.error || 'Something went wrong';
+      const hint = (err.response?.status === 401 && msg.toLowerCase().includes('invalid'))
+        ? ' If you registered elsewhere, try registering again on this server.'
+        : '';
+      setError(msg + hint);
     } finally {
       setLoading(false);
     }

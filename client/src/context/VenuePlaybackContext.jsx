@@ -26,6 +26,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const currentSongIdRef = useRef(null);
   const isTransitioningRef = useRef(false);
   const autoplayModeRef = useRef(autoplayMode);
+  const autofill404UntilRef = useRef(0); // Back off autofill after 404 (venue not found)
   useEffect(() => { autoplayModeRef.current = autoplayMode; }, [autoplayMode]);
 
   // ── Initialize MusicKit ──────────────────────────────────────────────────
@@ -98,10 +99,16 @@ export function VenuePlaybackProvider({ venueCode, children }) {
 
   const tryAutofill = useCallback(async () => {
     if (autoplayModeRef.current === 'off') return;
+    if (Date.now() < autofill404UntilRef.current) return; // Back off after 404
     try {
       await api.autofillQueue(venueCode);
     } catch (err) {
-      console.error('Autofill error:', err);
+      if (err?.response?.status === 404) {
+        autofill404UntilRef.current = Date.now() + 60000; // Don't retry for 60s
+        console.warn('Autofill: venue not found. If you just deployed, register again on this server.');
+      } else {
+        console.error('Autofill error:', err);
+      }
     }
   }, [venueCode]);
 
