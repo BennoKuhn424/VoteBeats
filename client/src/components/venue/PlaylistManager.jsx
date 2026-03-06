@@ -155,7 +155,12 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
       localStorage.setItem(`speeldit_generate_prompt_${venueCode}`, generatePrompt.trim());
       localStorage.setItem(`speeldit_generate_playlist_${venueCode}`, selectedId);
       localStorage.setItem(`speeldit_generate_count_${venueCode}`, String(generateCount));
-      window.location.href = redirectUrl;
+      // Open in new tab so music keeps playing in this tab; fallback to same-tab with warning if popup blocked
+      const opened = window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+      if (!opened) {
+        const proceed = window.confirm('Popup blocked. Payment in this tab will stop the music. Continue anyway?');
+        if (proceed) window.location.href = redirectUrl;
+      }
     } catch (err) {
       setGenerateError(err.response?.data?.error || 'Could not start payment. Try again.');
       setGeneratingCheckout(false);
