@@ -1,7 +1,7 @@
 {
-  "name": "votebeats-server",
+  "name": "speeldit-server",
   "version": "1.0.0",
-  "description": "VoteBeats backend API",
+  "description": "Speeldit backend API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

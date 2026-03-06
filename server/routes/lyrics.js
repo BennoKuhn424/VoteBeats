@@ -16,7 +16,7 @@ router.get('/', async (req, res) => {
     if (duration) exactParams.set('duration', String(Math.round(Number(duration))));
 
     const exactRes = await fetch(`https://lrclib.net/api/get?${exactParams}`, {
-      headers: { 'User-Agent': 'VoteBeats/1.0 (https://github.com/votebeats)' },
+      headers: { 'User-Agent': 'Speeldit/1.0 (https://github.com/speeldit)' },
     });
 
     if (exactRes.ok) {
@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
     // Fall back to search (handles slight title/artist name mismatches)
     const searchParams = new URLSearchParams({ track_name: title, artist_name: artist });
     const searchRes = await fetch(`https://lrclib.net/api/search?${searchParams}`, {
-      headers: { 'User-Agent': 'VoteBeats/1.0 (https://github.com/votebeats)' },
+      headers: { 'User-Agent': 'Speeldit/1.0 (https://github.com/speeldit)' },
     });
 
     if (searchRes.ok) {

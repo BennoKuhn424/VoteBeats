@@ -25,7 +25,7 @@ export default function VenuePlayer() {
   const [musicReady, setMusicReady] = useState(false);
   const [waitingForGesture, setWaitingForGesture] = useState(false);
   const [volume, setVolume] = useState(() => {
-    const saved = localStorage.getItem('votebeats_volume');
+    const saved = localStorage.getItem('speeldit_volume');
     return saved !== null ? Number(saved) : 70;
   });
 
@@ -43,7 +43,7 @@ export default function VenuePlayer() {
 
   // ── Initialize MusicKit ──────────────────────────────────────────────────
   useEffect(() => {
-    const token = localStorage.getItem('votebeats_token');
+    const token = localStorage.getItem('speeldit_token');
     if (!token) { navigate('/venue/login'); return; }
 
     async function init() {
@@ -57,7 +57,7 @@ export default function VenuePlayer() {
           if (!devToken) return;
           await MusicKit.configure({
             developerToken: devToken,
-            app: { name: 'VoteBeats', build: '1.0' },
+            app: { name: 'Speeldit', build: '1.0' },
           });
           music = MusicKit.getInstance();
         }
@@ -88,7 +88,7 @@ export default function VenuePlayer() {
 
   // ── Volume sync ──────────────────────────────────────────────────────────
   useEffect(() => {
-    localStorage.setItem('votebeats_volume', String(volume));
+    localStorage.setItem('speeldit_volume', String(volume));
     if (musicRef.current) musicRef.current.volume = volume / 100;
   }, [volume]);
 
@@ -101,15 +101,15 @@ export default function VenuePlayer() {
     // Strip the query param from the URL without reloading
     window.history.replaceState({}, '', window.location.pathname);
 
-    const checkoutId = localStorage.getItem(`votebeats_generate_${venueCode}`);
+    const checkoutId = localStorage.getItem(`speeldit_generate_${venueCode}`);
     if (!checkoutId) return;
-    const savedPrompt = localStorage.getItem(`votebeats_generate_prompt_${venueCode}`) || '';
-    const savedPlaylistId = localStorage.getItem(`votebeats_generate_playlist_${venueCode}`) || 'pl_default';
-    const savedCount = Number(localStorage.getItem(`votebeats_generate_count_${venueCode}`)) || 100;
-    localStorage.removeItem(`votebeats_generate_${venueCode}`);
-    localStorage.removeItem(`votebeats_generate_prompt_${venueCode}`);
-    localStorage.removeItem(`votebeats_generate_playlist_${venueCode}`);
-    localStorage.removeItem(`votebeats_generate_count_${venueCode}`);
+    const savedPrompt = localStorage.getItem(`speeldit_generate_prompt_${venueCode}`) || '';
+    const savedPlaylistId = localStorage.getItem(`speeldit_generate_playlist_${venueCode}`) || 'pl_default';
+    const savedCount = Number(localStorage.getItem(`speeldit_generate_count_${venueCode}`)) || 100;
+    localStorage.removeItem(`speeldit_generate_${venueCode}`);
+    localStorage.removeItem(`speeldit_generate_prompt_${venueCode}`);
+    localStorage.removeItem(`speeldit_generate_playlist_${venueCode}`);
+    localStorage.removeItem(`speeldit_generate_count_${venueCode}`);
 
     setActiveTab('playlist');
     setGenerateStatus('generating');

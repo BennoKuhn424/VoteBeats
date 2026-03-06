@@ -19,8 +19,9 @@ export default function Home() {
       <Header />
       <div className="container mx-auto px-5 py-12 max-w-lg">
         <div className="text-center mb-12">
+          <img src="/speeldit-logo.png" alt="Speeldit" className="h-20 w-20 sm:h-24 sm:w-24 mx-auto mb-4 rounded-2xl object-contain" />
           <h1 className="text-4xl sm:text-5xl font-extrabold mb-3 tracking-tight text-carbon-900">
-            VoteBeats
+            Speeldit
           </h1>
           <p className="text-carbon-600 text-lg">
             Control the vibe. Scan the QR at your table or enter the code below.

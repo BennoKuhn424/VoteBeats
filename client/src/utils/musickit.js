@@ -1,5 +1,5 @@
 /**
- * MusicKit JS integration for VoteBeats.
+ * MusicKit JS integration for Speeldit.
  * Fetches developer token from backend and configures MusicKit.
  */
 
@@ -37,7 +37,7 @@ export async function initMusicKit() {
       await MusicKit.configure({
         developerToken,
         app: {
-          name: 'VoteBeats',
+          name: 'Speeldit',
           build: '1.0',
         },
         // Explicitly disable preview-only mode so full songs play (requires Apple Music subscription)

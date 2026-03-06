@@ -1,4 +1,4 @@
-# VoteBeats – Music Voting Web App (MVP)
+# Speeldit – Music Voting Web App (MVP)
 
 Full-stack web app for music voting in bars/restaurants using QR codes. Customers scan to vote and request songs; venue owners manage the queue and settings.
 
@@ -11,7 +11,7 @@ Full-stack web app for music voting in bars/restaurants using QR codes. Customer
 ## Project structure
 
 ```
-votebeats/
+speeldit/
 ├── client/          # React frontend
 ├── server/          # Express API + JSON data
 └── README.md
@@ -32,7 +32,7 @@ Server runs at `http://localhost:3000`. Optional env:
 - `PORT` – default 3000
 - `JWT_SECRET` – for production
 - `APPLE_MUSIC_DEVELOPER_TOKEN` – for real Apple Music search (otherwise mock catalog is used)
-- `PUBLIC_URL` – frontend URL for redirects (e.g. `https://votebeats.com` or `http://localhost:5173`)
+- `PUBLIC_URL` – frontend URL for redirects (e.g. `https://speeldit.com` or `http://localhost:5173`)
 - `YOCO_SECRET_KEY` – Yoco API secret for pay-to-play (get from [Yoco Developer Hub](https://developer.yoco.com/))
 - `VENUE_EARNINGS_PERCENT` – Venue share of pay-to-play revenue (default 80)
 - `ADMIN_SECRET` – Secret for admin API (see below)

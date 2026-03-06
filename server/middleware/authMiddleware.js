@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const db = require('../utils/database');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'votebeats-dev-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'speeldit-dev-secret-change-in-production';
 
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;

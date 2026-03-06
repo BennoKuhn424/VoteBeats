@@ -1,5 +1,5 @@
 export function getDeviceId() {
-  let deviceId = localStorage.getItem('votebeats_device_id');
+  let deviceId = localStorage.getItem('speeldit_device_id');
 
   if (!deviceId) {
     deviceId =
@@ -7,7 +7,7 @@ export function getDeviceId() {
       Math.random().toString(36).substring(2, 11) +
       '_' +
       Date.now();
-    localStorage.setItem('votebeats_device_id', deviceId);
+    localStorage.setItem('speeldit_device_id', deviceId);
   }
 
   return deviceId;

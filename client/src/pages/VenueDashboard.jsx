@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Music2,
   Settings,
   LogOut,
   Copy,
@@ -33,8 +32,8 @@ export default function VenueDashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem('votebeats_token');
-    const venueCode = localStorage.getItem('votebeats_venue_code');
+    const token = localStorage.getItem('speeldit_token');
+    const venueCode = localStorage.getItem('speeldit_venue_code');
 
     if (!token || !venueCode) {
       navigate('/venue/login');
@@ -88,8 +87,8 @@ export default function VenueDashboard() {
   }
 
   function handleLogout() {
-    localStorage.removeItem('votebeats_token');
-    localStorage.removeItem('votebeats_venue_code');
+    localStorage.removeItem('speeldit_token');
+    localStorage.removeItem('speeldit_venue_code');
     navigate('/venue/login');
   }
 
@@ -125,8 +124,8 @@ export default function VenueDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Music2 className="h-7 w-7 text-brand-600" />
-              <h1 className="text-xl font-semibold text-zinc-900">VoteBeats</h1>
+              <img src="/speeldit-logo.png" alt="Speeldit" className="h-8 w-8 rounded-lg object-contain" />
+              <h1 className="text-xl font-semibold text-zinc-900">Speeldit</h1>
             </div>
             <div className="flex items-center gap-2">
               <button

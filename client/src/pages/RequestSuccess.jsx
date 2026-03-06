@@ -10,7 +10,7 @@ export default function RequestSuccess() {
   const [checkoutId, setCheckoutId] = useState(null);
 
   useEffect(() => {
-    const storageKey = `votebeats_checkout_${venueCode}`;
+    const storageKey = `speeldit_checkout_${venueCode}`;
     const fromUrl = searchParams.get('checkoutId');
     const fromSession = sessionStorage.getItem(storageKey);
     const fromLocal = localStorage.getItem(storageKey);

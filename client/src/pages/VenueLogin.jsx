@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Music2, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import api from '../utils/api';
 import Button from '../components/shared/Button';
 
@@ -23,13 +23,13 @@ export default function VenueLogin() {
     try {
       if (isRegister) {
         const res = await api.register(email, password, venueName, location);
-        localStorage.setItem('votebeats_token', res.data.token);
-        localStorage.setItem('votebeats_venue_code', res.data.venueCode);
+        localStorage.setItem('speeldit_token', res.data.token);
+        localStorage.setItem('speeldit_venue_code', res.data.venueCode);
         navigate('/venue/dashboard');
       } else {
         const res = await api.login(email, password);
-        localStorage.setItem('votebeats_token', res.data.token);
-        localStorage.setItem('votebeats_venue_code', res.data.venue?.code ?? res.data.venueCode);
+        localStorage.setItem('speeldit_token', res.data.token);
+        localStorage.setItem('speeldit_venue_code', res.data.venue?.code ?? res.data.venueCode);
         navigate('/venue/dashboard');
       }
     } catch (err) {
@@ -49,8 +49,8 @@ export default function VenueLogin() {
         <div className="bg-white rounded-xl shadow-xl border border-zinc-200 p-8">
           {/* Logo */}
           <div className="flex items-center justify-center gap-3 mb-8">
-            <Music2 className="h-8 w-8 text-brand-600" />
-            <h1 className="text-2xl font-semibold text-zinc-900">VoteBeats</h1>
+            <img src="/speeldit-logo.png" alt="Speeldit" className="h-10 w-10 rounded-xl object-contain" />
+            <h1 className="text-2xl font-semibold text-zinc-900">Speeldit</h1>
           </div>
 
           {/* Welcome Text */}
@@ -181,7 +181,7 @@ export default function VenueLogin() {
             </div>
             <div className="relative flex justify-center text-xs">
               <span className="bg-white px-2 text-zinc-500">
-                {isRegister ? 'Already have an account?' : 'New to VoteBeats?'}
+                {isRegister ? 'Already have an account?' : 'New to Speeldit?'}
               </span>
             </div>
           </div>

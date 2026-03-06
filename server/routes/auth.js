@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const db = require('../utils/database');
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'votebeats-dev-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'speeldit-dev-secret-change-in-production';
 
 function generateVenueCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

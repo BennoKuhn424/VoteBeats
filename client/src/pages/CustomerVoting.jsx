@@ -61,11 +61,11 @@ export default function CustomerVoting() {
         const res = await api.createPayment(venueCode, song, deviceId);
         if (res.data?.redirectUrl) {
           if (res.data.checkoutId) {
-            const key = `votebeats_checkout_${venueCode}`;
+            const key = `speeldit_checkout_${venueCode}`;
             const id = res.data.checkoutId;
             sessionStorage.setItem(key, id);
             localStorage.setItem(key, id);
-            document.cookie = `votebeats_checkout_${venueCode}=${id}; path=/; max-age=600; SameSite=Lax`;
+            document.cookie = `speeldit_checkout_${venueCode}=${id}; path=/; max-age=600; SameSite=Lax`;
           }
           window.location.href = res.data.redirectUrl;
           return;
