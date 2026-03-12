@@ -258,21 +258,23 @@ export default function VenuePlayer() {
               >
                 <SkipBack className="h-5 w-5" />
               </button>
-              <div className="relative">
+              <div className="relative flex flex-col items-center gap-1">
                 <button
                   type="button"
                   onClick={handlePlayPause}
-                  className="w-12 h-12 flex items-center justify-center rounded-full bg-brand-500 text-white hover:bg-brand-600 transition-colors"
+                  className={`w-14 h-14 flex items-center justify-center rounded-full text-white transition-all duration-200 ${
+                    isPlaying
+                      ? 'bg-brand-500 hover:bg-brand-600 shadow-md'
+                      : 'bg-brand-500 hover:bg-brand-600 shadow-lg ring-4 ring-brand-200 animate-pulse'
+                  }`}
                 >
                   {isPlaying
-                    ? <Pause className="h-5 w-5" />
-                    : <Play className="h-5 w-5 ml-0.5" />}
+                    ? <Pause className="h-6 w-6" />
+                    : <Play className="h-6 w-6 ml-0.5" />}
                 </button>
-                {waitingForGesture && (
-                  <span className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs bg-zinc-800 text-white px-2 py-1 rounded-md pointer-events-none">
-                    Tap to play
-                  </span>
-                )}
+                <span className="text-xs font-medium text-zinc-500 select-none">
+                  {isPlaying ? 'Playing' : waitingForGesture ? 'Tap to play' : 'Paused'}
+                </span>
               </div>
               <button
                 type="button"
