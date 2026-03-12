@@ -263,7 +263,7 @@ export default function VenuePlayer() {
                 <SkipForward className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex items-center gap-2 flex-1 max-w-40">
+            <div className="flex items-center gap-2 flex-1 max-w-xs">
               <Volume2 className="h-4 w-4 text-zinc-400 shrink-0" />
               <input
                 type="range"
@@ -277,7 +277,7 @@ export default function VenuePlayer() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 mt-4 pt-4 border-t border-zinc-200">
+          <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-zinc-200">
             <span className="text-xs text-zinc-500 mr-1">Autoplay:</span>
             {[
               { id: 'off', label: 'Off' },
@@ -288,7 +288,7 @@ export default function VenuePlayer() {
                 key={id}
                 type="button"
                 onClick={() => handleChangeMode(id)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                className={`px-4 py-2 rounded-full text-xs font-semibold transition-colors min-h-[36px] ${
                   autoplayMode === id
                     ? 'bg-brand-500 text-white'
                     : 'bg-zinc-100 text-zinc-500 hover:text-zinc-900'

@@ -182,8 +182,8 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
   const songTitleCls = isLight ? 'font-medium text-sm text-zinc-900 line-clamp-1' : 'font-medium text-sm text-white line-clamp-1';
   const songArtistCls = isLight ? 'text-xs text-zinc-500 line-clamp-1' : 'text-xs text-dark-400 line-clamp-1';
   const removeBtnCls = isLight
-    ? 'opacity-0 group-hover:opacity-100 transition-opacity w-7 h-7 flex items-center justify-center rounded-full bg-zinc-200 text-zinc-500 hover:bg-red-100 hover:text-red-500 shrink-0'
-    : 'opacity-0 group-hover:opacity-100 transition-opacity w-7 h-7 flex items-center justify-center rounded-full bg-dark-600 text-dark-300 hover:bg-red-500/20 hover:text-red-400 shrink-0';
+    ? 'sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-8 h-8 flex items-center justify-center rounded-full bg-zinc-200 text-zinc-500 hover:bg-red-100 hover:text-red-500 shrink-0'
+    : 'sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-8 h-8 flex items-center justify-center rounded-full bg-dark-600 text-dark-300 hover:bg-red-500/20 hover:text-red-400 shrink-0';
   const resultRowCls = isLight
     ? 'flex items-center gap-3 p-3 bg-zinc-50 rounded-xl border border-zinc-100'
     : 'flex items-center gap-3 p-3 bg-dark-700/50 rounded-xl';
@@ -205,7 +205,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
           <button
             type="button"
             onClick={() => setShowCreate((v) => !v)}
-            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors font-semibold"
+            className="flex items-center gap-1 text-xs px-3 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors font-semibold min-h-[36px]"
           >
             <Plus className="h-3.5 w-3.5" /> New
           </button>
@@ -250,7 +250,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
                 key={pl.id}
                 type="button"
                 onClick={() => switchTab(pl.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-colors ${
                   selectedId === pl.id
                     ? 'bg-brand-500 text-white'
                     : isLight
@@ -285,7 +285,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
                   <button
                     type="button"
                     onClick={() => handleActivate(selectedPlaylist.id)}
-                    className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-semibold border transition-colors ${isLight ? 'border-zinc-300 text-zinc-500 hover:border-brand-500 hover:text-brand-600' : 'border-dark-500 text-dark-400 hover:border-brand-500 hover:text-brand-400'}`}
+                    className={`shrink-0 text-xs px-3 py-1.5 rounded-full font-semibold border transition-colors min-h-[32px] ${isLight ? 'border-zinc-300 text-zinc-500 hover:border-brand-500 hover:text-brand-600' : 'border-dark-500 text-dark-400 hover:border-brand-500 hover:text-brand-400'}`}
                   >
                     Set Active
                   </button>
@@ -294,7 +294,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
               <button
                 type="button"
                 onClick={() => handleDelete(selectedPlaylist.id)}
-                className={`shrink-0 text-xs px-2 py-1.5 rounded-lg transition-colors ${isLight ? 'text-zinc-400 hover:text-red-500 hover:bg-red-50' : 'text-dark-400 hover:text-red-400 hover:bg-red-500/10'}`}
+                className={`shrink-0 text-xs px-3 py-2 rounded-lg transition-colors min-h-[36px] ${isLight ? 'text-zinc-400 hover:text-red-500 hover:bg-red-50' : 'text-dark-400 hover:text-red-400 hover:bg-red-500/10'}`}
               >
                 Delete
               </button>
@@ -305,7 +305,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
             </p>
 
             {selectedPlaylist.songs?.length > 0 ? (
-              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              <div className="space-y-2">
                 {selectedPlaylist.songs.map((song, i) => (
                   <div key={song.appleId} className={songRowCls}>
                     <span className={`text-sm font-bold w-6 text-right shrink-0 ${isLight ? 'text-zinc-400' : 'text-dark-500'}`}>{i + 1}</span>
@@ -366,7 +366,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
                         key={n}
                         type="button"
                         onClick={() => setGenerateCount(n)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                        className={`px-3 py-2 rounded-full text-xs font-semibold transition-colors ${
                           generateCount === n
                             ? 'bg-brand-500 text-white'
                             : isLight ? 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200' : 'bg-dark-700 text-dark-300 hover:bg-dark-600'
@@ -434,7 +434,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
             )}
 
             {results.length > 0 && (
-              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              <div className="space-y-2">
                 {results.map((item) => {
                   const appleId = item.songId ?? item.appleId;
                   const inPlaylist = (selectedPlaylist.songs || []).some((s) => s.appleId === appleId) || addedIds.has(appleId);
@@ -449,7 +449,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
                         type="button"
                         disabled={inPlaylist}
                         onClick={() => handleAdd(item)}
-                        className={`shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                        className={`shrink-0 flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[36px] ${
                           inPlaylist
                             ? isLight ? 'bg-zinc-100 text-zinc-400 cursor-default' : 'bg-dark-600 text-dark-400 cursor-default'
                             : 'bg-brand-500 text-white hover:bg-brand-600'

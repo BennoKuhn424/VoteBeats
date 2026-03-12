@@ -129,18 +129,18 @@ export default function VenueDashboard() {
               <button
                 type="button"
                 onClick={() => setShowSettings(!showSettings)}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-zinc-700 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors"
+                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors min-h-[44px]"
               >
-                <Settings className="h-4 w-4" />
-                Settings
+                <Settings className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">Settings</span>
               </button>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-zinc-700 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors"
+                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors min-h-[44px]"
               >
-                <LogOut className="h-4 w-4" />
-                Logout
+                <LogOut className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">Logout</span>
               </button>
             </div>
           </div>
@@ -158,8 +158,8 @@ export default function VenueDashboard() {
 
         {/* Venue Info */}
         <div className="mb-8">
-          <h2 className="text-3xl font-semibold text-zinc-900 mb-2">{venue.name}</h2>
-          <div className="flex items-center gap-4 text-sm text-zinc-600">
+          <h2 className="text-2xl sm:text-3xl font-semibold text-zinc-900 mb-2">{venue.name}</h2>
+          <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600">
             {venue.location && (
               <div className="flex items-center gap-1.5">
                 <MapPin className="h-4 w-4" />
@@ -218,7 +218,7 @@ export default function VenueDashboard() {
               <button
                 type="button"
                 onClick={() => navigate(`/venue/player/${venue.code}`)}
-                className="text-sm text-brand-600 hover:text-brand-500 font-medium text-left"
+                className="w-full sm:w-auto text-sm font-semibold px-4 py-2.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors min-h-[44px]"
               >
                 Open Venue Player →
               </button>

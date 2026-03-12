@@ -49,9 +49,9 @@ export default function VenueLogin() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100">
-      <div className="w-full max-w-md p-8">
+      <div className="w-full max-w-md px-4 py-8 sm:px-8">
         {/* Card Container */}
-        <div className="bg-white rounded-xl shadow-xl border border-zinc-200 p-8">
+        <div className="bg-white rounded-xl shadow-xl border border-zinc-200 p-6 sm:p-8">
           {/* Logo */}
           <div className="flex justify-center mb-8">
             <Logo size="xl" />

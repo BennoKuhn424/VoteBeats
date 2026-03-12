@@ -34,7 +34,7 @@ export default function QueueManager({ queue, onSkip, onRemove, variant = 'dark'
               <p className={songTitleClass}>{nowPlaying.title}</p>
               <p className={artistClass}>{nowPlaying.artist}</p>
             </div>
-            <Button variant="danger" onClick={onSkip} className="!py-2 shrink-0">
+            <Button variant="danger" onClick={onSkip} className="!py-2.5 !px-4 shrink-0">
               Skip
             </Button>
           </div>
@@ -53,7 +53,7 @@ export default function QueueManager({ queue, onSkip, onRemove, variant = 'dark'
           <p className={emptyClass}>No songs in queue.</p>
         </div>
       ) : (
-        <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+        <div className="space-y-2">
           {orderedUpcoming.map((song, i) => (
             <div key={song.id} className={upcomingItemClass}>
               <div className="flex items-center gap-3 mb-2">
@@ -73,7 +73,7 @@ export default function QueueManager({ queue, onSkip, onRemove, variant = 'dark'
               <div className="flex justify-end gap-3">
                 <Button
                   variant="secondary"
-                  className={`!py-2 !px-3 text-xs shrink-0 ${isLight ? '!bg-zinc-200 !text-zinc-800 hover:!bg-zinc-300 !border-zinc-300' : ''}`}
+                  className={`!py-2.5 !px-4 text-xs shrink-0 ${isLight ? '!bg-zinc-200 !text-zinc-800 hover:!bg-zinc-300 !border-zinc-300' : ''}`}
                   onClick={() => onRemove(song.id)}
                 >
                   Remove
