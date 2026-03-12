@@ -126,6 +126,9 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         const currentAppleId = musicRef.current?.nowPlayingItem?.id;
         if (currentAppleId && String(currentAppleId) === String(nowPlaying.appleId)) {
           currentSongIdRef.current = nowPlaying.id;
+        } else if (musicRef.current?.playbackState === 3) {
+          // Music is paused by user — don't force a new song to start automatically.
+          // handlePlayPause will pick up the new song when the user unpauses.
         } else {
           isTransitioningRef.current = true;
           currentSongIdRef.current = nowPlaying.id;

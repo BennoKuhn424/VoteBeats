@@ -92,13 +92,20 @@ export default function VenuePlayer() {
     } else if (wasWaiting && nowPlaying) {
       await playSong(nowPlaying);
     } else if (state === 0 || state === 3 || state === 4 || state === 5) {
-      try {
-        await music.play();
-      } catch (err) {
-        if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
-          setWaitingForGesture(true);
-        } else {
-          console.error('Play error:', err);
+      // If paused and the server has moved to a newer song (time-based auto-advance),
+      // play the new song rather than resuming the stale one.
+      if (state === 3 && nowPlaying && nowPlaying.id !== currentSongIdRef.current) {
+        currentSongIdRef.current = nowPlaying.id;
+        await playSong(nowPlaying);
+      } else {
+        try {
+          await music.play();
+        } catch (err) {
+          if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
+            setWaitingForGesture(true);
+          } else {
+            console.error('Play error:', err);
+          }
         }
       }
     }
