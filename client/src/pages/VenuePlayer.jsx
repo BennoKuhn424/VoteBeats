@@ -91,20 +91,13 @@ export default function VenuePlayer() {
       // Currently playing → pause
       await music.pause();
     } else if (wasWaiting && nowPlaying) {
-      // Autoplay was blocked by browser — queue is already set in MusicKit from the
-      // failed autoplay attempt. Call play() directly to stay within the iOS gesture
-      // chain (fewest possible awaits before play()).
-      try {
-        await music.play();
-      } catch (err) {
-        if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
-          setWaitingForGesture(true);
-        } else {
-          // Queue may have changed since last attempt — do full load
-          currentSongIdRef.current = nowPlaying.id;
-          await playSong(nowPlaying);
-        }
-      }
+      // Autoplay was blocked — we are now inside a real user gesture.
+      // Do the full playSong cycle (stop → setQueue → play). These are fast
+      // synchronous SDK calls so they don't break the gesture chain. Calling
+      // music.play() alone fails because MusicKit rejects it after a prior failed
+      // autoplay attempt — a fresh setQueue is required.
+      currentSongIdRef.current = nowPlaying.id;
+      await playSong(nowPlaying);
     } else if (state === 3) {
       // Paused — if server advanced to a newer song, play that; otherwise resume
       if (nowPlaying && nowPlaying.id !== currentSongIdRef.current) {
