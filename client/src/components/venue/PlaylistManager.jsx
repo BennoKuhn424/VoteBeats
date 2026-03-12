@@ -305,7 +305,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
             </p>
 
             {selectedPlaylist.songs?.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
                 {selectedPlaylist.songs.map((song, i) => (
                   <div key={song.appleId} className={songRowCls}>
                     <span className={`text-sm font-bold w-6 text-right shrink-0 ${isLight ? 'text-zinc-400' : 'text-dark-500'}`}>{i + 1}</span>
@@ -434,7 +434,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
             )}
 
             {results.length > 0 && (
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
                 {results.map((item) => {
                   const appleId = item.songId ?? item.appleId;
                   const inPlaylist = (selectedPlaylist.songs || []).some((s) => s.appleId === appleId) || addedIds.has(appleId);

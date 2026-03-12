@@ -53,7 +53,7 @@ export default function QueueManager({ queue, onSkip, onRemove, variant = 'dark'
           <p className={emptyClass}>No songs in queue.</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
           {orderedUpcoming.map((song, i) => (
             <div key={song.id} className={upcomingItemClass}>
               <div className="flex items-center gap-3 mb-2">
