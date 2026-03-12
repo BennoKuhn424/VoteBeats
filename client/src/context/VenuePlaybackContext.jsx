@@ -98,17 +98,19 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   }, [venueCode]);
 
   const tryAutofill = useCallback(async () => {
-    if (autoplayModeRef.current === 'off') return;
-    if (Date.now() < autofill404UntilRef.current) return; // Back off after 404
+    if (autoplayModeRef.current === 'off') return false;
+    if (Date.now() < autofill404UntilRef.current) return false;
     try {
       await api.autofillQueue(venueCode);
+      return true;
     } catch (err) {
       if (err?.response?.status === 404) {
-        autofill404UntilRef.current = Date.now() + 60000; // Don't retry for 60s
+        autofill404UntilRef.current = Date.now() + 60000;
         console.warn('Autofill: venue not found. If you just deployed, register again on this server.');
       } else {
         console.error('Autofill error:', err);
       }
+      return false;
     }
   }, [venueCode]);
 
@@ -133,7 +135,21 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       }
 
       if (!nowPlaying && autoplayModeRef.current !== 'off' && !isTransitioningRef.current) {
-        await tryAutofill();
+        const filled = await tryAutofill();
+        if (filled) {
+          // Immediately pick up the autofilled song — don't wait 2s for the next poll
+          try {
+            const r = await api.getQueue(venueCode);
+            setQueue(r.data);
+            const np = r.data?.nowPlaying;
+            if (np && np.id !== currentSongIdRef.current && !isTransitioningRef.current) {
+              isTransitioningRef.current = true;
+              currentSongIdRef.current = np.id;
+              await playSong(np);
+              isTransitioningRef.current = false;
+            }
+          } catch {}
+        }
       }
     } catch (err) {
       console.error('Queue poll error:', err);
@@ -157,7 +173,28 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         isTransitioningRef.current = true;
         try {
           await api.advanceQueue(venueCode);
-          if (autoplayModeRef.current !== 'off') await tryAutofill();
+          if (autoplayModeRef.current !== 'off') {
+            // Fetch queue immediately after advance — upcoming[0] may already be nowPlaying
+            let nextRes = await api.getQueue(venueCode);
+            setQueue(nextRes.data);
+            let np = nextRes.data?.nowPlaying;
+
+            // Queue was empty after advance — try autofill to get the next song
+            if (!np) {
+              const filled = await tryAutofill();
+              if (filled) {
+                nextRes = await api.getQueue(venueCode);
+                setQueue(nextRes.data);
+                np = nextRes.data?.nowPlaying;
+              }
+            }
+
+            // Play immediately — no isTransitioningRef guard needed, we own this transition
+            if (np) {
+              currentSongIdRef.current = np.id;
+              await playSong(np);
+            }
+          }
         } catch {}
         isTransitioningRef.current = false;
       }

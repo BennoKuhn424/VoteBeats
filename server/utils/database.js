@@ -5,6 +5,7 @@ const path = require('path');
 // Falls back to the local ./data folder for development.
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+console.log('[DB] Data directory:', DATA_DIR, process.env.DATA_DIR ? '(persistent)' : '(ephemeral - set DATA_DIR for Render disk)');
 
 function readJSON(filename) {
   const filepath = path.join(DATA_DIR, filename);

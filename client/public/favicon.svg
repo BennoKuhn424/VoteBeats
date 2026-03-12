@@ -1,4 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" fill="none">
-  <circle cx="18" cy="18" r="18" fill="#f59e0b"/>
-  <path d="M14 10l10 8-10 8V10z" fill="white"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="fg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8A2BE2"/>
+      <stop offset="100%" stop-color="#FF8C00"/>
+    </linearGradient>
+  </defs>
+  <path d="M50,160 L50,60 C50,30 72,10 100,10 C128,10 150,30 150,60 L150,160 Z"
+        fill="none" stroke="url(#fg)" stroke-width="8"/>
+  <path d="M65,160 L65,70 C65,50 80,35 100,35 C120,35 135,50 135,70 L135,160"
+        fill="none" stroke="url(#fg)" stroke-width="2" opacity="0.5"/>
+  <circle cx="100" cy="100" r="30" fill="url(#fg)"/>
+  <polygon points="95,90 115,100 95,110" fill="white"/>
+  <path d="M160,80 C170,90 170,110 160,120" fill="none" stroke="#FF8C00" stroke-width="4" stroke-linecap="round"/>
+  <path d="M175,70 C190,85 190,115 175,130" fill="none" stroke="#FF8C00" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+  <rect x="45" y="160" width="110" height="15" rx="5" fill="url(#fg)"/>
 </svg>
