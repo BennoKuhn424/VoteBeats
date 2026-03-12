@@ -88,13 +88,26 @@ export default function VenuePlayer() {
     const nowPlaying = queue.nowPlaying;
 
     if (state === 2) {
+      // Currently playing → pause
       await music.pause();
     } else if (wasWaiting && nowPlaying) {
-      await playSong(nowPlaying);
-    } else if (state === 0 || state === 3 || state === 4 || state === 5) {
-      // If paused and the server has moved to a newer song (time-based auto-advance),
-      // play the new song rather than resuming the stale one.
-      if (state === 3 && nowPlaying && nowPlaying.id !== currentSongIdRef.current) {
+      // Autoplay was blocked by browser — queue is already set in MusicKit from the
+      // failed autoplay attempt. Call play() directly to stay within the iOS gesture
+      // chain (fewest possible awaits before play()).
+      try {
+        await music.play();
+      } catch (err) {
+        if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
+          setWaitingForGesture(true);
+        } else {
+          // Queue may have changed since last attempt — do full load
+          currentSongIdRef.current = nowPlaying.id;
+          await playSong(nowPlaying);
+        }
+      }
+    } else if (state === 3) {
+      // Paused — if server advanced to a newer song, play that; otherwise resume
+      if (nowPlaying && nowPlaying.id !== currentSongIdRef.current) {
         currentSongIdRef.current = nowPlaying.id;
         await playSong(nowPlaying);
       } else {
@@ -107,6 +120,12 @@ export default function VenuePlayer() {
             console.error('Play error:', err);
           }
         }
+      }
+    } else if (state === 0 || state === 4 || state === 5) {
+      // Nothing loaded / stopped / ended — load the current song and play
+      if (nowPlaying) {
+        currentSongIdRef.current = nowPlaying.id;
+        await playSong(nowPlaying);
       }
     }
   }

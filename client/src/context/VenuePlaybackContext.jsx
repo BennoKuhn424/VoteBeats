@@ -80,8 +80,11 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     const music = musicRef.current;
     if (!music || !song?.appleId) return;
     try {
-      if (!music.isAuthorized) await music.authorize();
-      setIsAuthorized(music.isAuthorized);
+      // Only await authorize if not yet authorized — extra awaits break the iOS gesture chain
+      if (!music.isAuthorized) {
+        await music.authorize();
+        setIsAuthorized(music.isAuthorized);
+      }
       try { await music.stop(); } catch {}
       await music.setQueue({ songs: [song.appleId] });
       await music.play();
