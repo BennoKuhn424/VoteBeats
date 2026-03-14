@@ -4,6 +4,9 @@ const jwt = require('jsonwebtoken');
 const db = require('../utils/database');
 
 const router = express.Router();
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('FATAL: JWT_SECRET environment variable must be set in production');
+}
 const JWT_SECRET = process.env.JWT_SECRET || 'speeldit-dev-secret-change-in-production';
 
 function generateVenueCode() {

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Outlet, useParams, useNavigate } from 'react-router-dom';
 import { VenuePlaybackProvider } from '../context/VenuePlaybackContext';
 
@@ -9,17 +10,14 @@ export default function VenueLayout() {
   const { venueCode: paramVenueCode } = useParams();
   const navigate = useNavigate();
   const venueCode = paramVenueCode || localStorage.getItem('speeldit_venue_code') || null;
-
-  // If no venue code and we're on a route that needs it, redirect to login
   const token = localStorage.getItem('speeldit_token');
-  if (!token) {
-    navigate('/venue/login');
-    return null;
-  }
-  if (!venueCode && !paramVenueCode) {
-    // On dashboard without venueCode in URL - we have it from localStorage
-    // venueCode from above handles that
-  }
+
+  // Move redirect into an effect so it never fires during render (React 18 safe)
+  useEffect(() => {
+    if (!token) navigate('/venue/login');
+  }, [token, navigate]);
+
+  if (!token) return null;
 
   return (
     <VenuePlaybackProvider venueCode={venueCode}>

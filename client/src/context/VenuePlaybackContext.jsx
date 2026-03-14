@@ -39,6 +39,9 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     const token = localStorage.getItem('speeldit_token');
     if (!token) return;
 
+    let stateListener = null;
+    let timeListener = null;
+
     async function init() {
       try {
         let music;
@@ -61,18 +64,26 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         setPlaybackTime(music.currentPlaybackTime || 0);
         setPlaybackDuration(music.currentPlaybackDuration || 0);
 
-        music.addEventListener('playbackStateDidChange', () => {
-          setIsPlaying(music.playbackState === 2);
-        });
-        music.addEventListener('playbackTimeDidChange', () => {
+        stateListener = () => { setIsPlaying(music.playbackState === 2); };
+        timeListener = () => {
           setPlaybackTime(music.currentPlaybackTime || 0);
           setPlaybackDuration(music.currentPlaybackDuration || 0);
-        });
+        };
+        music.addEventListener('playbackStateDidChange', stateListener);
+        music.addEventListener('playbackTimeDidChange', timeListener);
       } catch (err) {
         console.error('MusicKit init error:', err);
       }
     }
     init();
+
+    return () => {
+      const music = musicRef.current;
+      if (music) {
+        if (stateListener) music.removeEventListener('playbackStateDidChange', stateListener);
+        if (timeListener) music.removeEventListener('playbackTimeDidChange', timeListener);
+      }
+    };
   }, [venueCode]);
 
   useEffect(() => {
@@ -240,7 +251,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     }
     music.addEventListener('playbackStateDidChange', onStateChange);
     return () => music.removeEventListener('playbackStateDidChange', onStateChange);
-  }, [venueCode, tryAutofill]);
+  }, [venueCode, tryAutofill, playSong]);
 
   const value = {
     queue,
