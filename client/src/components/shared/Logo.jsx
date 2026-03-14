@@ -3,8 +3,8 @@ export default function Logo({ size = 'md', className = '' }) {
     sm: 'h-8',
     md: 'h-10',
     lg: 'h-14',
-    xl: 'h-20',
-    '2xl': 'h-72 sm:h-80',
+    xl: 'h-28',
+    '2xl': 'w-full max-w-[300px] sm:max-w-sm h-auto',
   };
 
   return (

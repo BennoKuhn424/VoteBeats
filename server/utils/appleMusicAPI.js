@@ -702,11 +702,27 @@ async function searchByGenre(genres, venueCode) {
   return pickFreshSong(pool, venueCode);
 }
 
-// Pick a random song from a venue's curated playlist, avoiding recently played songs.
-// Reuses the same ring-buffer dedup logic as searchByGenre autofill.
+// Pick a random song from a venue's curated playlist.
+// - Small playlists (<10 songs): only block the last (size-1) played songs so songs
+//   cycle through the whole list before repeating.
+// - Large playlists (>=10 songs): use the full 50-song recent pool to avoid repeats.
 function pickFromPlaylist(playlist, venueCode) {
   if (!playlist || playlist.length === 0) return null;
-  return pickFreshSong(playlist, venueCode);
+
+  if (playlist.length >= 10) {
+    return pickFreshSong(playlist, venueCode);
+  }
+
+  // Small playlist: trim the recent pool to (size - 1) so each song plays before repeating
+  const gap = Math.max(1, playlist.length - 1);
+  const recent = getRecentPool(venueCode);
+  const trimmedRecent = recent.slice(-gap);
+  const fresh = playlist.filter((s) => !trimmedRecent.includes(s.appleId));
+  const chosen = fresh.length > 0
+    ? fresh[Math.floor(Math.random() * fresh.length)]
+    : playlist[Math.floor(Math.random() * playlist.length)];
+  if (chosen && venueCode) recordAutofillPlay(venueCode, chosen.appleId);
+  return chosen;
 }
 
 module.exports = { searchAppleMusic, searchByGenre, pickFromPlaylist };

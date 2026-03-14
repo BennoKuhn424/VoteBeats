@@ -12,7 +12,6 @@ import {
   QrCode,
   ListMusic,
 } from 'lucide-react';
-import Logo from '../components/shared/Logo';
 import api from '../utils/api';
 import Button from '../components/shared/Button';
 import QRCodeDisplay from '../components/venue/QRCodeDisplay';
@@ -124,7 +123,7 @@ export default function VenueDashboard() {
       <header className="bg-white border-b border-zinc-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <Logo size="md" />
+            <span className="font-bold text-zinc-900 text-lg">Dashboard</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"

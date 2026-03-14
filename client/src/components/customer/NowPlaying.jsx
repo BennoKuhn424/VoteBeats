@@ -7,7 +7,14 @@ export default function NowPlaying({ song, hasLyrics, onLyrics }) {
   useEffect(() => {
     if (!song) return;
     const updateProgress = () => {
-      const elapsed = Date.now() - (song.startedAt || 0);
+      const posMs = song.positionMs ?? 0;
+      const anchoredAt = song.positionAnchoredAt ?? song.startedAt ?? null;
+      const isPaused = song.isPaused ?? !!song.pausedAt;
+      const elapsed = anchoredAt
+        ? isPaused
+          ? posMs
+          : posMs + (Date.now() - anchoredAt)
+        : 0;
       const duration = (song.duration || 0) * 1000;
       const percent = duration > 0 ? Math.min((elapsed / duration) * 100, 100) : 0;
       setProgress(percent);
@@ -16,7 +23,7 @@ export default function NowPlaying({ song, hasLyrics, onLyrics }) {
     updateProgress();
     const interval = setInterval(updateProgress, 1000);
     return () => clearInterval(interval);
-  }, [song]);
+  }, [song?.appleId, song?.positionMs, song?.positionAnchoredAt, song?.isPaused]);
 
   if (!song) return null;
 
