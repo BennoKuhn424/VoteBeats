@@ -4,7 +4,7 @@ export default function Logo({ size = 'md', className = '' }) {
     md: 'h-10',
     lg: 'h-14',
     xl: 'h-20',
-    '2xl': 'h-56 sm:h-64',
+    '2xl': 'h-72 sm:h-80',
   };
 
   return (

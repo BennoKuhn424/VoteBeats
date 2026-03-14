@@ -4,7 +4,6 @@ import {
   Music2, ListMusic, LayoutList, ArrowLeft,
   Play, Pause, SkipBack, SkipForward, Volume2,
 } from 'lucide-react';
-import Logo from '../components/shared/Logo';
 import api from '../utils/api';
 import QueueManager from '../components/venue/QueueManager';
 import PlaylistManager from '../components/venue/PlaylistManager';
@@ -203,7 +202,6 @@ export default function VenuePlayer() {
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <Logo size="sm" />
             <span className="font-bold text-zinc-900">{venue.name}</span>
           </div>
           <span className="text-xs font-mono bg-zinc-100 text-zinc-500 px-2 py-1 rounded">
