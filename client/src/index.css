@@ -4,13 +4,30 @@
 
 @layer base {
   html {
+    /* Remove grey tap flash on iOS */
     -webkit-tap-highlight-color: transparent;
+    /* Prevent accidental double-tap zoom on all interactive elements.
+       "manipulation" allows pan/pinch-zoom but not double-tap zoom,
+       which eliminates the 300ms delay on older iOS and prevents
+       accidental zoom on player controls in a dark venue. */
+    touch-action: manipulation;
   }
+
   body {
     margin: 0;
     font-family: 'Outfit', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* Prevent pull-to-refresh from triggering on the player page */
+    overscroll-behavior-y: contain;
+  }
+
+  /* Prevent text selection on buttons / interactive controls (cleaner tap UX) */
+  button,
+  [role='button'],
+  input[type='range'] {
+    user-select: none;
+    -webkit-user-select: none;
   }
 }
 

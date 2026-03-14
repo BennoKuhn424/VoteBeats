@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import api from '../utils/api';
 import socket from '../utils/socket';
+import { useVisibilityAwarePolling } from '../hooks/useVisibilityAwarePolling';
 
 const VenuePlaybackContext = createContext(null);
 
@@ -158,7 +159,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       const res = await api.getQueue(venueCode);
       await handleQueueUpdate(res.data);
     } catch (err) {
-      console.error('Queue poll error:', err);
+      // Swallow — axios-retry already attempted 3 times; don't crash the player
+      console.warn('Queue fetch failed after retries:', err?.message);
     }
   }, [venueCode, handleQueueUpdate]);
 
@@ -166,28 +168,34 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   useEffect(() => {
     if (!venueCode) return;
 
-    socket.connect();
-    socket.emit('join', venueCode);
+    function joinRoom() {
+      socket.emit('join', venueCode);
+    }
 
-    socket.on('queue:updated', (data) => {
-      handleQueueUpdate(data);
+    socket.connect();
+    joinRoom();
+
+    socket.on('connect', () => {
+      // Re-join venue room after any reconnection (iOS resume, network switch)
+      joinRoom();
+      // Re-fetch so we catch any updates missed during the disconnection window
+      setTimeout(fetchQueue, 300);
     });
 
-    // Initial fetch on connect
+    socket.on('queue:updated', handleQueueUpdate);
+
+    // Initial fetch
     fetchQueue();
 
     return () => {
+      socket.off('connect');
       socket.off('queue:updated');
       socket.disconnect();
     };
   }, [venueCode, fetchQueue, handleQueueUpdate]);
 
-  // ── Fallback poll every 15s in case WebSocket drops ──────────────────────
-  useEffect(() => {
-    if (!venueCode) return;
-    const interval = setInterval(fetchQueue, 15000);
-    return () => clearInterval(interval);
-  }, [venueCode, fetchQueue]);
+  // ── Fallback poll — visibility-aware, 15s, pauses when backgrounded ──────
+  useVisibilityAwarePolling(fetchQueue, 15000);
 
   // ── MusicKit song-ended handler ──────────────────────────────────────────
   useEffect(() => {

@@ -14,9 +14,15 @@ const httpServer = http.createServer(app);
 // ── Socket.IO ────────────────────────────────────────────────────────────────
 const io = new Server(httpServer, {
   cors: { origin: '*' },
-  // Reconnection is handled client-side; this keeps idle connections alive
+  // Server pings every 25s (Socket.IO v4 default).
+  // pingTimeout bumped to 30s so iOS Safari has enough time to wake up
+  // and respond before the server declares the connection dead.
+  // Total tolerance = 25 + 30 = 55s — covers screen-lock + app-switch scenarios.
   pingInterval: 25000,
-  pingTimeout: 60000,
+  pingTimeout: 30000,
+  // Keep polling as fallback transport for restrictive corporate/venue WiFi
+  // that blocks WebSocket upgrades.
+  transports: ['websocket', 'polling'],
 });
 
 broadcast.init(io);

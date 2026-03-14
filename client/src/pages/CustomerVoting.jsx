@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import api from '../utils/api';
 import socket from '../utils/socket';
 import { getDeviceId } from '../utils/deviceId';
+import { useVisibilityAwarePolling } from '../hooks/useVisibilityAwarePolling';
 import NowPlaying from '../components/customer/NowPlaying';
 import UpcomingQueue from '../components/customer/UpcomingQueue';
 import SearchBar from '../components/shared/SearchBar';
@@ -10,7 +11,7 @@ import LyricsView from '../components/customer/LyricsView';
 
 export default function CustomerVoting() {
   const { venueCode } = useParams();
-  const [queue, setQueue] = useState({ nowPlaying: null, upcoming: [], requestSettings: {} });
+  const [queue, setQueue] = useState({ nowPlaying: null, upcoming: [], myVotes: {}, requestSettings: {} });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showLyrics, setShowLyrics] = useState(false);
@@ -32,6 +33,7 @@ export default function CustomerVoting() {
   }, [queue.nowPlaying?.appleId]);
 
   const fetchQueue = useCallback(async () => {
+    if (!venueCode) return;
     try {
       const response = await api.getQueue(venueCode, deviceId);
       setQueue(response.data);
@@ -40,7 +42,8 @@ export default function CustomerVoting() {
       if (err.response?.status === 404) {
         setError('Venue not found');
       } else {
-        setError('Could not refresh queue. Showing latest saved data.');
+        // Soft error — keep existing queue data visible
+        setError('Connection lost. Reconnecting…');
       }
     } finally {
       setLoading(false);
@@ -51,14 +54,22 @@ export default function CustomerVoting() {
   useEffect(() => {
     if (!venueCode) return;
 
-    // Customer pages use a separate socket instance so they don't share
-    // state with the venue player. We namespace by connecting fresh here.
-    const customerSocket = socket;
-    customerSocket.connect();
-    customerSocket.emit('join', venueCode);
+    function joinRoom() {
+      socket.emit('join', venueCode);
+    }
 
-    customerSocket.on('queue:updated', (data) => {
-      // Merge myVotes from local state so votes don't flicker on push
+    socket.connect();
+    joinRoom();
+
+    socket.on('connect', () => {
+      // Re-join after reconnect (iOS resume, network switch, server restart)
+      joinRoom();
+      // Re-fetch to catch any updates missed while disconnected
+      setTimeout(fetchQueue, 300);
+    });
+
+    socket.on('queue:updated', (data) => {
+      // Keep local myVotes so vote indicators don't flicker on server push
       setQueue((prev) => ({ ...data, myVotes: prev.myVotes || data.myVotes || {} }));
       setError(null);
       setLoading(false);
@@ -68,17 +79,14 @@ export default function CustomerVoting() {
     fetchQueue();
 
     return () => {
-      customerSocket.off('queue:updated');
-      customerSocket.disconnect();
+      socket.off('connect');
+      socket.off('queue:updated');
+      socket.disconnect();
     };
   }, [venueCode, fetchQueue]);
 
-  // ── Fallback poll every 15s in case WebSocket drops ──────────────────────
-  useEffect(() => {
-    if (!venueCode) return;
-    const interval = setInterval(fetchQueue, 15000);
-    return () => clearInterval(interval);
-  }, [venueCode, fetchQueue]);
+  // ── Fallback poll — visibility-aware, pauses when phone screen off ───────
+  useVisibilityAwarePolling(fetchQueue, 15000);
 
   async function handleRequestSong(song, paymentInfo) {
     try {
@@ -99,7 +107,7 @@ export default function CustomerVoting() {
         return;
       } else {
         await api.requestSong(venueCode, song, deviceId);
-        // Socket push will update the queue; also fetch to get myVotes
+        // Socket push will update the queue; also fetch to refresh myVotes
         fetchQueue();
       }
     } catch (err) {
@@ -112,7 +120,7 @@ export default function CustomerVoting() {
       <div className="min-h-screen bg-dark-950 text-white flex justify-center items-center pb-safe">
         <div className="text-center">
           <div className="w-10 h-10 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-dark-400">Loading...</p>
+          <p className="text-dark-400">Connecting to venue…</p>
         </div>
       </div>
     );
