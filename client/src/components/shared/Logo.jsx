@@ -2,9 +2,9 @@ export default function Logo({ size = 'md', className = '' }) {
   const sizes = {
     sm: 'h-8',
     md: 'h-10',
-    lg: 'h-12',
-    xl: 'h-14',
-    '2xl': 'h-18 sm:h-20',
+    lg: 'h-14',
+    xl: 'h-20',
+    '2xl': 'h-36 sm:h-44',
   };
 
   return (
