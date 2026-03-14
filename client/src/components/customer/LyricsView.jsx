@@ -36,32 +36,49 @@ export default function LyricsView({ song, lyricsData, onClose }) {
   const [isSynced, setIsSynced] = useState(init.isSynced);
   const [currentIdx, setCurrentIdx] = useState(0);
   const lineRefs = useRef([]);
-  // Ref so the tick always reads the latest startedAt without restarting the interval
-  const startedAtRef = useRef(song?.startedAt ?? null);
+  // Ref so the tick always reads the latest anchor values without restarting the interval.
+  // Supports both the new anchor pattern (positionMs + positionAnchoredAt) and
+  // the legacy startedAt field.
+  const anchorRef = useRef({
+    positionMs: song?.positionMs ?? 0,
+    positionAnchoredAt: song?.positionAnchoredAt ?? song?.startedAt ?? null,
+    isPaused: song?.isPaused ?? false,
+  });
 
-  // Keep startedAtRef in sync whenever the prop updates (e.g. after reportPlaying)
+  // Keep anchorRef in sync whenever the song prop updates (e.g. after reportPlaying)
   useEffect(() => {
-    startedAtRef.current = song?.startedAt ?? null;
-  }, [song?.startedAt]);
+    anchorRef.current = {
+      positionMs: song?.positionMs ?? 0,
+      positionAnchoredAt: song?.positionAnchoredAt ?? song?.startedAt ?? null,
+      isPaused: song?.isPaused ?? false,
+    };
+  }, [song?.positionMs, song?.positionAnchoredAt, song?.startedAt, song?.isPaused]);
 
   // Re-parse if song or lyricsData changes while the overlay is mounted
   useEffect(() => {
     if (!song) return;
     setCurrentIdx(0);
-    startedAtRef.current = song.startedAt ?? null;
+    anchorRef.current = {
+      positionMs: song.positionMs ?? 0,
+      positionAnchoredAt: song.positionAnchoredAt ?? song.startedAt ?? null,
+      isPaused: song.isPaused ?? false,
+    };
     const { lines: newLines, isSynced: newSynced } = initFromLyricsData(lyricsData);
     setLines(newLines);
     setIsSynced(newSynced);
   }, [song?.appleId, lyricsData]);
 
   // Tick every 300ms to find the current lyric line.
-  // Reads startedAt from a ref so a server-side update never restarts the timer.
+  // Reads anchor values from a ref so server updates never restart the timer.
   useEffect(() => {
     if (!isSynced || !lines?.length) return;
     const tick = setInterval(() => {
-      const startedAt = startedAtRef.current;
-      if (!startedAt) return;
-      const elapsed = (Date.now() - startedAt) / 1000;
+      const { positionMs, positionAnchoredAt, isPaused } = anchorRef.current;
+      if (!positionAnchoredAt) return;
+      // Mirror server's getCurrentPositionMs: frozen when paused, else add elapsed time
+      const elapsed = isPaused
+        ? positionMs / 1000
+        : (positionMs + (Date.now() - positionAnchoredAt)) / 1000;
       let idx = 0;
       for (let i = 0; i < lines.length; i++) {
         if (lines[i].time <= elapsed) idx = i;
