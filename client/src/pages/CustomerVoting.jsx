@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import api from '../utils/api';
+import socket from '../utils/socket';
 import { getDeviceId } from '../utils/deviceId';
 import NowPlaying from '../components/customer/NowPlaying';
 import UpcomingQueue from '../components/customer/UpcomingQueue';
@@ -9,18 +10,17 @@ import LyricsView from '../components/customer/LyricsView';
 
 export default function CustomerVoting() {
   const { venueCode } = useParams();
-  const navigate = useNavigate();
   const [queue, setQueue] = useState({ nowPlaying: null, upcoming: [], requestSettings: {} });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showLyrics, setShowLyrics] = useState(false);
-  const [lyricsData, setLyricsData] = useState(null); // pre-fetched lyrics for current song
+  const [lyricsData, setLyricsData] = useState(null);
   const deviceId = getDeviceId();
 
-  // Pre-fetch lyrics whenever the playing song changes so the button only shows when lyrics exist
+  // Pre-fetch lyrics whenever the playing song changes
   useEffect(() => {
     const song = queue.nowPlaying;
-    setShowLyrics(false); // close overlay whenever the song changes
+    setShowLyrics(false);
     if (!song) { setLyricsData(null); return; }
     setLyricsData(null);
     api.getLyrics(song.title, song.artist, song.duration)
@@ -31,14 +31,7 @@ export default function CustomerVoting() {
       .catch(() => setLyricsData(null));
   }, [queue.nowPlaying?.appleId]);
 
-  useEffect(() => {
-    if (!venueCode) return;
-    fetchQueue();
-    const interval = setInterval(fetchQueue, 2000);
-    return () => clearInterval(interval);
-  }, [venueCode]);
-
-  async function fetchQueue() {
+  const fetchQueue = useCallback(async () => {
     try {
       const response = await api.getQueue(venueCode, deviceId);
       setQueue(response.data);
@@ -47,13 +40,45 @@ export default function CustomerVoting() {
       if (err.response?.status === 404) {
         setError('Venue not found');
       } else {
-        // Soft error: show warning but keep existing queue data
         setError('Could not refresh queue. Showing latest saved data.');
       }
     } finally {
       setLoading(false);
     }
-  }
+  }, [venueCode, deviceId]);
+
+  // ── Socket.IO — primary real-time updates ────────────────────────────────
+  useEffect(() => {
+    if (!venueCode) return;
+
+    // Customer pages use a separate socket instance so they don't share
+    // state with the venue player. We namespace by connecting fresh here.
+    const customerSocket = socket;
+    customerSocket.connect();
+    customerSocket.emit('join', venueCode);
+
+    customerSocket.on('queue:updated', (data) => {
+      // Merge myVotes from local state so votes don't flicker on push
+      setQueue((prev) => ({ ...data, myVotes: prev.myVotes || data.myVotes || {} }));
+      setError(null);
+      setLoading(false);
+    });
+
+    // Initial fetch
+    fetchQueue();
+
+    return () => {
+      customerSocket.off('queue:updated');
+      customerSocket.disconnect();
+    };
+  }, [venueCode, fetchQueue]);
+
+  // ── Fallback poll every 15s in case WebSocket drops ──────────────────────
+  useEffect(() => {
+    if (!venueCode) return;
+    const interval = setInterval(fetchQueue, 15000);
+    return () => clearInterval(interval);
+  }, [venueCode, fetchQueue]);
 
   async function handleRequestSong(song, paymentInfo) {
     try {
@@ -70,11 +95,11 @@ export default function CustomerVoting() {
           window.location.href = res.data.redirectUrl;
           return;
         }
-        // Payment API responded but gave no redirect — treat as a server error
         alert('Payment could not be started. Please try again.');
         return;
       } else {
         await api.requestSong(venueCode, song, deviceId);
+        // Socket push will update the queue; also fetch to get myVotes
         fetchQueue();
       }
     } catch (err) {
@@ -126,7 +151,13 @@ export default function CustomerVoting() {
           />
         )}
 
-        <UpcomingQueue songs={queue.upcoming} />
+        <UpcomingQueue
+          songs={queue.upcoming}
+          myVotes={queue.myVotes}
+          venueCode={venueCode}
+          deviceId={deviceId}
+          onVote={fetchQueue}
+        />
       </div>
     </div>
   );

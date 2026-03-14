@@ -1,11 +1,11 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import api from '../utils/api';
+import socket from '../utils/socket';
 
 const VenuePlaybackContext = createContext(null);
 
 export function useVenuePlayback() {
-  const ctx = useContext(VenuePlaybackContext);
-  return ctx;
+  return useContext(VenuePlaybackContext);
 }
 
 export function VenuePlaybackProvider({ venueCode, children }) {
@@ -26,7 +26,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const currentSongIdRef = useRef(null);
   const isTransitioningRef = useRef(false);
   const autoplayModeRef = useRef(autoplayMode);
-  const autofill404UntilRef = useRef(0); // Back off autofill after 404 (venue not found)
+  const autofill404UntilRef = useRef(0);
   useEffect(() => { autoplayModeRef.current = autoplayMode; }, [autoplayMode]);
 
   // ── Initialize MusicKit ──────────────────────────────────────────────────
@@ -80,7 +80,6 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     const music = musicRef.current;
     if (!music || !song?.appleId) return;
     try {
-      // Only await authorize if not yet authorized — extra awaits break the iOS gesture chain
       if (!music.isAuthorized) {
         await music.authorize();
         setIsAuthorized(music.isAuthorized);
@@ -89,7 +88,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       await music.setQueue({ songs: [song.appleId] });
       await music.play();
       setWaitingForGesture(false);
-      await api.reportPlaying(venueCode, song.id);
+      await api.reportPlaying(venueCode, song.id, 0);
     } catch (err) {
       if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
         setWaitingForGesture(true);
@@ -109,7 +108,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     } catch (err) {
       if (err?.response?.status === 404) {
         autofill404UntilRef.current = Date.now() + 60000;
-        console.warn('Autofill: venue not found. If you just deployed, register again on this server.');
+        console.warn('Autofill: venue not found.');
       } else {
         console.error('Autofill error:', err);
       }
@@ -117,58 +116,80 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     }
   }, [venueCode]);
 
+  const handleQueueUpdate = useCallback(async (newQueue) => {
+    setQueue(newQueue);
+    const nowPlaying = newQueue.nowPlaying;
+
+    if (nowPlaying && nowPlaying.id !== currentSongIdRef.current && !isTransitioningRef.current) {
+      const currentAppleId = musicRef.current?.nowPlayingItem?.id;
+      if (currentAppleId && String(currentAppleId) === String(nowPlaying.appleId)) {
+        currentSongIdRef.current = nowPlaying.id;
+      } else if (musicRef.current?.playbackState === 3) {
+        // Paused — don't force a new song; user will unpause manually
+      } else {
+        isTransitioningRef.current = true;
+        currentSongIdRef.current = nowPlaying.id;
+        await playSong(nowPlaying);
+        isTransitioningRef.current = false;
+      }
+    }
+
+    if (!nowPlaying && autoplayModeRef.current !== 'off' && !isTransitioningRef.current) {
+      const filled = await tryAutofill();
+      if (filled) {
+        try {
+          const r = await api.getQueue(venueCode);
+          setQueue(r.data);
+          const np = r.data?.nowPlaying;
+          if (np && np.id !== currentSongIdRef.current && !isTransitioningRef.current) {
+            isTransitioningRef.current = true;
+            currentSongIdRef.current = np.id;
+            await playSong(np);
+            isTransitioningRef.current = false;
+          }
+        } catch {}
+      }
+    }
+  }, [venueCode, playSong, tryAutofill]);
+
   const fetchQueue = useCallback(async () => {
     if (!venueCode) return;
     try {
       const res = await api.getQueue(venueCode);
-      const newQueue = res.data;
-      setQueue(newQueue);
-      const nowPlaying = newQueue.nowPlaying;
-
-      if (nowPlaying && nowPlaying.id !== currentSongIdRef.current && !isTransitioningRef.current) {
-        const currentAppleId = musicRef.current?.nowPlayingItem?.id;
-        if (currentAppleId && String(currentAppleId) === String(nowPlaying.appleId)) {
-          currentSongIdRef.current = nowPlaying.id;
-        } else if (musicRef.current?.playbackState === 3) {
-          // Music is paused by user — don't force a new song to start automatically.
-          // handlePlayPause will pick up the new song when the user unpauses.
-        } else {
-          isTransitioningRef.current = true;
-          currentSongIdRef.current = nowPlaying.id;
-          await playSong(nowPlaying);
-          isTransitioningRef.current = false;
-        }
-      }
-
-      if (!nowPlaying && autoplayModeRef.current !== 'off' && !isTransitioningRef.current) {
-        const filled = await tryAutofill();
-        if (filled) {
-          // Immediately pick up the autofilled song — don't wait 2s for the next poll
-          try {
-            const r = await api.getQueue(venueCode);
-            setQueue(r.data);
-            const np = r.data?.nowPlaying;
-            if (np && np.id !== currentSongIdRef.current && !isTransitioningRef.current) {
-              isTransitioningRef.current = true;
-              currentSongIdRef.current = np.id;
-              await playSong(np);
-              isTransitioningRef.current = false;
-            }
-          } catch {}
-        }
-      }
+      await handleQueueUpdate(res.data);
     } catch (err) {
       console.error('Queue poll error:', err);
     }
-  }, [venueCode, playSong, tryAutofill]);
+  }, [venueCode, handleQueueUpdate]);
 
+  // ── Socket.IO — primary real-time updates ────────────────────────────────
   useEffect(() => {
     if (!venueCode) return;
+
+    socket.connect();
+    socket.emit('join', venueCode);
+
+    socket.on('queue:updated', (data) => {
+      handleQueueUpdate(data);
+    });
+
+    // Initial fetch on connect
     fetchQueue();
-    const interval = setInterval(fetchQueue, 2000);
+
+    return () => {
+      socket.off('queue:updated');
+      socket.disconnect();
+    };
+  }, [venueCode, fetchQueue, handleQueueUpdate]);
+
+  // ── Fallback poll every 15s in case WebSocket drops ──────────────────────
+  useEffect(() => {
+    if (!venueCode) return;
+    const interval = setInterval(fetchQueue, 15000);
     return () => clearInterval(interval);
   }, [venueCode, fetchQueue]);
 
+  // ── MusicKit song-ended handler ──────────────────────────────────────────
   useEffect(() => {
     const music = musicRef.current;
     if (!music || !venueCode) return;
@@ -180,12 +201,10 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         try {
           await api.advanceQueue(venueCode);
           if (autoplayModeRef.current !== 'off') {
-            // Fetch queue immediately after advance — upcoming[0] may already be nowPlaying
             let nextRes = await api.getQueue(venueCode);
             setQueue(nextRes.data);
             let np = nextRes.data?.nowPlaying;
 
-            // Queue was empty after advance — try autofill to get the next song
             if (!np) {
               const filled = await tryAutofill();
               if (filled) {
@@ -195,7 +214,6 @@ export function VenuePlaybackProvider({ venueCode, children }) {
               }
             }
 
-            // Play immediately — no isTransitioningRef guard needed, we own this transition
             if (np) {
               currentSongIdRef.current = np.id;
               await playSong(np);

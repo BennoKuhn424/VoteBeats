@@ -12,7 +12,13 @@ function advanceToNextSong(venueCode) {
   const [nextSong, ...rest] = queue.upcoming;
 
   db.updateQueue(venueCode, {
-    nowPlaying: { ...nextSong, startedAt: Date.now() },
+    nowPlaying: {
+      ...nextSong,
+      // Anchor pattern: positionMs=0 at the moment playback starts
+      positionMs: 0,
+      positionAnchoredAt: Date.now(),
+      isPaused: false,
+    },
     upcoming: rest,
   });
 }

@@ -37,8 +37,10 @@ export default {
   vote: (venueCode, songId, voteValue, deviceId) =>
     api.post(`/queue/${venueCode}/vote`, { songId, voteValue, deviceId }),
   skipSong: (venueCode) => api.post(`/queue/${venueCode}/skip`),
-  reportPlaying: (venueCode, songId) =>
-    api.post(`/queue/${venueCode}/playing`, { songId }),
+  reportPlaying: (venueCode, songId, positionSeconds) =>
+    api.post(`/queue/${venueCode}/playing`, { songId, positionSeconds: positionSeconds || 0 }),
+  pausePlaying: (venueCode, songId) =>
+    api.post(`/queue/${venueCode}/pause`, { songId }),
   advanceQueue: (venueCode) => api.post(`/queue/${venueCode}/advance`),
   autofillQueue: (venueCode) => api.get(`/queue/${venueCode}/autofill`),
   removeSong: (venueCode, songId) => api.delete(`/queue/${venueCode}/song/${songId}`),

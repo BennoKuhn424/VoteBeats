@@ -1,12 +1,35 @@
 require('dotenv').config();
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
+const { Server } = require('socket.io');
 const { advanceToNextSong } = require('./utils/queueAdvance');
+const broadcast = require('./utils/broadcast');
 const db = require('./utils/database');
 const { yocoWebhook } = require('./routes/webhooks');
 
 const app = express();
+const httpServer = http.createServer(app);
 
+// ── Socket.IO ────────────────────────────────────────────────────────────────
+const io = new Server(httpServer, {
+  cors: { origin: '*' },
+  // Reconnection is handled client-side; this keeps idle connections alive
+  pingInterval: 25000,
+  pingTimeout: 60000,
+});
+
+broadcast.init(io);
+
+io.on('connection', (socket) => {
+  socket.on('join', (venueCode) => {
+    if (typeof venueCode === 'string' && venueCode) {
+      socket.join(`venue:${venueCode}`);
+    }
+  });
+});
+
+// ── Express middleware ────────────────────────────────────────────────────────
 app.use(cors());
 
 // Yoco webhook needs raw body for signature verification (must be before express.json)
@@ -23,25 +46,41 @@ app.use('/api/music', require('./routes/music'));
 app.use('/api/venue', require('./routes/venue'));
 app.use('/api/admin', require('./routes/admin'));
 
-// Auto-advance songs when duration ends; also start first song when queue has items but nothing playing
+// ── Auto-advance interval ─────────────────────────────────────────────────────
+// Computes current position using the anchor pattern (Spotify-style):
+//   currentPositionMs = positionMs + (Date.now() - positionAnchoredAt)
+// Falls back to legacy startedAt field for songs set before this update.
 setInterval(() => {
   const queues = db.getQueues();
   Object.entries(queues).forEach(([venueCode, queue]) => {
+    const np = queue.nowPlaying;
     const upcoming = queue.upcoming || [];
-    if (queue.nowPlaying) {
-      const elapsed = Date.now() - (queue.nowPlaying.startedAt || 0);
-      let durationSec = queue.nowPlaying.duration || 180;
-      if (durationSec < 60) durationSec = 180;
-      const durationMs = durationSec * 1000;
-      if (elapsed >= durationMs) {
+
+    if (np) {
+      // Skip advance while paused
+      if (np.isPaused || np.pausedAt) return;
+
+      let durationMs = (np.duration || 180) * 1000;
+      if (durationMs < 60000) durationMs = 180000;
+
+      // Anchor pattern position
+      const posMs = np.positionMs ?? 0;
+      const anchoredAt = np.positionAnchoredAt ?? np.startedAt ?? Date.now();
+      const currentPos = posMs + (Date.now() - anchoredAt);
+
+      if (currentPos >= durationMs) {
         advanceToNextSong(venueCode);
+        const updated = db.getQueue(venueCode);
+        broadcast.broadcastQueue(venueCode, updated);
       }
     } else if (upcoming.length > 0) {
       // Auto-start first song when nothing is playing
       advanceToNextSong(venueCode);
+      const updated = db.getQueue(venueCode);
+      broadcast.broadcastQueue(venueCode, updated);
     }
   });
 }, 5000);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Speeldit server running on port ${PORT}`));
+httpServer.listen(PORT, () => console.log(`Speeldit server running on port ${PORT}`));

@@ -5,10 +5,22 @@ const authMiddleware = require('../middleware/authMiddleware');
 const { advanceToNextSong } = require('../utils/queueAdvance');
 const { fulfillPaidRequest } = require('../utils/paymentFulfill');
 const { searchByGenre, pickFromPlaylist } = require('../utils/appleMusicAPI');
+const broadcast = require('../utils/broadcast');
 
 const router = express.Router();
 
-// ── Server-side autofill (keeps queue moving without VenuePlayer being open) ──
+// ── Anchor-pattern helper ─────────────────────────────────────────────────────
+// Computes how many ms into the song we are right now.
+// Works for both new anchor fields and the legacy startedAt field.
+function getCurrentPositionMs(np) {
+  if (!np) return 0;
+  const posMs = np.positionMs ?? 0;
+  const anchoredAt = np.positionAnchoredAt ?? np.startedAt ?? Date.now();
+  if (np.isPaused || np.pausedAt) return posMs; // frozen when paused
+  return posMs + (Date.now() - anchoredAt);
+}
+
+// ── Server-side autofill ──────────────────────────────────────────────────────
 const pendingAutofillVenues = new Set();
 
 async function serverAutofill(venueCode, venue) {
@@ -33,36 +45,44 @@ async function serverAutofill(venueCode, venue) {
     }
     if (!song) return;
 
+    const now = Date.now();
     db.updateQueue(venueCode, {
       nowPlaying: {
         ...song,
-        id: song.id || `autofill_${Date.now()}`,
+        id: song.id || `autofill_${now}`,
         votes: 0,
         requestedBy: '__autofill__',
-        requestedAt: Date.now(),
-        startedAt: Date.now(),
+        requestedAt: now,
+        positionMs: 0,
+        positionAnchoredAt: now,
+        isPaused: false,
       },
       upcoming: [],
     });
+    broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
   } finally {
     pendingAutofillVenues.delete(venueCode);
   }
 }
 
-// GET /api/queue/:venueCode?deviceId=xxx (deviceId optional – returns myVotes for this device when provided)
+// GET /api/queue/:venueCode?deviceId=xxx
 router.get('/:venueCode', (req, res) => {
   const { venueCode } = req.params;
   const { deviceId } = req.query;
   let queue = db.getQueue(venueCode);
   const venue = db.getVenue(venueCode);
 
-  // Auto-advance based on elapsed time so the queue keeps moving on any page
+  // Auto-advance based on anchor position so any page poll can trigger it
   const np = queue.nowPlaying;
-  if (np?.startedAt && np?.duration) {
-    const endTime = np.startedAt + (np.duration + 5) * 1000; // 5s grace
-    if (Date.now() > endTime) {
+  if (np && !np.isPaused && !np.pausedAt) {
+    const duration = np.duration || 180;
+    let durationMs = duration * 1000;
+    if (durationMs < 60000) durationMs = 180000;
+    const currentPos = getCurrentPositionMs(np) + 5000; // 5s grace
+    if (currentPos >= durationMs) {
       advanceToNextSong(venueCode);
       queue = db.getQueue(venueCode);
+      broadcast.broadcastQueue(venueCode, queue);
       if (!queue.nowPlaying) {
         const s = venue?.settings;
         if (s?.autoplayMode !== 'off' && s?.autoplayQueue !== false) {
@@ -115,7 +135,6 @@ router.post('/:venueCode/request', (req, res) => {
   const upcoming = queue.upcoming || [];
   const userSongs = upcoming.filter((s) => s.requestedBy === deviceId);
 
-  // Prevent duplicate: same song (by id or appleId) already in queue
   const songId = song.id || song.appleId;
   const alreadyInQueue = upcoming.some(
     (s) => (s.id && s.id === songId) || (s.appleId && s.appleId === song.appleId)
@@ -143,6 +162,7 @@ router.post('/:venueCode/request', (req, res) => {
     upcoming: [...(queue.upcoming || []), newSong],
   };
   db.updateQueue(venueCode, updatedQueue);
+  broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
 
   res.json({ success: true, song: newSong });
 });
@@ -171,7 +191,6 @@ router.post('/:venueCode/vote', (req, res) => {
   }
 
   const queue = db.getQueue(venueCode);
-  // Vote applies to both nowPlaying and upcoming
   const song =
     (queue.upcoming || []).find((s) => s.id === songId) ||
     (queue.nowPlaying?.id === songId ? queue.nowPlaying : null);
@@ -179,6 +198,7 @@ router.post('/:venueCode/vote', (req, res) => {
   if (song) {
     song.votes = (song.votes || 0) + voteDelta;
     db.updateQueue(venueCode, queue);
+    broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
   }
 
   res.json({
@@ -188,8 +208,34 @@ router.post('/:venueCode/vote', (req, res) => {
   });
 });
 
-// POST /api/queue/:venueCode/playing - Venue player reports playback start (updates startedAt for accurate auto-advance)
+// POST /api/queue/:venueCode/playing
+// Venue player reports playback started or resumed.
+// positionSeconds (optional): current playback position so the anchor is accurate on resume/rewind.
 router.post('/:venueCode/playing', (req, res) => {
+  const { venueCode } = req.params;
+  const { songId, positionSeconds } = req.body;
+
+  const queue = db.getQueue(venueCode);
+  if (!queue.nowPlaying || (queue.nowPlaying.id !== songId && String(queue.nowPlaying.appleId) !== String(songId))) {
+    return res.json({ success: true, matched: false });
+  }
+
+  const pos = typeof positionSeconds === 'number' && positionSeconds > 0 ? positionSeconds : 0;
+  queue.nowPlaying.positionMs = Math.round(pos * 1000);
+  queue.nowPlaying.positionAnchoredAt = Date.now();
+  queue.nowPlaying.isPaused = false;
+  // Clean up legacy fields
+  delete queue.nowPlaying.startedAt;
+  delete queue.nowPlaying.pausedAt;
+
+  db.updateQueue(venueCode, queue);
+  broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
+  res.json({ success: true, matched: true });
+});
+
+// POST /api/queue/:venueCode/pause
+// Venue player reports playback paused — freezes the anchor so the timer stops.
+router.post('/:venueCode/pause', (req, res) => {
   const { venueCode } = req.params;
   const { songId } = req.body;
 
@@ -198,12 +244,19 @@ router.post('/:venueCode/playing', (req, res) => {
     return res.json({ success: true, matched: false });
   }
 
-  queue.nowPlaying.startedAt = Date.now();
+  // Freeze position at the current computed value
+  queue.nowPlaying.positionMs = getCurrentPositionMs(queue.nowPlaying);
+  queue.nowPlaying.positionAnchoredAt = Date.now();
+  queue.nowPlaying.isPaused = true;
+  delete queue.nowPlaying.startedAt;
+  delete queue.nowPlaying.pausedAt;
+
   db.updateQueue(venueCode, queue);
+  broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
   res.json({ success: true, matched: true });
 });
 
-// POST /api/queue/:venueCode/advance - Venue player reports song ended (MusicKit completed)
+// POST /api/queue/:venueCode/advance - MusicKit reports song ended
 router.post('/:venueCode/advance', (req, res) => {
   const { venueCode } = req.params;
   const queue = db.getQueue(venueCode);
@@ -211,6 +264,7 @@ router.post('/:venueCode/advance', (req, res) => {
     return res.json({ success: true });
   }
   advanceToNextSong(venueCode);
+  broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
   res.json({ success: true });
 });
 
@@ -220,6 +274,7 @@ router.post('/:venueCode/skip', authMiddleware, (req, res) => {
     return res.status(403).json({ error: 'Unauthorized' });
   }
   advanceToNextSong(req.params.venueCode);
+  broadcast.broadcastQueue(req.params.venueCode, db.getQueue(req.params.venueCode));
   res.json({ success: true });
 });
 
@@ -234,11 +289,12 @@ router.delete('/:venueCode/song/:songId', authMiddleware, (req, res) => {
   const queue = db.getQueue(venueCode);
   queue.upcoming = (queue.upcoming || []).filter((s) => s.id !== songId);
   db.updateQueue(venueCode, queue);
+  broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
 
   res.json({ success: true });
 });
 
-// POST /api/queue/:venueCode/create-payment – create Yoco checkout for paid song request
+// POST /api/queue/:venueCode/create-payment
 router.post('/:venueCode/create-payment', async (req, res) => {
   const { venueCode } = req.params;
   const { song, deviceId, clientOrigin } = req.body;
@@ -259,7 +315,6 @@ router.post('/:venueCode/create-payment', async (req, res) => {
     return res.status(503).json({ error: 'Payment integration not configured' });
   }
 
-  // Use client's origin so redirect lands on same origin as storage (sessionStorage/localStorage)
   const baseUrl =
     (typeof clientOrigin === 'string' && clientOrigin) ||
     req.headers.origin ||
@@ -320,8 +375,7 @@ router.post('/:venueCode/create-payment', async (req, res) => {
   }
 });
 
-// GET /api/queue/:venueCode/request-status?checkoutId=xxx – check if paid request was fulfilled
-// Polls Yoco for payment status when webhook hasn't fired (e.g. localhost where Yoco can't reach webhook)
+// GET /api/queue/:venueCode/request-status?checkoutId=xxx
 router.get('/:venueCode/request-status', async (req, res) => {
   const { venueCode } = req.params;
   const { checkoutId } = req.query;
@@ -335,15 +389,12 @@ router.get('/:venueCode/request-status', async (req, res) => {
     return res.status(403).json({ error: 'Invalid checkout' });
   }
 
-  // Webhook may not reach localhost/private IP – poll Yoco for payment status
   const yocoSecret = process.env.YOCO_SECRET_KEY;
   if (yocoSecret) {
     try {
       const response = await fetch(
         `https://payments.yoco.com/api/checkouts/${checkoutId}`,
-        {
-          headers: { Authorization: `Bearer ${yocoSecret}` },
-        }
+        { headers: { Authorization: `Bearer ${yocoSecret}` } }
       );
       if (response.ok) {
         const data = await response.json();
@@ -358,6 +409,7 @@ router.get('/:venueCode/request-status', async (req, res) => {
         if (isComplete) {
           const amountCents = data.amount ?? data.payment?.amount ?? pending.amountCents;
           if (fulfillPaidRequest(checkoutId, amountCents)) {
+            broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
             return res.json({ fulfilled: true });
           }
         }
@@ -370,14 +422,13 @@ router.get('/:venueCode/request-status', async (req, res) => {
   res.json({ fulfilled: false });
 });
 
-// GET /api/queue/:venueCode/autofill – get a random song from the venue's autoplay genre
+// GET /api/queue/:venueCode/autofill
 router.get('/:venueCode/autofill', async (req, res) => {
   const { venueCode } = req.params;
   const venue = db.getVenue(venueCode);
   if (!venue) return res.status(404).json({ error: 'Venue not found' });
 
   const genreSetting = venue.settings?.autoplayGenre;
-  // Empty array → no genre filter → searchByGenre will pick any song (all genres ok)
   const genres = Array.isArray(genreSetting) ? genreSetting : (genreSetting ? [genreSetting] : []);
 
   const queue = db.getQueue(venueCode);
@@ -387,37 +438,34 @@ router.get('/:venueCode/autofill', async (req, res) => {
 
   try {
     const autoplayMode = venue.settings?.autoplayMode || 'playlist';
-
-    // If mode is 'playlist' and the venue has a curated playlist, pick from it.
     const activePl = (venue.playlists || []).find((p) => p.id === venue.activePlaylistId);
     const playlist = activePl?.songs || venue.playlist || [];
     let song = null;
     if (autoplayMode !== 'random' && playlist.length > 0) {
       song = pickFromPlaylist(playlist, venueCode);
     }
-
-    // Fall back to genre-based Apple Music search (always used for 'random' mode).
     if (!song) {
       song = await searchByGenre(genres, venueCode);
     }
-
     if (!song) {
       return res.status(404).json({ error: 'No songs found' });
     }
 
+    const now = Date.now();
     const newSong = {
       ...song,
-      id: song.id || `autofill_${Date.now()}`,
+      id: song.id || `autofill_${now}`,
       votes: 0,
       requestedBy: '__autofill__',
-      requestedAt: Date.now(),
+      requestedAt: now,
     };
 
     const updatedQueue = {
-      nowPlaying: { ...newSong, startedAt: Date.now() },
+      nowPlaying: { ...newSong, positionMs: 0, positionAnchoredAt: now, isPaused: false },
       upcoming: [],
     };
     db.updateQueue(venueCode, updatedQueue);
+    broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
 
     res.json({ filled: true, song: newSong });
   } catch (err) {
