@@ -28,6 +28,9 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const isTransitioningRef = useRef(false);
   const autoplayModeRef = useRef(autoplayMode);
   const autofill404UntilRef = useRef(0);
+  // True once the user has clicked something on this page — required before
+  // any music.play() call to satisfy browser autoplay policy.
+  const hasUserGestureRef = useRef(false);
   useEffect(() => { autoplayModeRef.current = autoplayMode; }, [autoplayMode]);
 
   // ── Initialize MusicKit ──────────────────────────────────────────────────
@@ -127,6 +130,10 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         currentSongIdRef.current = nowPlaying.id;
       } else if (musicRef.current?.playbackState === 3) {
         // Paused — don't force a new song; user will unpause manually
+      } else if (!hasUserGestureRef.current) {
+        // Page just loaded — no user gesture yet. Show "Tap to play" instead of
+        // calling music.play() which would trigger the browser autoplay dialog.
+        setWaitingForGesture(true);
       } else {
         isTransitioningRef.current = true;
         currentSongIdRef.current = nowPlaying.id;
@@ -258,6 +265,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     musicRef,
     currentSongIdRef,
     isTransitioningRef,
+    hasUserGestureRef,
   };
 
   return (

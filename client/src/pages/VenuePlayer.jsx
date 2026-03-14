@@ -38,6 +38,7 @@ export default function VenuePlayer() {
     musicRef,
     currentSongIdRef,
     isTransitioningRef,
+    hasUserGestureRef,
   } = playback;
 
   // ── Detect ?generatePlaylist=1 after Yoco redirect ────────────────────────
@@ -82,6 +83,7 @@ export default function VenuePlayer() {
   async function handlePlayPause() {
     const music = musicRef.current;
     if (!music) return;
+    hasUserGestureRef.current = true;
     const wasWaiting = waitingForGesture;
     setWaitingForGesture(false);
     const state = music.playbackState;
