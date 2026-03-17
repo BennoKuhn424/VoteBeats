@@ -152,22 +152,21 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     if (autoplayModeRef.current === 'off') return false;
     if (Date.now() < autofill404UntilRef.current) return false;
     try {
-      await api.autofillQueue(venueCode);
+      const res = await api.autofillQueue(venueCode);
+      if (res.data?.filled === false) {
+        // Server found no songs — apply backoff without a red 404 in the console
+        const backoff = autofillBackoffRef.current;
+        autofill404UntilRef.current = Date.now() + backoff;
+        console.warn(`Autofill: no songs — backing off ${backoff / 1000}s.`);
+        autofillBackoffRef.current = Math.min(backoff * 2, 30000);
+        if (autofillBackoffRef.current >= 20000) setAutofillNotice(true);
+        return false;
+      }
       autofillBackoffRef.current = 5000; // reset on success
       setAutofillNotice(false);
       return true;
     } catch (err) {
-      if (err?.response?.status === 404) {
-        const backoff = autofillBackoffRef.current;
-        autofill404UntilRef.current = Date.now() + backoff;
-        console.warn(`Autofill: no songs — backing off ${backoff / 1000}s.`);
-        // Escalate: 5s → 10s → 20s → 30s cap
-        autofillBackoffRef.current = Math.min(backoff * 2, 30000);
-        // Surface notice once backoff has escalated past 15s
-        if (autofillBackoffRef.current >= 20000) setAutofillNotice(true);
-      } else {
-        console.error('Autofill error:', err);
-      }
+      console.error('Autofill error:', err);
       return false;
     }
   }, [venueCode]);

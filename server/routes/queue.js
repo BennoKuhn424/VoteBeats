@@ -467,7 +467,7 @@ router.get('/:venueCode/autofill', async (req, res) => {
       song = await searchByGenre(genres, venueCode);
     }
     if (!song) {
-      return res.status(404).json({ error: 'No songs found' });
+      return res.json({ filled: false, reason: 'No songs found' });
     }
 
     const now = Date.now();
