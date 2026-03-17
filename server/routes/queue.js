@@ -259,17 +259,30 @@ router.post('/:venueCode/pause', (req, res) => {
 });
 
 // POST /api/queue/:venueCode/advance - MusicKit reports song ended
-// Body may include songId so the server can guard against double-advance races.
-router.post('/:venueCode/advance', (req, res) => {
+// Body may include songId to guard against double-advance races.
+// Returns nowPlaying so the client can start playing immediately without
+// a follow-up GET /queue or GET /autofill round-trip.
+router.post('/:venueCode/advance', async (req, res) => {
   const { venueCode } = req.params;
   const { songId } = req.body;
-  const queue = db.getQueue(venueCode);
+
+  advanceToNextSong(venueCode, songId || db.getQueue(venueCode).nowPlaying?.id);
+  let queue = db.getQueue(venueCode);
+
+  // If queue is now empty and autoplay is on, fill it synchronously so the
+  // client gets a nowPlaying in the same response — no extra round-trips.
   if (!queue.nowPlaying && (!queue.upcoming || queue.upcoming.length === 0)) {
-    return res.json({ success: true });
+    const venue = db.getVenue(venueCode);
+    const s = venue?.settings;
+    if (s?.autoplayMode !== 'off' && s?.autoplayQueue !== false) {
+      await serverAutofill(venueCode, venue).catch(() => {});
+      queue = db.getQueue(venueCode);
+    }
   }
-  advanceToNextSong(venueCode, songId || queue.nowPlaying?.id);
-  broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
-  res.json({ success: true });
+
+  // Single broadcast with the final state (avoids a transient empty-queue push)
+  broadcast.broadcastQueue(venueCode, queue);
+  res.json({ success: true, nowPlaying: queue.nowPlaying || null });
 });
 
 // POST /api/queue/:venueCode/skip (venue owner only)

@@ -28,6 +28,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const isTransitioningRef = useRef(false);
   const autoplayModeRef = useRef(autoplayMode);
   const autofill404UntilRef = useRef(0);
+  const autofillBackoffRef = useRef(5000); // escalates: 5s → 10s → 20s → 30s
   // True once the user has clicked something on this page — required before
   // any music.play() call to satisfy browser autoplay policy.
   const hasUserGestureRef = useRef(false);
@@ -117,6 +118,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         setWaitingForGesture(true);
       } else {
         console.error('Play error:', err);
+        // Clear ref so the next tap triggers a fresh load attempt
+        currentSongIdRef.current = null;
       }
       isTransitioningRef.current = false;
     }
@@ -127,11 +130,15 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     if (Date.now() < autofill404UntilRef.current) return false;
     try {
       await api.autofillQueue(venueCode);
+      autofillBackoffRef.current = 5000; // reset on success
       return true;
     } catch (err) {
       if (err?.response?.status === 404) {
-        autofill404UntilRef.current = Date.now() + 15000;
-        console.warn('Autofill: no songs or venue not found — backing off 15 s.');
+        const backoff = autofillBackoffRef.current;
+        autofill404UntilRef.current = Date.now() + backoff;
+        console.warn(`Autofill: no songs — backing off ${backoff / 1000}s.`);
+        // Escalate: 5s → 10s → 20s → 30s cap
+        autofillBackoffRef.current = Math.min(backoff * 2, 30000);
       } else {
         console.error('Autofill error:', err);
       }
@@ -236,24 +243,13 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         currentSongIdRef.current = null;
         isTransitioningRef.current = true;
         try {
-          // Pass the ended song's ID so the server can guard against
-          // a double-advance race with its own poll-based auto-advance.
-          await api.advanceQueue(venueCode, endedSongId);
+          // /advance now runs autofill internally and returns nowPlaying in one
+          // round-trip — no follow-up GET /queue or GET /autofill needed.
+          const res = await api.advanceQueue(venueCode, endedSongId);
           if (autoplayModeRef.current !== 'off') {
-            let nextRes = await api.getQueue(venueCode);
-            setQueue(nextRes.data);
-            let np = nextRes.data?.nowPlaying;
-
-            if (!np) {
-              const filled = await tryAutofill();
-              if (filled) {
-                nextRes = await api.getQueue(venueCode);
-                setQueue(nextRes.data);
-                np = nextRes.data?.nowPlaying;
-              }
-            }
-
+            const np = res.data?.nowPlaying;
             if (np) {
+              setQueue((prev) => ({ ...prev, nowPlaying: np }));
               currentSongIdRef.current = np.id;
               await playSong(np);
             }
@@ -264,7 +260,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     }
     music.addEventListener('playbackStateDidChange', onStateChange);
     return () => music.removeEventListener('playbackStateDidChange', onStateChange);
-  }, [venueCode, tryAutofill, playSong]);
+  }, [venueCode, playSong]);
 
   const value = {
     queue,

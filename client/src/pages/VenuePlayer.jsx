@@ -148,12 +148,9 @@ export default function VenuePlayer() {
   async function handlePrev() {
     const music = musicRef.current;
     if (!music) return;
-    if ((music.currentPlaybackTime || 0) > 3) {
-      await music.seekToTime(0);
-    } else {
-      try { await music.skipToPreviousItem(); } catch { await music.seekToTime(0); }
-    }
-    // Always reset server anchor to position 0 so auto-advance timer is correct
+    // Always seek to 0 — skipToPreviousItem() stalls because we load single-song
+    // queues, and its internal pause() call causes the "play interrupted" dialog.
+    try { await music.seekToTime(0); } catch {}
     if (queue.nowPlaying) {
       api.reportPlaying(venueCode, queue.nowPlaying.id, 0).catch(() => {});
     }
