@@ -99,7 +99,15 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         await music.authorize();
         setIsAuthorized(music.isAuthorized);
       }
-      try { await music.stop(); } catch {}
+      // Bring player to a stable idle state before loading a new queue.
+      // pause() first (safe from state 2); stop() resets to state 0.
+      // Skip stop() if already idle (state 0) — calling it then throws.
+      if (music.playbackState === 2) {
+        try { await music.pause(); } catch {}
+      }
+      if (music.playbackState !== 0) {
+        try { await music.stop(); } catch {}
+      }
       await music.setQueue({ songs: [song.appleId] });
       await music.play();
       setWaitingForGesture(false);
@@ -174,11 +182,13 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const fetchQueue = useCallback(async () => {
     if (!venueCode) return;
     try {
-      const res = await api.getQueue(venueCode);
+      // Short timeout: fail fast so the next poll cycle (15 s) can retry
+      // instead of blocking for 30 s (3 × 10 s retries).
+      const res = await api.getQueue(venueCode, undefined, { timeout: 5000, 'axios-retry': { retries: 1 } });
       await handleQueueUpdate(res.data);
     } catch (err) {
-      // Swallow — axios-retry already attempted 3 times; don't crash the player
-      console.warn('Queue fetch failed after retries:', err?.message);
+      // Swallow — don't crash the player on a transient network blip
+      console.warn('Queue fetch failed:', err?.message);
     }
   }, [venueCode, handleQueueUpdate]);
 

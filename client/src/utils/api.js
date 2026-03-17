@@ -35,8 +35,8 @@ axiosRetry(api, {
 });
 
 export default {
-  getQueue: (venueCode, deviceId) =>
-    api.get(`/queue/${venueCode}`, { params: deviceId ? { deviceId } : {} }),
+  getQueue: (venueCode, deviceId, config) =>
+    api.get(`/queue/${venueCode}`, { params: deviceId ? { deviceId } : {}, ...config }),
   requestSong: (venueCode, song, deviceId) =>
     api.post(`/queue/${venueCode}/request`, { song, deviceId }),
   createPayment: (venueCode, song, deviceId) =>
