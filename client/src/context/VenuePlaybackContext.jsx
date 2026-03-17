@@ -23,8 +23,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   // Incremented by retryInit() to re-run the MusicKit init effect
   const [initKey, setInitKey] = useState(0);
   const [volume, setVolume] = useState(() => {
-    const saved = localStorage.getItem('speeldit_volume');
-    return saved !== null ? Number(saved) : 70;
+    const parsed = Number(localStorage.getItem('speeldit_volume'));
+    return (!isNaN(parsed) && parsed >= 0) ? Math.min(parsed, 100) : 70;
   });
 
   const musicRef = useRef(null);
@@ -35,6 +35,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const autofillBackoffRef = useRef(5000); // escalates: 5s → 10s → 20s → 30s
   const playFailCountRef = useRef(0);       // consecutive playSong non-interaction failures
   const queueRef = useRef(queue);           // stable ref for health-check interval
+  const stuckSinceRef = useRef(null);       // timestamp when player went idle while server has nowPlaying
   // True once the user has clicked something on this page — required before
   // any music.play() call to satisfy browser autoplay policy.
   const hasUserGestureRef = useRef(false);
@@ -291,21 +292,46 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     return () => music.removeEventListener('playbackStateDidChange', onStateChange);
   }, [venueCode, playSong, fetchQueue]);
 
+  // ── Auto-clear autofill notice when a song starts ───────────────────────
+  useEffect(() => {
+    if (queue.nowPlaying) setAutofillNotice(false);
+  }, [queue.nowPlaying]);
+
   // ── Health check: detect MusicKit / server state divergence ─────────────
-  // Every 12 s, if the server thinks a song is playing but MusicKit is actually
-  // on a different track, surface a "Player disconnected" error so the venue
-  // owner can tap to reset rather than sitting in silence.
+  // Every 12 s check two conditions:
+  // 1. Player is playing but on a different track than the server expects.
+  // 2. Server has nowPlaying but MusicKit has been idle/ended for >15 s
+  //    (e.g. after an Apple Music popup killed playback).
   useEffect(() => {
     if (!venueCode) return;
     const interval = setInterval(() => {
       const music = musicRef.current;
-      if (!music || music.playbackState !== 2) return; // only check while playing
-      const serverAppleId = String(queueRef.current?.nowPlaying?.appleId || '');
-      const clientAppleId = String(music.nowPlayingItem?.id || '');
-      if (serverAppleId && clientAppleId && serverAppleId !== clientAppleId) {
-        console.warn('Health check: player/server divergence detected', { serverAppleId, clientAppleId });
-        setPlayerError('Player disconnected — tap to reset');
-        currentSongIdRef.current = null;
+      if (!music) return;
+      const serverNowPlaying = queueRef.current?.nowPlaying;
+      const state = music.playbackState;
+
+      if (state === 2) {
+        // Playing — reset stuck timer and check track divergence
+        stuckSinceRef.current = null;
+        const serverAppleId = String(serverNowPlaying?.appleId || '');
+        const clientAppleId = String(music.nowPlayingItem?.id || '');
+        if (serverAppleId && clientAppleId && serverAppleId !== clientAppleId) {
+          console.warn('Health check: track divergence', { serverAppleId, clientAppleId });
+          setPlayerError('Player disconnected — tap to reset');
+          currentSongIdRef.current = null;
+        }
+      } else if (serverNowPlaying && (state === 0 || state === 4 || state === 5)) {
+        // Server has a song but player is idle/stopped/ended — may be stuck
+        if (!stuckSinceRef.current) {
+          stuckSinceRef.current = Date.now();
+        } else if (Date.now() - stuckSinceRef.current > 15000) {
+          console.warn('Health check: player stuck idle while server has nowPlaying');
+          setPlayerError('Player disconnected — tap to reset');
+          currentSongIdRef.current = null;
+          stuckSinceRef.current = null;
+        }
+      } else {
+        stuckSinceRef.current = null; // state 1 (loading) or 3 (paused) — not stuck
       }
     }, 12000);
     return () => clearInterval(interval);
