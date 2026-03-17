@@ -147,13 +147,10 @@ export default function VenuePlayer() {
 
   async function handlePrev() {
     const music = musicRef.current;
-    if (!music) return;
-    // Always seek to 0 — skipToPreviousItem() stalls because we load single-song
-    // queues, and its internal pause() call causes the "play interrupted" dialog.
+    // Guard: seekToTime throws "without a previous descriptor" if no queue is set
+    if (!music || !queue.nowPlaying) return;
     try { await music.seekToTime(0); } catch {}
-    if (queue.nowPlaying) {
-      api.reportPlaying(venueCode, queue.nowPlaying.id, 0).catch(() => {});
-    }
+    api.reportPlaying(venueCode, queue.nowPlaying.id, 0).catch(() => {});
   }
 
   async function handleChangeMode(mode) {

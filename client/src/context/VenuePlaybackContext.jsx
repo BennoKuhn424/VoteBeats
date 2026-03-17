@@ -101,14 +101,10 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         setIsAuthorized(music.isAuthorized);
       }
       // Bring player to a stable idle state before loading a new queue.
-      // pause() first (safe from state 2); stop() resets to state 0.
-      // Skip stop() if already idle (state 0) — calling it then throws.
-      if (music.playbackState === 2) {
-        try { await music.pause(); } catch {}
-      }
-      if (music.playbackState !== 0) {
-        try { await music.stop(); } catch {}
-      }
+      // Always attempt both — state 1 (loading) also needs pause() before stop().
+      // All errors are swallowed; after stop() the player is in state 0.
+      try { await music.pause(); } catch {}
+      try { await music.stop(); } catch {}
       await music.setQueue({ songs: [song.appleId] });
       await music.play();
       setWaitingForGesture(false);
