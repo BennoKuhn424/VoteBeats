@@ -18,6 +18,10 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const [musicReady, setMusicReady] = useState(false);
   const [waitingForGesture, setWaitingForGesture] = useState(false);
   const [autoplayMode, setAutoplayMode] = useState('playlist');
+  const [playerError, setPlayerError] = useState(null);
+  const [autofillNotice, setAutofillNotice] = useState(false);
+  // Incremented by retryInit() to re-run the MusicKit init effect
+  const [initKey, setInitKey] = useState(0);
   const [volume, setVolume] = useState(() => {
     const saved = localStorage.getItem('speeldit_volume');
     return saved !== null ? Number(saved) : 70;
@@ -29,10 +33,14 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const autoplayModeRef = useRef(autoplayMode);
   const autofill404UntilRef = useRef(0);
   const autofillBackoffRef = useRef(5000); // escalates: 5s → 10s → 20s → 30s
+  const playFailCountRef = useRef(0);       // consecutive playSong non-interaction failures
+  const queueRef = useRef(queue);           // stable ref for health-check interval
   // True once the user has clicked something on this page — required before
   // any music.play() call to satisfy browser autoplay policy.
   const hasUserGestureRef = useRef(false);
+
   useEffect(() => { autoplayModeRef.current = autoplayMode; }, [autoplayMode]);
+  useEffect(() => { queueRef.current = queue; }, [queue]);
 
   // ── Initialize MusicKit ──────────────────────────────────────────────────
   useEffect(() => {
@@ -50,7 +58,10 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         if (!music) {
           const res = await api.getDeveloperToken();
           const devToken = res.data?.token || res.data?.developerToken;
-          if (!devToken) return;
+          if (!devToken) {
+            setPlayerError('Could not connect to Apple Music — tap Retry');
+            return;
+          }
           await MusicKit.configure({
             developerToken: devToken,
             app: { name: 'Speeldit', build: '1.0' },
@@ -61,6 +72,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         music.volume = volume / 100;
         setIsAuthorized(music.isAuthorized);
         setMusicReady(true);
+        setPlayerError(null); // clear any previous init error
         setIsPlaying(music.playbackState === 2);
         setPlaybackTime(music.currentPlaybackTime || 0);
         setPlaybackDuration(music.currentPlaybackDuration || 0);
@@ -74,6 +86,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         music.addEventListener('playbackTimeDidChange', timeListener);
       } catch (err) {
         console.error('MusicKit init error:', err);
+        setPlayerError('Could not connect to Apple Music — tap Retry');
       }
     }
     init();
@@ -85,7 +98,12 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         if (timeListener) music.removeEventListener('playbackTimeDidChange', timeListener);
       }
     };
-  }, [venueCode]);
+  }, [venueCode, initKey]); // initKey lets retryInit() re-run this effect
+
+  const retryInit = useCallback(() => {
+    setPlayerError(null);
+    setInitKey((k) => k + 1);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('speeldit_volume', String(volume));
@@ -108,6 +126,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       await music.setQueue({ songs: [song.appleId] });
       await music.play();
       setWaitingForGesture(false);
+      setPlayerError(null);
+      playFailCountRef.current = 0; // reset consecutive failure count
       await api.reportPlaying(venueCode, song.id, 0);
     } catch (err) {
       if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
@@ -116,6 +136,12 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         console.error('Play error:', err);
         // Clear ref so the next tap triggers a fresh load attempt
         currentSongIdRef.current = null;
+        // After 3 consecutive failures, surface a visible error
+        playFailCountRef.current += 1;
+        if (playFailCountRef.current >= 3) {
+          setPlayerError('Player needs attention — tap to reconnect Apple Music');
+          playFailCountRef.current = 0;
+        }
       }
       isTransitioningRef.current = false;
     }
@@ -127,6 +153,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     try {
       await api.autofillQueue(venueCode);
       autofillBackoffRef.current = 5000; // reset on success
+      setAutofillNotice(false);
       return true;
     } catch (err) {
       if (err?.response?.status === 404) {
@@ -135,6 +162,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         console.warn(`Autofill: no songs — backing off ${backoff / 1000}s.`);
         // Escalate: 5s → 10s → 20s → 30s cap
         autofillBackoffRef.current = Math.min(backoff * 2, 30000);
+        // Surface notice once backoff has escalated past 15s
+        if (autofillBackoffRef.current >= 20000) setAutofillNotice(true);
       } else {
         console.error('Autofill error:', err);
       }
@@ -239,7 +268,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         currentSongIdRef.current = null;
         isTransitioningRef.current = true;
         try {
-          // /advance now runs autofill internally and returns nowPlaying in one
+          // /advance runs autofill internally and returns nowPlaying in one
           // round-trip — no follow-up GET /queue or GET /autofill needed.
           const res = await api.advanceQueue(venueCode, endedSongId);
           if (autoplayModeRef.current !== 'off') {
@@ -248,6 +277,10 @@ export function VenuePlaybackProvider({ venueCode, children }) {
               setQueue((prev) => ({ ...prev, nowPlaying: np }));
               currentSongIdRef.current = np.id;
               await playSong(np);
+            } else {
+              // Server returned no next song (empty playlist / autofill failed).
+              // Do one reconciling fetch so the UI reflects the real server state.
+              fetchQueue();
             }
           }
         } catch {}
@@ -256,7 +289,27 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     }
     music.addEventListener('playbackStateDidChange', onStateChange);
     return () => music.removeEventListener('playbackStateDidChange', onStateChange);
-  }, [venueCode, playSong]);
+  }, [venueCode, playSong, fetchQueue]);
+
+  // ── Health check: detect MusicKit / server state divergence ─────────────
+  // Every 12 s, if the server thinks a song is playing but MusicKit is actually
+  // on a different track, surface a "Player disconnected" error so the venue
+  // owner can tap to reset rather than sitting in silence.
+  useEffect(() => {
+    if (!venueCode) return;
+    const interval = setInterval(() => {
+      const music = musicRef.current;
+      if (!music || music.playbackState !== 2) return; // only check while playing
+      const serverAppleId = String(queueRef.current?.nowPlaying?.appleId || '');
+      const clientAppleId = String(music.nowPlayingItem?.id || '');
+      if (serverAppleId && clientAppleId && serverAppleId !== clientAppleId) {
+        console.warn('Health check: player/server divergence detected', { serverAppleId, clientAppleId });
+        setPlayerError('Player disconnected — tap to reset');
+        currentSongIdRef.current = null;
+      }
+    }, 12000);
+    return () => clearInterval(interval);
+  }, [venueCode]);
 
   const value = {
     queue,
@@ -276,6 +329,11 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     autoplayMode,
     setAutoplayMode,
     autoplayModeRef,
+    playerError,
+    setPlayerError,
+    autofillNotice,
+    setAutofillNotice,
+    retryInit,
     playSong,
     tryAutofill,
     musicRef,

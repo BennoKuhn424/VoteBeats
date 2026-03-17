@@ -21,6 +21,7 @@ export default function VenuePlayer() {
 
   const {
     queue,
+    setQueue,
     fetchQueue,
     isPlaying,
     playbackTime,
@@ -34,6 +35,11 @@ export default function VenuePlayer() {
     autoplayMode,
     setAutoplayMode,
     autoplayModeRef,
+    playerError,
+    setPlayerError,
+    autofillNotice,
+    setAutofillNotice,
+    retryInit,
     playSong,
     musicRef,
     currentSongIdRef,
@@ -133,16 +139,26 @@ export default function VenuePlayer() {
   async function handleSkip() {
     const music = musicRef.current;
     if (music) { try { await music.stop(); } catch {} }
-    currentSongIdRef.current = null;
     isTransitioningRef.current = true;
+    currentSongIdRef.current = null;
+
+    // Optimistic update: immediately show and start the next song so there's
+    // no silent gap while the /skip request is in flight.
+    const optimisticNext = queue.upcoming[0];
+    if (optimisticNext) {
+      const nextNow = { ...optimisticNext, positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false };
+      setQueue({ nowPlaying: nextNow, upcoming: queue.upcoming.slice(1) });
+      currentSongIdRef.current = optimisticNext.id;
+      playSong(optimisticNext); // fire without await — reconcile after /skip
+    }
+
     try {
       await api.skipSong(venueCode);
-      isTransitioningRef.current = false;
-      await fetchQueue();
     } catch (err) {
       console.error('Skip error:', err);
-      isTransitioningRef.current = false;
     }
+    isTransitioningRef.current = false;
+    await fetchQueue(); // reconcile with server state
   }
 
   async function handlePrev() {
@@ -357,6 +373,27 @@ export default function VenuePlayer() {
             {generateStatus !== 'generating' && (
               <button type="button" onClick={() => setGenerateStatus(null)} className="text-xs text-zinc-400 hover:text-zinc-600 shrink-0">Dismiss</button>
             )}
+          </div>
+        </div>
+      )}
+
+      {playerError && (
+        <div className="shrink-0 border-b border-zinc-200 bg-red-50">
+          <div className="max-w-3xl mx-auto px-4 py-2 flex items-center justify-between gap-3">
+            <p className="text-sm font-medium text-red-700">{playerError}</p>
+            <div className="flex items-center gap-2 shrink-0">
+              <button type="button" onClick={retryInit} className="text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700">Retry</button>
+              <button type="button" onClick={() => setPlayerError(null)} className="text-xs text-zinc-400 hover:text-zinc-600">Dismiss</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {autofillNotice && (
+        <div className="shrink-0 border-b border-zinc-200 bg-amber-50">
+          <div className="max-w-3xl mx-auto px-4 py-2 flex items-center justify-between gap-3">
+            <p className="text-sm font-medium text-amber-700">No songs found for autoplay — add tracks to your playlist</p>
+            <button type="button" onClick={() => setAutofillNotice(false)} className="text-xs text-zinc-400 hover:text-zinc-600 shrink-0">Dismiss</button>
           </div>
         </div>
       )}
