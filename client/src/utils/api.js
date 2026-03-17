@@ -54,7 +54,7 @@ export default {
     api.post(`/queue/${venueCode}/playing`, { songId, positionSeconds: positionSeconds || 0 }),
   pausePlaying: (venueCode, songId) =>
     api.post(`/queue/${venueCode}/pause`, { songId }),
-  advanceQueue: (venueCode) => api.post(`/queue/${venueCode}/advance`),
+  advanceQueue: (venueCode, songId) => api.post(`/queue/${venueCode}/advance`, { songId }),
   autofillQueue: (venueCode) => api.get(`/queue/${venueCode}/autofill`),
   removeSong: (venueCode, songId) => api.delete(`/queue/${venueCode}/song/${songId}`),
 

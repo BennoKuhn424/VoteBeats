@@ -82,7 +82,7 @@ router.get('/:venueCode', (req, res) => {
     if (durationMs < 60000) durationMs = 180000;
     const currentPos = getCurrentPositionMs(np) + 5000; // 5s grace
     if (currentPos >= durationMs) {
-      advanceToNextSong(venueCode);
+      advanceToNextSong(venueCode, np.id);
       queue = db.getQueue(venueCode);
       broadcast.broadcastQueue(venueCode, queue);
       if (!queue.nowPlaying) {
@@ -259,13 +259,15 @@ router.post('/:venueCode/pause', (req, res) => {
 });
 
 // POST /api/queue/:venueCode/advance - MusicKit reports song ended
+// Body may include songId so the server can guard against double-advance races.
 router.post('/:venueCode/advance', (req, res) => {
   const { venueCode } = req.params;
+  const { songId } = req.body;
   const queue = db.getQueue(venueCode);
   if (!queue.nowPlaying && (!queue.upcoming || queue.upcoming.length === 0)) {
     return res.json({ success: true });
   }
-  advanceToNextSong(venueCode);
+  advanceToNextSong(venueCode, songId || queue.nowPlaying?.id);
   broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
   res.json({ success: true });
 });

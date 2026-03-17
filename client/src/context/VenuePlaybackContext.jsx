@@ -130,8 +130,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       return true;
     } catch (err) {
       if (err?.response?.status === 404) {
-        autofill404UntilRef.current = Date.now() + 60000;
-        console.warn('Autofill: venue not found.');
+        autofill404UntilRef.current = Date.now() + 15000;
+        console.warn('Autofill: no songs or venue not found — backing off 15 s.');
       } else {
         console.error('Autofill error:', err);
       }
@@ -232,10 +232,13 @@ export function VenuePlaybackProvider({ venueCode, children }) {
 
     async function onStateChange() {
       if (music.playbackState === 5 && currentSongIdRef.current) {
+        const endedSongId = currentSongIdRef.current;
         currentSongIdRef.current = null;
         isTransitioningRef.current = true;
         try {
-          await api.advanceQueue(venueCode);
+          // Pass the ended song's ID so the server can guard against
+          // a double-advance race with its own poll-based auto-advance.
+          await api.advanceQueue(venueCode, endedSongId);
           if (autoplayModeRef.current !== 'off') {
             let nextRes = await api.getQueue(venueCode);
             setQueue(nextRes.data);

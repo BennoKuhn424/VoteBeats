@@ -150,12 +150,12 @@ export default function VenuePlayer() {
     if (!music) return;
     if ((music.currentPlaybackTime || 0) > 3) {
       await music.seekToTime(0);
-      // Reset server timer so it doesn't think the song ended
-      if (queue.nowPlaying) {
-        api.reportPlaying(venueCode, queue.nowPlaying.id, 0).catch(() => {});
-      }
     } else {
       try { await music.skipToPreviousItem(); } catch { await music.seekToTime(0); }
+    }
+    // Always reset server anchor to position 0 so auto-advance timer is correct
+    if (queue.nowPlaying) {
+      api.reportPlaying(venueCode, queue.nowPlaying.id, 0).catch(() => {});
     }
   }
 

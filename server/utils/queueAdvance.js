@@ -1,7 +1,13 @@
 const db = require('./database');
 
-function advanceToNextSong(venueCode) {
+// Pass expectedSongId to guard against double-advance races (client /advance
+// and server poll can both trigger simultaneously when a song ends).
+function advanceToNextSong(venueCode, expectedSongId) {
   const queue = db.getQueue(venueCode);
+
+  // If the caller specified which song should be current and it no longer is,
+  // another advance already ran — bail out to avoid skipping an extra song.
+  if (expectedSongId && queue.nowPlaying?.id !== expectedSongId) return;
 
   if (queue.upcoming.length === 0) {
     db.updateQueue(venueCode, { nowPlaying: null, upcoming: [] });
