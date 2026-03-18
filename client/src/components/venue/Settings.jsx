@@ -93,7 +93,12 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
             onChange={(e) => setAllowExplicit(e.target.checked)}
             className="rounded border-dark-500 text-brand-500 focus:ring-brand-500"
           />
-          <span>Allow explicit content</span>
+          <span>
+            Allow explicit content
+            <span className={`block text-xs font-normal mt-0.5 ${isLight ? 'text-zinc-400' : 'text-dark-400'}`}>
+              Applies to customer requests and autoplay
+            </span>
+          </span>
         </label>
         <div>
           <label className={`block text-sm font-medium mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>Max songs per user</label>
@@ -109,9 +114,12 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
           />
         </div>
         <div>
-          <label className={`block text-sm font-medium mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>
-            Genre filters (comma-separated, leave empty for all)
+          <label className={`block text-sm font-medium mb-1 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>
+            Request genre filter
           </label>
+          <p className={`text-xs mb-2 ${isLight ? 'text-zinc-400' : 'text-dark-500'}`}>
+            Limits what genres customers can search and request. Leave empty to allow all genres.
+          </p>
           <input
             type="text"
             value={genreFilters}
@@ -135,9 +143,12 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
           </label>
           {autoplayQueue && (
             <div>
-              <label className={`block text-sm font-medium mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>
-                Auto-play categories (when queue is empty)
+              <label className={`block text-sm font-medium mb-1 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>
+                Autoplay genres
               </label>
+              <p className={`text-xs mb-2 ${isLight ? 'text-zinc-400' : 'text-dark-500'}`}>
+                Used to pick songs automatically when the queue runs empty. Does not affect what customers can request.
+              </p>
               {autoplayGenres.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-3">
                   {autoplayGenres.map((g) => (

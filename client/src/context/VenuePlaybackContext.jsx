@@ -45,15 +45,24 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   // any music.play() call to satisfy browser autoplay policy.
   const hasUserGestureRef = useRef(false);
 
+  // Internal error codes — used in logs so you can grep production output
+  // by code rather than by the display string (which can change freely).
+  // APPLE_INIT_FAIL  → MusicKit configure/token failed
+  // PLAY_FAIL_RETRY  → playSong failed once, retrying
+  // PLAY_FAIL_ATTN   → playSong failed 3+ times, needs manual intervention
+  // PLAYER_WATCHDOG  → transition stuck >10s, force-reset
+  // HC_PLAYER_STUCK  → health check: server has song but MusicKit idle >15s
+  // HC_TRACK_DIV     → health check: MusicKit playing different track than server
+
   // Error priority — lower number = higher priority.
   // Only overwrite current error if the new one is equally or more critical,
   // so a soft "retrying…" notice never silences an auth failure banner.
   const ERROR_PRIORITY = {
-    'Could not connect to Apple Music — tap Retry': 1,
-    'Player needs attention — tap to reconnect Apple Music': 2,
-    'Player disconnected — tap to reset': 3,
-    'Something went wrong — tap Play to retry': 4,
-    'Playback failed — retrying…': 5,
+    'Could not connect to Apple Music — tap Retry': 1,   // APPLE_INIT_FAIL
+    'Player needs attention — tap to reconnect Apple Music': 2, // PLAY_FAIL_ATTN
+    'Player disconnected — tap to reset': 3,             // HC_TRACK_DIV / HC_PLAYER_STUCK
+    'Something went wrong — tap Play to retry': 4,       // PLAYER_WATCHDOG
+    'Playback failed — retrying…': 5,                    // PLAY_FAIL_RETRY
   };
   const setErrorWithPriority = useCallback((newMsg) => {
     setPlayerError((prev) => {
@@ -79,7 +88,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     clearTimeout(transitionWatchdogRef.current);
     transitionWatchdogRef.current = setTimeout(() => {
       if (isTransitioningRef.current) {
-        console.warn('[watchdog] transition stuck >10 s — forcing reset');
+        console.warn('[PLAYER_WATCHDOG] transition stuck >10 s — forcing reset');
         isTransitioningRef.current = false;
         setIsTransitioning(false);
         setErrorWithPriority('Something went wrong — tap Play to retry');
@@ -139,7 +148,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         music.addEventListener('playbackStateDidChange', stateListener);
         music.addEventListener('playbackTimeDidChange', timeListener);
       } catch (err) {
-        console.error('MusicKit init error:', err);
+        console.error('[APPLE_INIT_FAIL] MusicKit init error:', err);
         setPlayerError('Could not connect to Apple Music — tap Retry');
       }
     }
@@ -192,9 +201,11 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         currentSongIdRef.current = null;
         playFailCountRef.current += 1;
         if (playFailCountRef.current >= 3) {
+          console.warn('[PLAY_FAIL_ATTN] playSong failed 3+ times consecutively');
           setErrorWithPriority('Player needs attention — tap to reconnect Apple Music');
           playFailCountRef.current = 0;
         } else {
+          console.warn(`[PLAY_FAIL_RETRY] playSong failed (attempt ${playFailCountRef.current}):`, err?.message);
           setErrorWithPriority('Playback failed — retrying…');
         }
       }

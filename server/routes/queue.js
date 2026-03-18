@@ -268,18 +268,29 @@ router.post('/:venueCode/pause', (req, res) => {
 });
 
 // POST /api/queue/:venueCode/advance - MusicKit reports song ended
-// Body may include songId to guard against double-advance races.
+// songId is required — a missing or wrong ID means "don't advance" (the song
+// may have already been advanced by /skip or a concurrent poll).
 // Returns nowPlaying so the client can start playing immediately without
 // a follow-up GET /queue or GET /autofill round-trip.
 router.post('/:venueCode/advance', async (req, res) => {
   const { venueCode } = req.params;
   const { songId } = req.body;
 
-  // Snapshot the expected song ID before any async work so that even if
-  // a /skip request starts while we await serverAutofill below, the
-  // advanceToNextSong guard uses the value we committed to at entry time.
-  const expectedId = songId || db.getQueue(venueCode).nowPlaying?.id;
-  advanceToNextSong(venueCode, expectedId);
+  if (!songId) {
+    return res.status(400).json({ error: 'songId required for advance' });
+  }
+
+  // Snapshot before async work — same pattern as /skip so both handlers
+  // commit to the same expected ID at entry time.
+  const currentSongId = db.getQueue(venueCode).nowPlaying?.id;
+  if (currentSongId && currentSongId !== songId) {
+    // Already advanced (e.g. /skip ran first) — return current state so the
+    // client can immediately play whatever is now nowPlaying.
+    const queue = db.getQueue(venueCode);
+    return res.json({ success: true, nowPlaying: queue.nowPlaying || null });
+  }
+
+  advanceToNextSong(venueCode, songId);
   let queue = db.getQueue(venueCode);
 
   // If queue is now empty and autoplay is on, fill it synchronously so the
