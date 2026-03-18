@@ -124,19 +124,19 @@ export default function LyricsView({ song, lyricsData, onClose }) {
 
         {/* Lyrics lines */}
         {lines.length > 0 && (
-          <div className="px-6 pb-48 pt-40 space-y-5">
+          <div className="px-6 pb-48 pt-40 space-y-6">
             {lines.map((line, i) => (
               <p
                 key={i}
                 ref={(el) => { lineRefs.current[i] = el; }}
-                className={`text-center font-bold leading-snug transition-all duration-300 ${
+                className={`text-center font-bold leading-snug text-xl transition-all duration-300 origin-center ${
                   isSynced
                     ? i === currentIdx
-                      ? 'text-white text-2xl'
+                      ? 'text-white scale-[1.14]'
                       : i < currentIdx
-                        ? 'text-white/25 text-xl'
-                        : 'text-white/55 text-xl'
-                    : 'text-white/80 text-xl'
+                        ? 'text-white/25 scale-100'
+                        : 'text-white/55 scale-100'
+                    : 'text-white/80 scale-100'
                 }`}
               >
                 {line.text}

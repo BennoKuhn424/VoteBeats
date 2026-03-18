@@ -13,7 +13,6 @@ import { useVenuePlayback } from '../context/VenuePlaybackContext';
 export default function VenuePlayer() {
   const { venueCode } = useParams();
   const navigate = useNavigate();
-  const playback = useVenuePlayback();
 
   const [venue, setVenue] = useState(null);
   const [activeTab, setActiveTab] = useState('playlist');
@@ -21,7 +20,6 @@ export default function VenuePlayer() {
 
   const {
     queue,
-    setQueue,
     fetchQueue,
     isPlaying,
     playbackTime,
@@ -29,26 +27,22 @@ export default function VenuePlayer() {
     isAuthorized,
     musicReady,
     waitingForGesture,
-    setWaitingForGesture,
     volume,
     setVolume,
     autoplayMode,
-    setAutoplayMode,
-    autoplayModeRef,
     playerError,
-    setPlayerError,
     autofillNotice,
     dismissAutofillNotice,
-    retryInit,
-    playSong,
-    musicRef,
-    currentSongIdRef,
     isTransitioning,
-    isTransitioningRef,
-    beginTransition,
-    endTransition,
-    hasUserGestureRef,
-  } = playback;
+    retryInit,
+    playPause,
+    skip,
+    restart,
+    authorize,
+    changeMode,
+    initAutoplayMode,
+    clearError,
+  } = useVenuePlayback();
 
   // ── Detect ?generatePlaylist=1 after Yoco redirect ────────────────────────
   useEffect(() => {
@@ -87,116 +81,12 @@ export default function VenuePlayer() {
         if (!mounted) return;
         setVenue(res.data);
         const saved = res.data?.settings?.autoplayMode;
-        if (saved) setAutoplayMode(saved);
-        else if (res.data?.settings?.autoplayQueue === false) setAutoplayMode('off');
+        if (saved) initAutoplayMode(saved);
+        else if (res.data?.settings?.autoplayQueue === false) initAutoplayMode('off');
       })
       .catch(() => { if (mounted) navigate('/venue/login'); });
     return () => { mounted = false; };
-  }, [venueCode, navigate, setAutoplayMode]);
-
-  // ── Player controls ──────────────────────────────────────────────────────
-  async function handlePlayPause() {
-    const music = musicRef.current;
-    if (!music) return;
-    hasUserGestureRef.current = true;
-    const wasWaiting = waitingForGesture;
-    setWaitingForGesture(false);
-    const state = music.playbackState;
-    const nowPlaying = queue.nowPlaying;
-
-    if (state === 2) {
-      // Currently playing → pause
-      await music.pause();
-      if (nowPlaying) api.pausePlaying(venueCode, nowPlaying.id).catch(() => {});
-    } else if (wasWaiting && nowPlaying) {
-      // Autoplay was blocked — this tap is the required user gesture.
-      // Do NOT call beginTransition() here: setIsTransitioning triggers a React
-      // re-render which breaks WebKit's gesture tracking before music.play(),
-      // causing "user failed to interact with document first".
-      currentSongIdRef.current = nowPlaying.id;
-      await playSong(nowPlaying);
-    } else if (state === 3) {
-      // Paused — if server advanced to a newer song, play that; otherwise resume
-      if (nowPlaying && nowPlaying.id !== currentSongIdRef.current) {
-        currentSongIdRef.current = nowPlaying.id;
-        await playSong(nowPlaying);
-      } else {
-        try {
-          await music.play();
-          // Tell server to clear pausedAt and recalibrate startedAt at current position
-          if (nowPlaying) {
-            api.reportPlaying(venueCode, nowPlaying.id, music.currentPlaybackTime || 0).catch(() => {});
-          }
-        } catch (err) {
-          if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
-            setWaitingForGesture(true);
-          } else {
-            console.error('Play error:', err);
-          }
-        }
-      }
-    } else if (state === 0 || state === 4 || state === 5) {
-      // Nothing loaded / stopped / ended — same gesture-chain constraint applies.
-      if (nowPlaying) {
-        currentSongIdRef.current = nowPlaying.id;
-        await playSong(nowPlaying);
-      }
-    }
-  }
-
-  async function handleSkip() {
-    if (isTransitioningRef.current) return;
-    const music = musicRef.current;
-    if (music) { try { await music.stop(); } catch {} }
-    beginTransition();
-    const skippedSongId = queue.nowPlaying?.id;
-    currentSongIdRef.current = null;
-
-    // Optimistic update: show the next song immediately and start loading it
-    // in parallel with the /skip network request so there is no silent gap.
-    const optimisticNext = queue.upcoming[0];
-    if (optimisticNext) {
-      const nextNow = { ...optimisticNext, positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false };
-      setQueue({ nowPlaying: nextNow, upcoming: queue.upcoming.slice(1) });
-      currentSongIdRef.current = optimisticNext.id;
-    }
-
-    // Run the network request and playSong concurrently, then wait for both
-    // before ending the transition — ensures endTransition is never called
-    // while playSong is still in flight.
-    await Promise.allSettled([
-      api.skipSong(venueCode, skippedSongId).catch((err) => console.error('Skip error:', err)),
-      optimisticNext ? playSong(optimisticNext) : Promise.resolve(),
-    ]);
-    endTransition();
-    await fetchQueue(); // reconcile optimistic state with server reality
-  }
-
-  async function handlePrev() {
-    const music = musicRef.current;
-    // Guard: seekToTime throws "without a previous descriptor" if no queue is set
-    if (!music || !queue.nowPlaying) return;
-    try { await music.seekToTime(0); } catch {}
-    api.reportPlaying(venueCode, queue.nowPlaying.id, 0).catch(() => {});
-  }
-
-  async function handleChangeMode(mode) {
-    setAutoplayMode(mode);
-    autoplayModeRef.current = mode;
-    await api.updateSettings(venueCode, {
-      autoplayQueue: mode !== 'off',
-      autoplayMode: mode,
-    }).catch(console.error);
-  }
-
-  async function handleAuthorize() {
-    const music = musicRef.current;
-    if (!music) return;
-    try {
-      await music.authorize();
-      playback.setIsAuthorized(music.isAuthorized);
-    } catch (err) { console.error('Auth error:', err); }
-  }
+  }, [venueCode, navigate, initAutoplayMode]);
 
   async function handleRemoveSong(songId) {
     try { await api.removeSong(venueCode, songId); fetchQueue(); } catch {}
@@ -252,7 +142,7 @@ export default function VenuePlayer() {
             {musicReady && !isAuthorized && (
               <button
                 type="button"
-                onClick={handleAuthorize}
+                onClick={authorize}
                 className="text-xs px-3 py-1.5 rounded-lg bg-brand-500 text-white shrink-0 hover:bg-brand-600"
               >
                 Connect Apple Music
@@ -277,7 +167,7 @@ export default function VenuePlayer() {
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={handlePrev}
+                onClick={restart}
                 disabled={isTransitioning}
                 className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors disabled:opacity-40 disabled:pointer-events-none"
               >
@@ -286,7 +176,7 @@ export default function VenuePlayer() {
               <div className="relative flex flex-col items-center gap-1">
                 <button
                   type="button"
-                  onClick={handlePlayPause}
+                  onClick={playPause}
                   disabled={isTransitioning}
                   className={`w-14 h-14 flex items-center justify-center rounded-full text-white transition-all duration-200 disabled:opacity-60 disabled:pointer-events-none ${
                     isPlaying
@@ -306,7 +196,7 @@ export default function VenuePlayer() {
               </div>
               <button
                 type="button"
-                onClick={handleSkip}
+                onClick={skip}
                 disabled={isTransitioning}
                 className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors disabled:opacity-40 disabled:pointer-events-none"
               >
@@ -337,7 +227,7 @@ export default function VenuePlayer() {
               <button
                 key={id}
                 type="button"
-                onClick={() => handleChangeMode(id)}
+                onClick={() => changeMode(id)}
                 className={`px-4 py-2 rounded-full text-xs font-semibold transition-colors min-h-[36px] ${
                   autoplayMode === id
                     ? 'bg-brand-500 text-white'
@@ -399,7 +289,7 @@ export default function VenuePlayer() {
             <p className="text-sm font-medium text-red-700">{playerError}</p>
             <div className="flex items-center gap-2 shrink-0">
               <button type="button" onClick={retryInit} className="text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700">Retry</button>
-              <button type="button" onClick={() => setPlayerError(null)} className="text-xs text-zinc-400 hover:text-zinc-600">Dismiss</button>
+              <button type="button" onClick={clearError} className="text-xs text-zinc-400 hover:text-zinc-600">Dismiss</button>
             </div>
           </div>
         </div>
@@ -417,7 +307,7 @@ export default function VenuePlayer() {
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-6">
         {activeTab === 'playlist' && <PlaylistManager venueCode={venueCode} variant="light" />}
         {activeTab === 'queue' && (
-          <QueueManager queue={queue} onSkip={handleSkip} onRemove={handleRemoveSong} variant="light" />
+          <QueueManager queue={queue} onSkip={skip} onRemove={handleRemoveSong} variant="light" />
         )}
       </main>
     </div>

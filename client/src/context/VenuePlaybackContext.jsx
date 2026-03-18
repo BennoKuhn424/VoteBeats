@@ -44,6 +44,9 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   // True once the user has clicked something on this page — required before
   // any music.play() call to satisfy browser autoplay policy.
   const hasUserGestureRef = useRef(false);
+  // Stable ref so playPause() always reads the latest value without
+  // needing waitingForGesture in its dependency array.
+  const waitingForGestureRef = useRef(false);
 
   // Internal error codes — used in logs so you can grep production output
   // by code rather than by the display string (which can change freely).
@@ -94,7 +97,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         setErrorWithPriority('Something went wrong — tap Play to retry');
       }
     }, 10000);
-  }, []);
+  }, [setErrorWithPriority]);
 
   const endTransition = useCallback(() => {
     clearTimeout(transitionWatchdogRef.current);
@@ -104,6 +107,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
 
   useEffect(() => { autoplayModeRef.current = autoplayMode; }, [autoplayMode]);
   useEffect(() => { queueRef.current = queue; }, [queue]);
+  useEffect(() => { waitingForGestureRef.current = waitingForGesture; }, [waitingForGesture]);
 
   // ── Initialize MusicKit ──────────────────────────────────────────────────
   useEffect(() => {
@@ -431,39 +435,162 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     return () => clearInterval(interval);
   }, [venueCode, fetchQueue, setErrorWithPriority]);
 
+  // ── High-level player controls ───────────────────────────────────────────
+  // These are the only methods VenuePlayer needs. Internal refs (musicRef,
+  // currentSongIdRef, etc.) are kept private and not exposed in the value.
+
+  // Play/pause — handles all MusicKit state machine branches.
+  // IMPORTANT: no beginTransition() call here — setIsTransitioning triggers a
+  // React re-render which breaks WebKit's user gesture chain before music.play(),
+  // causing "user failed to interact with document first" on Safari/iOS.
+  const playPause = useCallback(async () => {
+    const music = musicRef.current;
+    if (!music) return;
+    hasUserGestureRef.current = true;
+    const wasWaiting = waitingForGestureRef.current;
+    setWaitingForGesture(false);
+    const state = music.playbackState;
+    const nowPlaying = queueRef.current.nowPlaying;
+
+    if (state === 2) {
+      // Currently playing → pause
+      await music.pause();
+      if (nowPlaying) api.pausePlaying(venueCode, nowPlaying.id).catch(() => {});
+    } else if (wasWaiting && nowPlaying) {
+      // Autoplay was blocked — this tap is the required user gesture.
+      currentSongIdRef.current = nowPlaying.id;
+      await playSong(nowPlaying);
+    } else if (state === 3) {
+      // Paused — if server advanced to a newer song, play that; otherwise resume
+      if (nowPlaying && nowPlaying.id !== currentSongIdRef.current) {
+        currentSongIdRef.current = nowPlaying.id;
+        await playSong(nowPlaying);
+      } else {
+        try {
+          await music.play();
+          // Tell server to clear pausedAt and recalibrate startedAt at current position
+          if (nowPlaying) {
+            api.reportPlaying(venueCode, nowPlaying.id, music.currentPlaybackTime || 0).catch(() => {});
+          }
+        } catch (err) {
+          if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
+            setWaitingForGesture(true);
+          } else {
+            console.error('Play error:', err);
+          }
+        }
+      }
+    } else if (state === 0 || state === 4 || state === 5) {
+      // Nothing loaded / stopped / ended
+      if (nowPlaying) {
+        currentSongIdRef.current = nowPlaying.id;
+        await playSong(nowPlaying);
+      }
+    }
+  }, [venueCode, playSong]);
+
+  // Skip — optimistic update + concurrent API + playSong, then reconcile.
+  const skip = useCallback(async () => {
+    if (isTransitioningRef.current) return;
+    const music = musicRef.current;
+    if (music) { try { await music.stop(); } catch {} }
+    beginTransition();
+    const currentQueue = queueRef.current;
+    const skippedSongId = currentQueue.nowPlaying?.id;
+    currentSongIdRef.current = null;
+
+    // Optimistic update: show the next song immediately and start loading it
+    // in parallel with the /skip network request so there is no silent gap.
+    const optimisticNext = currentQueue.upcoming[0];
+    if (optimisticNext) {
+      const nextNow = { ...optimisticNext, positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false };
+      setQueue({ nowPlaying: nextNow, upcoming: currentQueue.upcoming.slice(1) });
+      currentSongIdRef.current = optimisticNext.id;
+    }
+
+    // Run the network request and playSong concurrently, then wait for both
+    // before ending the transition — ensures endTransition is never called
+    // while playSong is still in flight.
+    await Promise.allSettled([
+      api.skipSong(venueCode, skippedSongId).catch((err) => console.error('Skip error:', err)),
+      optimisticNext ? playSong(optimisticNext) : Promise.resolve(),
+    ]);
+    endTransition();
+    await fetchQueue(); // reconcile optimistic state with server reality
+  }, [venueCode, playSong, beginTransition, endTransition, fetchQueue]);
+
+  // Restart — rewind current song to position 0.
+  const restart = useCallback(async () => {
+    const music = musicRef.current;
+    const np = queueRef.current.nowPlaying;
+    // Guard: seekToTime throws "without a previous descriptor" if no queue is set
+    if (!music || !np) return;
+    try { await music.seekToTime(0); } catch {}
+    api.reportPlaying(venueCode, np.id, 0).catch(() => {});
+  }, [venueCode]);
+
+  // Authorize — trigger Apple Music sign-in.
+  const authorize = useCallback(async () => {
+    const music = musicRef.current;
+    if (!music) return;
+    try {
+      await music.authorize();
+      setIsAuthorized(music.isAuthorized);
+    } catch (err) { console.error('Auth error:', err); }
+  }, []);
+
+  // changeMode — update autoplay mode state + server setting together.
+  const changeMode = useCallback(async (mode) => {
+    setAutoplayMode(mode);
+    autoplayModeRef.current = mode;
+    await api.updateSettings(venueCode, {
+      autoplayQueue: mode !== 'off',
+      autoplayMode: mode,
+    }).catch(console.error);
+  }, [venueCode]);
+
+  // initAutoplayMode — set state + ref from saved settings without an API call.
+  // Use this on initial load; use changeMode() for user-initiated changes.
+  const initAutoplayMode = useCallback((mode) => {
+    setAutoplayMode(mode);
+    autoplayModeRef.current = mode;
+  }, []);
+
+  // clearError — dismiss the current error banner.
+  const clearError = useCallback(() => setPlayerError(null), []);
+
   const value = {
+    // Queue state
     queue,
-    setQueue,
     fetchQueue,
+    // Playback state (read-only)
     isPlaying,
-    setIsPlaying,
-    setIsAuthorized,
     playbackTime,
     playbackDuration,
     isAuthorized,
     musicReady,
     waitingForGesture,
-    setWaitingForGesture,
     volume,
     setVolume,
     autoplayMode,
-    setAutoplayMode,
-    autoplayModeRef,
+    // Banners
     playerError,
-    setPlayerError,
     autofillNotice,
-    setAutofillNotice,
-    retryInit,
-    playSong,
-    tryAutofill,
     dismissAutofillNotice,
-    musicRef,
-    currentSongIdRef,
+    // Transitions
     isTransitioning,
-    isTransitioningRef,
-    beginTransition,
-    endTransition,
-    hasUserGestureRef,
+    // Controls (high-level — internal refs are NOT exposed)
+    playPause,
+    skip,
+    restart,
+    authorize,
+    changeMode,
+    initAutoplayMode,
+    clearError,
+    retryInit,
+    // playSong is still exposed for edge-cases (e.g. future components that
+    // need to trigger playback directly), but prefer the high-level controls.
+    playSong,
   };
 
   return (

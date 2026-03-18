@@ -289,8 +289,11 @@ router.post('/:venueCode/advance', async (req, res) => {
 
   // Snapshot before async work — same pattern as /skip so both handlers
   // commit to the same expected ID at entry time.
-  const currentSongId = db.getQueue(venueCode).nowPlaying?.id;
-  if (currentSongId && currentSongId !== songId) {
+  // Compare without the `currentSongId &&` guard: if nowPlaying is already
+  // null (queue emptied by /skip), a stale advance must still be rejected so
+  // it doesn't accidentally trigger another autofill run.
+  const currentSongId = db.getQueue(venueCode).nowPlaying?.id ?? null;
+  if (currentSongId !== songId) {
     // Already advanced (e.g. /skip ran first) — return current state so the
     // client can immediately play whatever is now nowPlaying.
     const queue = db.getQueue(venueCode);
