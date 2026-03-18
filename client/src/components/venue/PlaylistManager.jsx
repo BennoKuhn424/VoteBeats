@@ -333,6 +333,63 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
             )}
           </div>
 
+          {/* ── Add Songs ── */}
+          <div className={card}>
+            <h3 className={`${headingCls} mb-3`}>Add Songs</h3>
+
+            <form onSubmit={handleSearch} className="flex gap-2 mb-3">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => { setQuery(e.target.value); if (searchError) setSearchError(null); }}
+                placeholder="Search for a song to add..."
+                className={inputCls}
+              />
+              <button
+                type="submit"
+                disabled={searching}
+                className="px-3 py-2 bg-brand-500 text-white rounded-lg font-semibold text-sm hover:bg-brand-600 transition-colors disabled:opacity-50 shrink-0 flex items-center gap-1.5"
+              >
+                {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                {!searching && 'Search'}
+              </button>
+            </form>
+
+            {searchError && (
+              <p className={`text-sm text-center py-2 ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>{searchError}</p>
+            )}
+
+            {results.length > 0 && (
+              <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+                {results.map((item) => {
+                  const appleId = item.songId ?? item.appleId;
+                  const inPlaylist = (selectedPlaylist.songs || []).some((s) => s.appleId === appleId) || addedIds.has(appleId);
+                  return (
+                    <div key={appleId} className={resultRowCls}>
+                      <img src={item.artwork || item.albumArt || ''} alt={item.trackName || item.title} className="w-9 h-9 rounded-lg object-cover shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className={songTitleCls}>{item.trackName ?? item.title}</p>
+                        <p className={songArtistCls}>{item.artistName ?? item.artist}</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={inPlaylist}
+                        onClick={() => handleAdd(item)}
+                        className={`shrink-0 flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[36px] ${
+                          inPlaylist
+                            ? isLight ? 'bg-zinc-100 text-zinc-400 cursor-default' : 'bg-dark-600 text-dark-400 cursor-default'
+                            : 'bg-brand-500 text-white hover:bg-brand-600'
+                        }`}
+                      >
+                        {inPlaylist ? <><Check className="h-3 w-3" /> Added</> : <><Plus className="h-3 w-3" /> Add</>}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* ── Generate AI Playlist ── */}
           <div className={card}>
             <div className="flex items-center justify-between mb-3">
@@ -404,63 +461,6 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
                   </button>
                 </div>
               </form>
-            )}
-          </div>
-
-          {/* ── Add Songs ── */}
-          <div className={card}>
-            <h3 className={`${headingCls} mb-3`}>Add Songs</h3>
-
-            <form onSubmit={handleSearch} className="flex gap-2 mb-3">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => { setQuery(e.target.value); if (searchError) setSearchError(null); }}
-                placeholder="Search for a song to add..."
-                className={inputCls}
-              />
-              <button
-                type="submit"
-                disabled={searching}
-                className="px-3 py-2 bg-brand-500 text-white rounded-lg font-semibold text-sm hover:bg-brand-600 transition-colors disabled:opacity-50 shrink-0 flex items-center gap-1.5"
-              >
-                {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                {!searching && 'Search'}
-              </button>
-            </form>
-
-            {searchError && (
-              <p className={`text-sm text-center py-2 ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>{searchError}</p>
-            )}
-
-            {results.length > 0 && (
-              <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
-                {results.map((item) => {
-                  const appleId = item.songId ?? item.appleId;
-                  const inPlaylist = (selectedPlaylist.songs || []).some((s) => s.appleId === appleId) || addedIds.has(appleId);
-                  return (
-                    <div key={appleId} className={resultRowCls}>
-                      <img src={item.artwork || item.albumArt || ''} alt={item.trackName || item.title} className="w-9 h-9 rounded-lg object-cover shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className={songTitleCls}>{item.trackName ?? item.title}</p>
-                        <p className={songArtistCls}>{item.artistName ?? item.artist}</p>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={inPlaylist}
-                        onClick={() => handleAdd(item)}
-                        className={`shrink-0 flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[36px] ${
-                          inPlaylist
-                            ? isLight ? 'bg-zinc-100 text-zinc-400 cursor-default' : 'bg-dark-600 text-dark-400 cursor-default'
-                            : 'bg-brand-500 text-white hover:bg-brand-600'
-                        }`}
-                      >
-                        {inPlaylist ? <><Check className="h-3 w-3" /> Added</> : <><Plus className="h-3 w-3" /> Add</>}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
             )}
           </div>
         </>
