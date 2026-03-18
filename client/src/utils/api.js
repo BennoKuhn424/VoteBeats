@@ -49,7 +49,7 @@ export default {
     api.get(`/queue/${venueCode}/request-status`, { params: { checkoutId } }),
   vote: (venueCode, songId, voteValue, deviceId) =>
     api.post(`/queue/${venueCode}/vote`, { songId, voteValue, deviceId }),
-  skipSong: (venueCode) => api.post(`/queue/${venueCode}/skip`),
+  skipSong: (venueCode, songId) => api.post(`/queue/${venueCode}/skip`, { songId }),
   reportPlaying: (venueCode, songId, positionSeconds) =>
     api.post(`/queue/${venueCode}/playing`, { songId, positionSeconds: positionSeconds || 0 }),
   pausePlaying: (venueCode, songId) =>

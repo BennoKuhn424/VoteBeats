@@ -163,7 +163,12 @@ router.post('/:venueCode/request', (req, res) => {
     nowPlaying: queue.nowPlaying,
     upcoming: [...(queue.upcoming || []), newSong],
   };
-  db.updateQueue(venueCode, updatedQueue);
+  try {
+    db.updateQueue(venueCode, updatedQueue);
+  } catch (err) {
+    console.error('Queue write error on /request:', err);
+    return res.status(500).json({ error: 'Could not add song to queue — please try again' });
+  }
   broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
 
   res.json({ success: true, song: newSong });
@@ -197,15 +202,19 @@ router.post('/:venueCode/vote', (req, res) => {
     (queue.upcoming || []).find((s) => s.id === songId) ||
     (queue.nowPlaying?.id === songId ? queue.nowPlaying : null);
 
-  if (song) {
-    song.votes = (song.votes || 0) + voteDelta;
-    db.updateQueue(venueCode, queue);
-    broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
+  if (!song) {
+    // Song was removed from queue after vote was written — clean up the stray entry
+    db.removeVote(venueCode, songId, deviceId);
+    return res.status(404).json({ error: 'Song is no longer in the queue' });
   }
+
+  song.votes = (song.votes || 0) + voteDelta;
+  db.updateQueue(venueCode, queue);
+  broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
 
   res.json({
     success: true,
-    newVoteCount: song ? song.votes : 0,
+    newVoteCount: song.votes,
     myVote: existingVote === voteValue ? null : voteValue,
   });
 });
@@ -286,11 +295,14 @@ router.post('/:venueCode/advance', async (req, res) => {
 });
 
 // POST /api/queue/:venueCode/skip (venue owner only)
+// Accepts optional songId so the expectedSongId guard in advanceToNextSong
+// prevents a double-advance when /skip and a song-end /advance race.
 router.post('/:venueCode/skip', authMiddleware, (req, res) => {
   if (req.venue.code !== req.params.venueCode) {
     return res.status(403).json({ error: 'Unauthorized' });
   }
-  advanceToNextSong(req.params.venueCode);
+  const { songId } = req.body;
+  advanceToNextSong(req.params.venueCode, songId || db.getQueue(req.params.venueCode).nowPlaying?.id);
   broadcast.broadcastQueue(req.params.venueCode, db.getQueue(req.params.venueCode));
   res.json({ success: true });
 });
@@ -417,11 +429,13 @@ router.get('/:venueCode/request-status', async (req, res) => {
         const data = await response.json();
         const status = (data.status || '').toLowerCase();
         const hasPayment = !!(data.paymentId || data.payment?.id);
+        // Use exact terminal-status matches only — loose includes() could match
+        // transitional statuses like "completion_pending" and mark unpaid orders paid.
         const isComplete =
           status === 'completed' ||
           status === 'succeeded' ||
-          status.includes('complete') ||
-          status.includes('succeed') ||
+          status === 'complete' ||
+          status === 'success' ||
           hasPayment;
         if (isComplete) {
           const amountCents = data.amount ?? data.payment?.amount ?? pending.amountCents;

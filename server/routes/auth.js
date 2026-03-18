@@ -11,12 +11,14 @@ const JWT_SECRET = process.env.JWT_SECRET || 'speeldit-dev-secret-change-in-prod
 
 function generateVenueCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let attempt = 0; attempt < 100; attempt++) {
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    if (!db.getVenue(code)) return code;
   }
-  if (db.getVenue(code)) return generateVenueCode();
-  return code;
+  throw new Error('Could not generate a unique venue code after 100 attempts');
 }
 
 // POST /api/auth/register

@@ -163,11 +163,14 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         console.error('Play error:', err);
         // Clear ref so the next tap triggers a fresh load attempt
         currentSongIdRef.current = null;
-        // After 3 consecutive failures, surface a visible error
         playFailCountRef.current += 1;
         if (playFailCountRef.current >= 3) {
           setPlayerError('Player needs attention — tap to reconnect Apple Music');
           playFailCountRef.current = 0;
+        } else {
+          // Show a subtle "retrying" notice on the first failure so the venue
+          // owner isn't left wondering why music stopped mid-song.
+          setPlayerError('Playback failed — retrying…');
         }
       }
       endTransition(); // safety: ensure isTransitioningRef never stays stuck
@@ -185,7 +188,9 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         autofill404UntilRef.current = Date.now() + backoff;
         console.warn(`Autofill: no songs — backing off ${backoff / 1000}s.`);
         autofillBackoffRef.current = Math.min(backoff * 2, 30000);
-        if (autofillBackoffRef.current >= 20000) setAutofillNotice(true);
+        // Show the notice immediately on first backoff so the venue owner
+        // doesn't see silent "Nothing playing" for up to 20 s.
+        setAutofillNotice(true);
         return false;
       }
       autofillBackoffRef.current = 5000; // reset on success
@@ -267,21 +272,24 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     socket.connect();
     joinRoom();
 
-    socket.on('connect', () => {
+    function onConnect() {
       // Re-join venue room after any reconnection (iOS resume, network switch)
       joinRoom();
       // Re-fetch so we catch any updates missed during the disconnection window
       setTimeout(fetchQueue, 300);
-    });
+    }
 
+    socket.on('connect', onConnect);
     socket.on('queue:updated', handleQueueUpdate);
 
     // Initial fetch
     fetchQueue();
 
     return () => {
-      socket.off('connect');
-      socket.off('queue:updated');
+      // Pass explicit handler references so we only remove our own listeners
+      // and don't accidentally clear handlers added by other effects.
+      socket.off('connect', onConnect);
+      socket.off('queue:updated', handleQueueUpdate);
       socket.disconnect();
     };
   }, [venueCode, fetchQueue, handleQueueUpdate]);

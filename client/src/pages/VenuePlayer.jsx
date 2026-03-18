@@ -71,22 +71,27 @@ export default function VenuePlayer() {
     setActiveTab('playlist');
     setGenerateStatus('generating');
 
+    let mounted = true;
     api.generatePlaylist(venueCode, savedPlaylistId, checkoutId, savedPrompt, savedCount)
-      .then((res) => setGenerateStatus({ added: res.data.added?.length ?? 0 }))
-      .catch((err) => setGenerateStatus({ error: err.response?.data?.error || 'Generation failed' }));
+      .then((res) => { if (mounted) setGenerateStatus({ added: res.data.added?.length ?? 0 }); })
+      .catch((err) => { if (mounted) setGenerateStatus({ error: err.response?.data?.error || 'Generation failed' }); });
+    return () => { mounted = false; };
   }, [venueCode]);
 
   // ── Fetch venue + sync autoplayMode ───────────────────────────────────────
   useEffect(() => {
     if (!venueCode) return;
+    let mounted = true;
     api.getVenue(venueCode)
       .then((res) => {
+        if (!mounted) return;
         setVenue(res.data);
         const saved = res.data?.settings?.autoplayMode;
         if (saved) setAutoplayMode(saved);
         else if (res.data?.settings?.autoplayQueue === false) setAutoplayMode('off');
       })
-      .catch(() => navigate('/venue/login'));
+      .catch(() => { if (mounted) navigate('/venue/login'); });
+    return () => { mounted = false; };
   }, [venueCode, navigate, setAutoplayMode]);
 
   // ── Player controls ──────────────────────────────────────────────────────
@@ -158,7 +163,7 @@ export default function VenuePlayer() {
     }
 
     try {
-      await api.skipSong(venueCode);
+      await api.skipSong(venueCode, queue.nowPlaying?.id);
     } catch (err) {
       console.error('Skip error:', err);
     }

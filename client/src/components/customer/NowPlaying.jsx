@@ -36,6 +36,7 @@ export default function NowPlaying({ song, hasLyrics, onLyrics }) {
           src={song.albumArt}
           alt={song.title}
           className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl object-cover ring-2 ring-carbon-100"
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
         />
         <div className="flex-1 min-w-0">
           <h2 className="text-xl sm:text-2xl font-bold mb-1 line-clamp-2 break-words text-carbon-900">
