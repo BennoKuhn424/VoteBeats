@@ -58,7 +58,7 @@ app.use('/api/admin', require('./routes/admin'));
 // Falls back to legacy startedAt field for songs set before this update.
 setInterval(() => {
   const queues = db.getQueues();
-  Object.entries(queues).forEach(([venueCode, queue]) => {
+  Object.entries(queues).forEach(async ([venueCode, queue]) => {
     const np = queue.nowPlaying;
     const upcoming = queue.upcoming || [];
 
@@ -75,14 +75,12 @@ setInterval(() => {
       const currentPos = posMs + (Date.now() - anchoredAt);
 
       if (currentPos >= durationMs) {
-        advanceToNextSong(venueCode);
-        const updated = db.getQueue(venueCode);
+        const updated = await advanceToNextSong(venueCode);
         broadcast.broadcastQueue(venueCode, updated);
       }
     } else if (upcoming.length > 0) {
       // Auto-start first song when nothing is playing
-      advanceToNextSong(venueCode);
-      const updated = db.getQueue(venueCode);
+      const updated = await advanceToNextSong(venueCode);
       broadcast.broadcastQueue(venueCode, updated);
     }
   });

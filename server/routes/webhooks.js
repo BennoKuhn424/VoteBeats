@@ -4,7 +4,7 @@ const { fulfillPaidRequest } = require('../utils/paymentFulfill');
 
 // Yoco webhook – must use raw body (see server.js). Express.raw puts Buffer in req.body.
 // POST /api/webhooks/yoco
-function yocoWebhook(req, res) {
+async function yocoWebhook(req, res) {
   let payload;
   try {
     const body = typeof req.body === 'string' ? req.body : (req.body && req.body.toString ? req.body.toString() : '');
@@ -25,7 +25,7 @@ function yocoWebhook(req, res) {
   }
 
   const amountCents = payload.payload?.amount;
-  if (fulfillPaidRequest(checkoutId, amountCents)) {
+  if (await fulfillPaidRequest(checkoutId, amountCents)) {
     // Song added
   }
 

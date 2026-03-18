@@ -478,7 +478,7 @@ router.get('/:venueCode/request-status', async (req, res) => {
           status === 'complete'  || status === 'success'  || hasPayment;
         if (isComplete) {
           const amountCents = data.amount ?? data.payment?.amount ?? pending.amountCents;
-          if (fulfillPaidRequest(checkoutId, amountCents)) {
+          if (await fulfillPaidRequest(checkoutId, amountCents)) {
             broadcast.broadcastQueue(venueCode, queueRepo.get(venueCode));
             return res.json({ fulfilled: true });
           }

@@ -1,11 +1,12 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('./database');
+const queueRepo = require('../repos/queueRepo');
 
 /**
  * Fulfill a paid song request: add song to queue, log payment, remove pending.
  * Idempotent: safe to call multiple times (e.g. webhook + polling).
  */
-function fulfillPaidRequest(checkoutId, amountCentsOverride) {
+async function fulfillPaidRequest(checkoutId, amountCentsOverride) {
   const pending = db.getPendingPayment(checkoutId);
   if (!pending) return false;
 
@@ -16,7 +17,6 @@ function fulfillPaidRequest(checkoutId, amountCentsOverride) {
     return false;
   }
 
-  const queue = db.getQueue(venueCode);
   const song = {
     ...songData,
     id: songData.id || `song_${uuidv4()}`,
@@ -25,11 +25,10 @@ function fulfillPaidRequest(checkoutId, amountCentsOverride) {
     requestedAt: Date.now(),
   };
 
-  const updatedQueue = {
+  await queueRepo.update(venueCode, (queue) => ({
     nowPlaying: queue.nowPlaying,
     upcoming: [...(queue.upcoming || []), song],
-  };
-  db.updateQueue(venueCode, updatedQueue);
+  }));
 
   const amountCentsToLog =
     amountCentsOverride ?? amountCents ?? venue?.settings?.requestPriceCents ?? 1000;

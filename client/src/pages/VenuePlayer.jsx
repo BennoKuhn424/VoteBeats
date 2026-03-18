@@ -141,105 +141,118 @@ export default function VenuePlayer() {
                 {nowPlaying?.artist || 'Add songs to playlist or queue'}
               </p>
             </div>
-            {musicReady && !isAuthorized && (
+          </div>
+
+          {/* ── Apple Music not yet connected ────────────────────────────────── */}
+          {musicReady && !isAuthorized && (
+            <div className="flex flex-col items-center gap-3 py-4 border-t border-zinc-100">
+              <p className="text-sm text-zinc-500 text-center">
+                Connect Apple Music to enable playback
+              </p>
               <button
                 type="button"
                 onClick={authorize}
-                className="text-xs px-3 py-1.5 rounded-lg bg-brand-500 text-white shrink-0 hover:bg-brand-600"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 active:scale-95 transition-all"
               >
+                <Music2 className="h-4 w-4" />
                 Connect Apple Music
               </button>
-            )}
-          </div>
-
-          <div className="mb-4">
-            <div className="w-full bg-zinc-200 rounded-full h-1.5 overflow-hidden">
-              <div
-                className="bg-brand-500 h-1.5 rounded-full transition-all duration-500"
-                style={{ width: `${progress}%` }}
-              />
             </div>
-            <div className="flex justify-between text-xs text-zinc-400 mt-1">
-              <span>{formatDuration(Math.floor(playbackTime))}</span>
-              <span>{formatDuration(Math.floor(playbackDuration))}</span>
-            </div>
-          </div>
+          )}
 
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={restart}
-                disabled={isTransitioning}
-                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-              >
-                <SkipBack className="h-5 w-5" />
-              </button>
-              <div className="relative flex flex-col items-center gap-1">
-                <button
-                  type="button"
-                  onClick={playPause}
-                  disabled={isTransitioning}
-                  className={`w-14 h-14 flex items-center justify-center rounded-full text-white transition-all duration-200 disabled:opacity-60 disabled:pointer-events-none ${
-                    isPlaying
-                      ? 'bg-brand-500 hover:bg-brand-600 shadow-md'
-                      : 'bg-brand-500 hover:bg-brand-600 shadow-lg ring-4 ring-brand-200 animate-pulse'
-                  }`}
-                >
-                  {isTransitioning
-                    ? <Loader2 className="h-6 w-6 animate-spin" />
-                    : isPlaying
-                      ? <Pause className="h-6 w-6" />
-                      : <Play className="h-6 w-6 ml-0.5" />}
-                </button>
-                <span className="text-xs font-medium text-zinc-500 select-none">
-                  {isTransitioning ? 'Loading…' : isPlaying ? 'Playing' : waitingForGesture ? 'Tap to play' : 'Paused'}
-                </span>
+          {/* ── Playback controls — only when Apple Music is connected ───────── */}
+          {isAuthorized && (
+            <>
+              <div className="mb-4">
+                <div className="w-full bg-zinc-200 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-brand-500 h-1.5 rounded-full transition-all duration-500"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-zinc-400 mt-1">
+                  <span>{formatDuration(Math.floor(playbackTime))}</span>
+                  <span>{formatDuration(Math.floor(playbackDuration))}</span>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={skip}
-                disabled={isTransitioning}
-                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-              >
-                <SkipForward className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="flex items-center gap-2 flex-1 max-w-xs">
-              <Volume2 className="h-4 w-4 text-zinc-400 shrink-0" />
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={volume}
-                onChange={(e) => setVolume(Number(e.target.value))}
-                className="w-full accent-brand-500 cursor-pointer"
-                style={{ height: '4px' }}
-              />
-            </div>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-zinc-200">
-            <span className="text-xs text-zinc-500 mr-1">Autoplay:</span>
-            {[
-              { id: 'off', label: 'Off' },
-              { id: 'playlist', label: 'Playlist' },
-              { id: 'random', label: 'Random' },
-            ].map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => changeMode(id)}
-                className={`px-4 py-2 rounded-full text-xs font-semibold transition-colors min-h-[36px] ${
-                  autoplayMode === id
-                    ? 'bg-brand-500 text-white'
-                    : 'bg-zinc-100 text-zinc-500 hover:text-zinc-900'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={restart}
+                    disabled={isTransitioning}
+                    className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <SkipBack className="h-5 w-5" />
+                  </button>
+                  <div className="relative flex flex-col items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={playPause}
+                      disabled={isTransitioning}
+                      className={`w-14 h-14 flex items-center justify-center rounded-full text-white transition-all duration-200 disabled:opacity-60 disabled:pointer-events-none ${
+                        isPlaying
+                          ? 'bg-brand-500 hover:bg-brand-600 shadow-md'
+                          : 'bg-brand-500 hover:bg-brand-600 shadow-lg ring-4 ring-brand-200 animate-pulse'
+                      }`}
+                    >
+                      {isTransitioning
+                        ? <Loader2 className="h-6 w-6 animate-spin" />
+                        : isPlaying
+                          ? <Pause className="h-6 w-6" />
+                          : <Play className="h-6 w-6 ml-0.5" />}
+                    </button>
+                    <span className="text-xs font-medium text-zinc-500 select-none">
+                      {isTransitioning ? 'Loading…' : isPlaying ? 'Playing' : waitingForGesture ? 'Tap to play' : 'Paused'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={skip}
+                    disabled={isTransitioning}
+                    className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <SkipForward className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 flex-1 max-w-xs">
+                  <Volume2 className="h-4 w-4 text-zinc-400 shrink-0" />
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={volume}
+                    onChange={(e) => setVolume(Number(e.target.value))}
+                    className="w-full accent-brand-500 cursor-pointer"
+                    style={{ height: '4px' }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-zinc-200">
+                <span className="text-xs text-zinc-500 mr-1">Autoplay:</span>
+                {[
+                  { id: 'off', label: 'Off' },
+                  { id: 'playlist', label: 'Playlist' },
+                  { id: 'random', label: 'Random' },
+                ].map(({ id, label }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => changeMode(id)}
+                    className={`px-4 py-2 rounded-full text-xs font-semibold transition-colors min-h-[36px] ${
+                      autoplayMode === id
+                        ? 'bg-brand-500 text-white'
+                        : 'bg-zinc-100 text-zinc-500 hover:text-zinc-900'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 

@@ -7,15 +7,22 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 console.log('[DB] Data directory:', DATA_DIR, process.env.DATA_DIR ? '(persistent)' : '(ephemeral - set DATA_DIR for Render disk)');
 
+// In-memory write-through cache — avoids a readFileSync on every hot-path read.
+// Cache entries are populated on first read and kept in sync on every write.
+const cache = {};
+
 function readJSON(filename) {
+  if (cache[filename] !== undefined) return cache[filename];
   const filepath = path.join(DATA_DIR, filename);
-  if (!fs.existsSync(filepath)) {
-    return {};
-  }
-  return JSON.parse(fs.readFileSync(filepath, 'utf8'));
+  const data = fs.existsSync(filepath)
+    ? JSON.parse(fs.readFileSync(filepath, 'utf8'))
+    : {};
+  cache[filename] = data;
+  return data;
 }
 
 function writeJSON(filename, data) {
+  cache[filename] = data;
   const filepath = path.join(DATA_DIR, filename);
   fs.writeFileSync(filepath, JSON.stringify(data, null, 2));
 }

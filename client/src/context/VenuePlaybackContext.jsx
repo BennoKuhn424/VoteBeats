@@ -3,6 +3,15 @@ import api from '../utils/api';
 import socket from '../utils/socket';
 import { useVisibilityAwarePolling } from '../hooks/useVisibilityAwarePolling';
 
+// Lower number = higher priority. Soft notices never overwrite hard errors.
+const ERROR_PRIORITY = {
+  'Could not connect to Apple Music — tap Retry': 1,
+  'Player needs attention — tap to reconnect Apple Music': 2,
+  'Player disconnected — tap to reset': 3,
+  'Something went wrong — tap Play to retry': 4,
+  'Playback failed — retrying…': 5,
+};
+
 const VenuePlaybackContext = createContext(null);
 
 export function useVenuePlayback() {
@@ -78,14 +87,6 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   }, []);
 
   // ── Error priority ───────────────────────────────────────────────────────
-  // Lower number = higher priority. Soft notices never overwrite hard errors.
-  const ERROR_PRIORITY = {
-    'Could not connect to Apple Music — tap Retry': 1,
-    'Player needs attention — tap to reconnect Apple Music': 2,
-    'Player disconnected — tap to reset': 3,
-    'Something went wrong — tap Play to retry': 4,
-    'Playback failed — retrying…': 5,
-  };
   const setErrorWithPriority = useCallback((newMsg) => {
     setPlayerError((prev) => {
       if (!newMsg) return null;
@@ -138,6 +139,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     let stateListener = null;
     let timeListener = null;
     let itemListener = null;
+    let authListener = null;
+    let onVisibilityForAuth = null;
 
     async function init() {
       try {
@@ -237,6 +240,20 @@ export function VenuePlaybackProvider({ venueCode, children }) {
             console.warn('[BG_ADVANCE] server sync failed:', e?.message));
         };
 
+        // Re-sync isAuthorized whenever Apple Music auth state changes.
+        // On iOS the user is sent to the Apple Music app to approve — when they
+        // switch back to the browser this event fires and the UI updates without
+        // requiring a manual page reload.
+        authListener = () => { setIsAuthorized(music.isAuthorized); };
+        music.addEventListener('authorizationStatusDidChange', authListener);
+
+        // Fallback: re-check on tab focus in case the event fires before the
+        // page is visible (e.g. iOS redirecting through Safari and back).
+        onVisibilityForAuth = () => {
+          if (!document.hidden) setIsAuthorized(music.isAuthorized);
+        };
+        document.addEventListener('visibilitychange', onVisibilityForAuth);
+
         music.addEventListener('playbackStateDidChange', stateListener);
         music.addEventListener('playbackTimeDidChange', timeListener);
         music.addEventListener('nowPlayingItemDidChange', itemListener);
@@ -253,7 +270,9 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         if (stateListener) music.removeEventListener('playbackStateDidChange', stateListener);
         if (timeListener) music.removeEventListener('playbackTimeDidChange', timeListener);
         if (itemListener) music.removeEventListener('nowPlayingItemDidChange', itemListener);
+        if (authListener) music.removeEventListener('authorizationStatusDidChange', authListener);
       }
+      if (onVisibilityForAuth) document.removeEventListener('visibilitychange', onVisibilityForAuth);
     };
   }, [venueCode, initKey]); // initKey lets retryInit() re-run this effect
 
@@ -284,7 +303,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       // JavaScript running at each song end. More items = more tracks play through lock.
       const upcoming = queueRef.current?.upcoming ?? [];
       const others = upcoming.filter((s) => s.appleId && s.id !== song.id);
-      const LOCK_SCREEN_QUEUE_SIZE = 10; // current + up to 9 more
+      const LOCK_SCREEN_QUEUE_SIZE = 3; // current + 2 more; enough for 2 bg transitions
       const ids = [song.appleId, ...others.slice(0, LOCK_SCREEN_QUEUE_SIZE - 1)].filter(Boolean);
       await music.setQueue({ songs: ids });
       await music.play();
@@ -425,39 +444,6 @@ export function VenuePlaybackProvider({ venueCode, children }) {
 
   // ── Visibility-aware fallback poll ───────────────────────────────────────
   useVisibilityAwarePolling(fetchQueue, 15000);
-
-  // ── Song-ended handler ───────────────────────────────────────────────────
-  useEffect(() => {
-    const music = musicRef.current;
-    if (!music || !venueCode) return;
-
-    async function onStateChange() {
-      if (music.playbackState === 5 && currentSongIdRef.current) {
-        const endedSongId = currentSongIdRef.current;
-        currentSongIdRef.current = null;
-        beginTransition();
-        try {
-          const res = await api.advanceQueue(venueCode, endedSongId);
-          if (autoplayModeRef.current !== 'off') {
-            const np = res.data?.nowPlaying;
-            if (np?.appleId) {
-              setQueue((prev) => ({ ...prev, nowPlaying: np }));
-              currentSongIdRef.current = np.id;
-              await playSong(np);
-            } else {
-              fetchQueue();
-            }
-          }
-        } catch (err) {
-          console.error('Advance error:', err);
-        } finally {
-          endTransition();
-        }
-      }
-    }
-    music.addEventListener('playbackStateDidChange', onStateChange);
-    return () => music.removeEventListener('playbackStateDidChange', onStateChange);
-  }, [venueCode, playSong, fetchQueue, beginTransition, endTransition]);
 
   // ── Auto-clear autofill notice when a song starts ────────────────────────
   useEffect(() => {
@@ -659,7 +645,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
           });
         } catch (_) {}
       } else if ('setPositionState' in navigator.mediaSession) {
-        try { navigator.mediaSession.setPositionState(null); } catch (_) {}
+        try { navigator.mediaSession.setPositionState(); } catch (_) {}
       }
     }
   }, [queue.nowPlaying, playerState, playbackTime, playbackDuration]);
@@ -710,7 +696,6 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     initAutoplayMode,
     clearError,
     retryInit,
-    playSong,
   };
 
   return (
