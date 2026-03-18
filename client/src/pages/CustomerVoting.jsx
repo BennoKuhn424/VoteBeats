@@ -129,7 +129,7 @@ export default function CustomerVoting() {
   return (
     <div className="min-h-screen bg-dark-950 text-white pb-safe">
       <div className="container mx-auto px-5 py-6 max-w-lg">
-        <h1 className="text-2xl font-extrabold mb-4 text-center tracking-tight">Vote on the Music</h1>
+        <h1 className="text-2xl font-extrabold mb-4 text-center tracking-tight">You Pick the Vibe 🎶</h1>
 
         {error && (
           <p className="mb-4 text-xs text-center text-amber-400 bg-dark-900 border border-amber-500/40 rounded-lg px-3 py-2">
