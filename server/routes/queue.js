@@ -6,6 +6,8 @@ const { advanceToNextSong } = require('../utils/queueAdvance');
 const { fulfillPaidRequest } = require('../utils/paymentFulfill');
 const { searchByGenre, pickFromPlaylist } = require('../utils/appleMusicAPI');
 const broadcast = require('../utils/broadcast');
+const { validateQueue } = require('../utils/validateQueue');
+const { logEvent } = require('../utils/logEvent');
 
 const router = express.Router();
 
@@ -48,19 +50,20 @@ async function serverAutofill(venueCode, venue) {
     if (!song) return;
 
     const now = Date.now();
-    db.updateQueue(venueCode, {
-      nowPlaying: {
-        ...song,
-        id: song.id || `autofill_${now}`,
-        votes: 0,
-        requestedBy: '__autofill__',
-        requestedAt: now,
-        positionMs: 0,
-        positionAnchoredAt: now,
-        isPaused: false,
-      },
-      upcoming: [],
-    });
+    const autofillSong = {
+      ...song,
+      id: song.id || `autofill_${now}`,
+      votes: 0,
+      requestedBy: '__autofill__',
+      requestedAt: now,
+      positionMs: 0,
+      positionAnchoredAt: now,
+      isPaused: false,
+    };
+    const autofillQueue = { nowPlaying: autofillSong, upcoming: [] };
+    validateQueue(venueCode, autofillQueue);
+    db.updateQueue(venueCode, autofillQueue);
+    logEvent({ venueCode, action: 'autofill', songId: autofillSong.id, detail: `"${autofillSong.title}" autofilled (server)` });
     broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
   } finally {
     pendingAutofillVenues.delete(venueCode);
@@ -163,12 +166,14 @@ router.post('/:venueCode/request', (req, res) => {
     nowPlaying: queue.nowPlaying,
     upcoming: [...(queue.upcoming || []), newSong],
   };
+  validateQueue(venueCode, updatedQueue);
   try {
     db.updateQueue(venueCode, updatedQueue);
   } catch (err) {
     console.error('Queue write error on /request:', err);
     return res.status(500).json({ error: 'Could not add song to queue — please try again' });
   }
+  logEvent({ venueCode, action: 'request', songId: newSong.id, detail: `"${newSong.title}" added to queue` });
   broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
 
   res.json({ success: true, song: newSong });
@@ -209,7 +214,9 @@ router.post('/:venueCode/vote', (req, res) => {
   }
 
   song.votes = (song.votes || 0) + voteDelta;
+  validateQueue(venueCode, queue);
   db.updateQueue(venueCode, queue);
+  logEvent({ venueCode, action: 'vote', songId, detail: `delta=${voteDelta}` });
   broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
 
   res.json({
@@ -291,6 +298,7 @@ router.post('/:venueCode/advance', async (req, res) => {
   }
 
   advanceToNextSong(venueCode, songId);
+  logEvent({ venueCode, action: 'advance', songId, detail: 'song ended — advancing' });
   let queue = db.getQueue(venueCode);
 
   // If queue is now empty and autoplay is on, fill it synchronously so the
@@ -328,6 +336,7 @@ router.post('/:venueCode/skip', authMiddleware, (req, res) => {
     return res.status(409).json({ error: 'Skip rejected — song already changed', currentSongId });
   }
   advanceToNextSong(req.params.venueCode, songId);
+  logEvent({ venueCode: req.params.venueCode, action: 'skip', songId, detail: 'venue owner skipped song' });
   broadcast.broadcastQueue(req.params.venueCode, db.getQueue(req.params.venueCode));
   res.json({ success: true });
 });
@@ -522,7 +531,9 @@ router.get('/:venueCode/autofill', async (req, res) => {
       nowPlaying: { ...newSong, positionMs: 0, positionAnchoredAt: now, isPaused: false },
       upcoming: [],
     };
+    validateQueue(venueCode, updatedQueue);
     db.updateQueue(venueCode, updatedQueue);
+    logEvent({ venueCode, action: 'autofill', songId: newSong.id, detail: `"${newSong.title}" autofilled` });
     broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
 
     res.json({ filled: true, song: newSong });
