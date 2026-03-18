@@ -6,31 +6,35 @@ const { advanceToNextSong } = require('../utils/queueAdvance');
 const { fulfillPaidRequest } = require('../utils/paymentFulfill');
 const { searchByGenre, pickFromPlaylist } = require('../utils/appleMusicAPI');
 const broadcast = require('../utils/broadcast');
-const { validateQueue } = require('../utils/validateQueue');
 const { logEvent } = require('../utils/logEvent');
+const queueRepo = require('../repos/queueRepo');
 
 const router = express.Router();
 
 // ── Anchor-pattern helper ─────────────────────────────────────────────────────
-// Computes how many ms into the song we are right now.
-// Works for both new anchor fields and the legacy startedAt field.
 function getCurrentPositionMs(np) {
   if (!np) return 0;
   const posMs = np.positionMs ?? 0;
   const anchoredAt = np.positionAnchoredAt ?? np.startedAt ?? Date.now();
-  if (np.isPaused || np.pausedAt) return posMs; // frozen when paused
+  if (np.isPaused || np.pausedAt) return posMs;
   return posMs + (Date.now() - anchoredAt);
 }
 
 // ── Server-side autofill ──────────────────────────────────────────────────────
+// pendingAutofillVenues prevents a second concurrent autofill from starting
+// while one is already awaiting the Apple Music search.  The queueRepo lock
+// inside the write provides a second line of defence: even if two callers
+// pass the outer check simultaneously, only one will commit (the re-check
+// inside the lock catches the second one).
 const pendingAutofillVenues = new Set();
 
 async function serverAutofill(venueCode, venue) {
   if (pendingAutofillVenues.has(venueCode)) return;
   pendingAutofillVenues.add(venueCode);
   try {
-    const currentQueue = db.getQueue(venueCode);
-    if (currentQueue.nowPlaying || (currentQueue.upcoming && currentQueue.upcoming.length > 0)) return;
+    // Fast path: check outside the lock (avoids lock contention on busy venues)
+    const preCheck = queueRepo.get(venueCode);
+    if (preCheck.nowPlaying || (preCheck.upcoming && preCheck.upcoming.length > 0)) return;
 
     const genreSetting = venue?.settings?.autoplayGenre;
     const genres = Array.isArray(genreSetting) ? genreSetting : (genreSetting ? [genreSetting] : []);
@@ -45,7 +49,7 @@ async function serverAutofill(venueCode, venue) {
       song = pickFromPlaylist(playlist, venueCode);
     }
     if (!song) {
-      song = await searchByGenre(genres, venueCode);
+      song = await searchByGenre(genres, venueCode); // ← only async step
     }
     if (!song) return;
 
@@ -60,21 +64,28 @@ async function serverAutofill(venueCode, venue) {
       positionAnchoredAt: now,
       isPaused: false,
     };
-    const autofillQueue = { nowPlaying: autofillSong, upcoming: [] };
-    validateQueue(venueCode, autofillQueue);
-    db.updateQueue(venueCode, autofillQueue);
-    logEvent({ venueCode, action: 'autofill', songId: autofillSong.id, detail: `"${autofillSong.title}" autofilled (server)` });
-    broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
+
+    // Locked write with re-check inside: another request may have filled the
+    // queue between the outer check and now (while we were awaiting searchByGenre).
+    const written = await queueRepo.update(venueCode, (queue) => {
+      if (queue.nowPlaying || (queue.upcoming && queue.upcoming.length > 0)) return null;
+      return { nowPlaying: autofillSong, upcoming: [] };
+    });
+
+    if (written.nowPlaying?.id === autofillSong.id) {
+      logEvent({ venueCode, action: 'autofill', songId: autofillSong.id, detail: `"${autofillSong.title}" autofilled (server)` });
+      broadcast.broadcastQueue(venueCode, written);
+    }
   } finally {
     pendingAutofillVenues.delete(venueCode);
   }
 }
 
 // GET /api/queue/:venueCode?deviceId=xxx
-router.get('/:venueCode', (req, res) => {
+router.get('/:venueCode', async (req, res) => {
   const { venueCode } = req.params;
   const { deviceId } = req.query;
-  let queue = db.getQueue(venueCode);
+  let queue = queueRepo.get(venueCode);
   const venue = db.getVenue(venueCode);
 
   // Auto-advance based on anchor position so any page poll can trigger it
@@ -85,8 +96,7 @@ router.get('/:venueCode', (req, res) => {
     if (durationMs < 60000) durationMs = 180000;
     const currentPos = getCurrentPositionMs(np) + 5000; // 5s grace
     if (currentPos >= durationMs) {
-      advanceToNextSong(venueCode, np.id);
-      queue = db.getQueue(venueCode);
+      queue = await advanceToNextSong(venueCode, np.id);
       broadcast.broadcastQueue(venueCode, queue);
       if (!queue.nowPlaying) {
         const s = venue?.settings;
@@ -119,7 +129,7 @@ router.get('/:venueCode', (req, res) => {
 });
 
 // POST /api/queue/:venueCode/request
-router.post('/:venueCode/request', (req, res) => {
+router.post('/:venueCode/request', async (req, res) => {
   const { venueCode } = req.params;
   const { song, deviceId } = req.body;
 
@@ -136,10 +146,9 @@ router.post('/:venueCode/request', (req, res) => {
     });
   }
 
-  const queue = db.getQueue(venueCode);
-  const upcoming = queue.upcoming || [];
-  const userSongs = upcoming.filter((s) => s.requestedBy === deviceId);
-
+  // Pre-check outside the lock for fast error responses
+  const currentQueue = queueRepo.get(venueCode);
+  const upcoming = currentQueue.upcoming || [];
   const songId = song.id || song.appleId;
   const alreadyInQueue = upcoming.some(
     (s) => (s.id && s.id === songId) || (s.appleId && s.appleId === song.appleId)
@@ -147,11 +156,8 @@ router.post('/:venueCode/request', (req, res) => {
   if (alreadyInQueue) {
     return res.status(400).json({ error: 'This song is already in the queue' });
   }
-
-  if (userSongs.length >= (venue.settings?.maxSongsPerUser ?? 3)) {
-    return res.status(400).json({
-      error: `Max ${venue.settings.maxSongsPerUser} songs per user`,
-    });
+  if (upcoming.filter((s) => s.requestedBy === deviceId).length >= (venue.settings?.maxSongsPerUser ?? 3)) {
+    return res.status(400).json({ error: `Max ${venue.settings?.maxSongsPerUser ?? 3} songs per user` });
   }
 
   const newSong = {
@@ -162,25 +168,22 @@ router.post('/:venueCode/request', (req, res) => {
     requestedAt: Date.now(),
   };
 
-  const updatedQueue = {
-    nowPlaying: queue.nowPlaying,
-    upcoming: [...(queue.upcoming || []), newSong],
-  };
-  validateQueue(venueCode, updatedQueue);
   try {
-    db.updateQueue(venueCode, updatedQueue);
+    const updated = await queueRepo.update(venueCode, (queue) => ({
+      nowPlaying: queue.nowPlaying,
+      upcoming: [...(queue.upcoming || []), newSong],
+    }));
+    logEvent({ venueCode, action: 'request', songId: newSong.id, detail: `"${newSong.title}" added to queue` });
+    broadcast.broadcastQueue(venueCode, updated);
+    res.json({ success: true, song: newSong });
   } catch (err) {
     console.error('Queue write error on /request:', err);
-    return res.status(500).json({ error: 'Could not add song to queue — please try again' });
+    res.status(500).json({ error: 'Could not add song to queue — please try again' });
   }
-  logEvent({ venueCode, action: 'request', songId: newSong.id, detail: `"${newSong.title}" added to queue` });
-  broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
-
-  res.json({ success: true, song: newSong });
 });
 
 // POST /api/queue/:venueCode/vote
-router.post('/:venueCode/vote', (req, res) => {
+router.post('/:venueCode/vote', async (req, res) => {
   const { venueCode } = req.params;
   const { songId, voteValue, deviceId } = req.body;
 
@@ -188,9 +191,9 @@ router.post('/:venueCode/vote', (req, res) => {
     return res.status(400).json({ error: 'Invalid vote value' });
   }
 
+  // Compute vote delta from the votes table (separate from queue)
   const existingVote = db.getVote(venueCode, songId, deviceId);
   let voteDelta = 0;
-
   if (existingVote === voteValue) {
     db.removeVote(venueCode, songId, deviceId);
     voteDelta = -voteValue;
@@ -202,83 +205,100 @@ router.post('/:venueCode/vote', (req, res) => {
     voteDelta = voteValue;
   }
 
-  const queue = db.getQueue(venueCode);
-  const song =
-    (queue.upcoming || []).find((s) => s.id === songId) ||
-    (queue.nowPlaying?.id === songId ? queue.nowPlaying : null);
+  // Check that the song still exists before applying the delta
+  const snapshot = queueRepo.get(venueCode);
+  const targetSong =
+    (snapshot.upcoming || []).find((s) => s.id === songId) ||
+    (snapshot.nowPlaying?.id === songId ? snapshot.nowPlaying : null);
 
-  if (!song) {
-    // Song was removed from queue after vote was written — clean up the stray entry
+  if (!targetSong) {
     db.removeVote(venueCode, songId, deviceId);
     return res.status(404).json({ error: 'Song is no longer in the queue' });
   }
 
-  song.votes = (song.votes || 0) + voteDelta;
-  validateQueue(venueCode, queue);
-  db.updateQueue(venueCode, queue);
+  const newVoteCount = (targetSong.votes || 0) + voteDelta;
+
+  const updated = await queueRepo.update(venueCode, (queue) => {
+    const updateVotes = (s) =>
+      s.id === songId ? { ...s, votes: (s.votes || 0) + voteDelta } : s;
+    return {
+      nowPlaying: queue.nowPlaying?.id === songId
+        ? { ...queue.nowPlaying, votes: (queue.nowPlaying.votes || 0) + voteDelta }
+        : queue.nowPlaying,
+      upcoming: (queue.upcoming || []).map(updateVotes),
+    };
+  });
+
   logEvent({ venueCode, action: 'vote', songId, detail: `delta=${voteDelta}` });
-  broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
+  broadcast.broadcastQueue(venueCode, updated);
 
   res.json({
     success: true,
-    newVoteCount: song.votes,
+    newVoteCount,
     myVote: existingVote === voteValue ? null : voteValue,
   });
 });
 
 // POST /api/queue/:venueCode/playing
-// Venue player reports playback started or resumed.
-// positionSeconds (optional): current playback position so the anchor is accurate on resume/rewind.
-router.post('/:venueCode/playing', (req, res) => {
+router.post('/:venueCode/playing', async (req, res) => {
   const { venueCode } = req.params;
   const { songId, positionSeconds } = req.body;
 
-  const queue = db.getQueue(venueCode);
-  if (!queue.nowPlaying || (queue.nowPlaying.id !== songId && String(queue.nowPlaying.appleId) !== String(songId))) {
-    return res.json({ success: true, matched: false });
-  }
+  const updated = await queueRepo.update(venueCode, (queue) => {
+    if (!queue.nowPlaying ||
+        (queue.nowPlaying.id !== songId && String(queue.nowPlaying.appleId) !== String(songId))) {
+      return null; // no-op — song doesn't match
+    }
+    const pos = typeof positionSeconds === 'number' && positionSeconds > 0 ? positionSeconds : 0;
+    const np = {
+      ...queue.nowPlaying,
+      positionMs: Math.round(pos * 1000),
+      positionAnchoredAt: Date.now(),
+      isPaused: false,
+    };
+    delete np.startedAt;
+    delete np.pausedAt;
+    return { ...queue, nowPlaying: np };
+  });
 
-  const pos = typeof positionSeconds === 'number' && positionSeconds > 0 ? positionSeconds : 0;
-  queue.nowPlaying.positionMs = Math.round(pos * 1000);
-  queue.nowPlaying.positionAnchoredAt = Date.now();
-  queue.nowPlaying.isPaused = false;
-  // Clean up legacy fields
-  delete queue.nowPlaying.startedAt;
-  delete queue.nowPlaying.pausedAt;
-
-  db.updateQueue(venueCode, queue);
-  broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
-  res.json({ success: true, matched: true });
+  const matched = updated.nowPlaying?.id === songId ||
+    String(updated.nowPlaying?.appleId) === String(songId);
+  if (matched) broadcast.broadcastQueue(venueCode, updated);
+  res.json({ success: true, matched });
 });
 
 // POST /api/queue/:venueCode/pause
-// Venue player reports playback paused — freezes the anchor so the timer stops.
-router.post('/:venueCode/pause', (req, res) => {
+router.post('/:venueCode/pause', async (req, res) => {
   const { venueCode } = req.params;
   const { songId } = req.body;
 
-  const queue = db.getQueue(venueCode);
-  if (!queue.nowPlaying || (queue.nowPlaying.id !== songId && String(queue.nowPlaying.appleId) !== String(songId))) {
-    return res.json({ success: true, matched: false });
-  }
+  // Read current position before the lock for the freeze calculation
+  const pre = queueRepo.get(venueCode);
+  const frozenPos = pre.nowPlaying ? getCurrentPositionMs(pre.nowPlaying) : 0;
 
-  // Freeze position at the current computed value
-  queue.nowPlaying.positionMs = getCurrentPositionMs(queue.nowPlaying);
-  queue.nowPlaying.positionAnchoredAt = Date.now();
-  queue.nowPlaying.isPaused = true;
-  delete queue.nowPlaying.startedAt;
-  delete queue.nowPlaying.pausedAt;
+  const updated = await queueRepo.update(venueCode, (queue) => {
+    if (!queue.nowPlaying ||
+        (queue.nowPlaying.id !== songId && String(queue.nowPlaying.appleId) !== String(songId))) {
+      return null;
+    }
+    const np = {
+      ...queue.nowPlaying,
+      positionMs: frozenPos,
+      positionAnchoredAt: Date.now(),
+      isPaused: true,
+    };
+    delete np.startedAt;
+    delete np.pausedAt;
+    return { ...queue, nowPlaying: np };
+  });
 
-  db.updateQueue(venueCode, queue);
-  broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
-  res.json({ success: true, matched: true });
+  const matched = updated.nowPlaying?.id === songId ||
+    String(updated.nowPlaying?.appleId) === String(songId);
+  if (matched) broadcast.broadcastQueue(venueCode, updated);
+  res.json({ success: true, matched });
 });
 
-// POST /api/queue/:venueCode/advance - MusicKit reports song ended
-// songId is required — a missing or wrong ID means "don't advance" (the song
-// may have already been advanced by /skip or a concurrent poll).
-// Returns nowPlaying so the client can start playing immediately without
-// a follow-up GET /queue or GET /autofill round-trip.
+// POST /api/queue/:venueCode/advance
 router.post('/:venueCode/advance', async (req, res) => {
   const { venueCode } = req.params;
   const { songId } = req.body;
@@ -287,76 +307,65 @@ router.post('/:venueCode/advance', async (req, res) => {
     return res.status(400).json({ error: 'songId required for advance' });
   }
 
-  // Snapshot before async work — same pattern as /skip so both handlers
-  // commit to the same expected ID at entry time.
-  // Compare without the `currentSongId &&` guard: if nowPlaying is already
-  // null (queue emptied by /skip), a stale advance must still be rejected so
-  // it doesn't accidentally trigger another autofill run.
-  const currentSongId = db.getQueue(venueCode).nowPlaying?.id ?? null;
+  // Fast check — if already advanced, skip acquiring the lock
+  const currentSongId = queueRepo.get(venueCode).nowPlaying?.id ?? null;
   if (currentSongId !== songId) {
-    // Already advanced (e.g. /skip ran first) — return current state so the
-    // client can immediately play whatever is now nowPlaying.
-    const queue = db.getQueue(venueCode);
-    return res.json({ success: true, nowPlaying: queue.nowPlaying || null });
+    return res.json({ success: true, nowPlaying: queueRepo.get(venueCode).nowPlaying || null });
   }
 
-  advanceToNextSong(venueCode, songId);
+  let queue = await advanceToNextSong(venueCode, songId);
   logEvent({ venueCode, action: 'advance', songId, detail: 'song ended — advancing' });
-  let queue = db.getQueue(venueCode);
 
-  // If queue is now empty and autoplay is on, fill it synchronously so the
-  // client gets a nowPlaying in the same response — no extra round-trips.
+  // Fill empty queue synchronously so the client gets nowPlaying in one round-trip
   if (!queue.nowPlaying && (!queue.upcoming || queue.upcoming.length === 0)) {
     const venue = db.getVenue(venueCode);
     const s = venue?.settings;
     if (s?.autoplayMode !== 'off' && s?.autoplayQueue !== false) {
       await serverAutofill(venueCode, venue).catch(() => {});
-      queue = db.getQueue(venueCode);
+      queue = queueRepo.get(venueCode);
     }
   }
 
-  // Single broadcast with the final state (avoids a transient empty-queue push)
   broadcast.broadcastQueue(venueCode, queue);
   res.json({ success: true, nowPlaying: queue.nowPlaying || null });
 });
 
 // POST /api/queue/:venueCode/skip (venue owner only)
-// Accepts optional songId so the expectedSongId guard in advanceToNextSong
-// prevents a double-advance when /skip and a song-end /advance race.
-router.post('/:venueCode/skip', authMiddleware, (req, res) => {
+router.post('/:venueCode/skip', authMiddleware, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) {
     return res.status(403).json({ error: 'Unauthorized' });
   }
+  const { venueCode } = req.params;
   const { songId } = req.body;
+
   if (!songId) {
     return res.status(400).json({ error: 'songId required for skip' });
   }
-  // Verify the song the client wants to skip is still the active one.
-  // If it no longer matches (concurrent /advance already ran), treat as no-op
-  // so two racing callers can never skip two songs.
-  const currentSongId = db.getQueue(req.params.venueCode).nowPlaying?.id;
+
+  const currentSongId = queueRepo.get(venueCode).nowPlaying?.id;
   if (currentSongId && currentSongId !== songId) {
     return res.status(409).json({ error: 'Skip rejected — song already changed', currentSongId });
   }
-  advanceToNextSong(req.params.venueCode, songId);
-  logEvent({ venueCode: req.params.venueCode, action: 'skip', songId, detail: 'venue owner skipped song' });
-  broadcast.broadcastQueue(req.params.venueCode, db.getQueue(req.params.venueCode));
+
+  const queue = await advanceToNextSong(venueCode, songId);
+  logEvent({ venueCode, action: 'skip', songId, detail: 'venue owner skipped song' });
+  broadcast.broadcastQueue(venueCode, queue);
   res.json({ success: true });
 });
 
 // DELETE /api/queue/:venueCode/song/:songId (venue owner only)
-router.delete('/:venueCode/song/:songId', authMiddleware, (req, res) => {
+router.delete('/:venueCode/song/:songId', authMiddleware, async (req, res) => {
   const { venueCode, songId } = req.params;
 
   if (req.venue.code !== venueCode) {
     return res.status(403).json({ error: 'Unauthorized' });
   }
 
-  const queue = db.getQueue(venueCode);
-  queue.upcoming = (queue.upcoming || []).filter((s) => s.id !== songId);
-  db.updateQueue(venueCode, queue);
-  broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
-
+  const updated = await queueRepo.update(venueCode, (queue) => ({
+    ...queue,
+    upcoming: (queue.upcoming || []).filter((s) => s.id !== songId),
+  }));
+  broadcast.broadcastQueue(venueCode, updated);
   res.json({ success: true });
 });
 
@@ -447,10 +456,8 @@ router.get('/:venueCode/request-status', async (req, res) => {
   const { checkoutId } = req.query;
   if (!checkoutId) return res.status(400).json({ error: 'checkoutId required' });
 
-  let pending = db.getPendingPayment(checkoutId);
-  if (!pending) {
-    return res.json({ fulfilled: true });
-  }
+  const pending = db.getPendingPayment(checkoutId);
+  if (!pending) return res.json({ fulfilled: true });
   if (pending.venueCode !== venueCode) {
     return res.status(403).json({ error: 'Invalid checkout' });
   }
@@ -466,18 +473,13 @@ router.get('/:venueCode/request-status', async (req, res) => {
         const data = await response.json();
         const status = (data.status || '').toLowerCase();
         const hasPayment = !!(data.paymentId || data.payment?.id);
-        // Use exact terminal-status matches only — loose includes() could match
-        // transitional statuses like "completion_pending" and mark unpaid orders paid.
         const isComplete =
-          status === 'completed' ||
-          status === 'succeeded' ||
-          status === 'complete' ||
-          status === 'success' ||
-          hasPayment;
+          status === 'completed' || status === 'succeeded' ||
+          status === 'complete'  || status === 'success'  || hasPayment;
         if (isComplete) {
           const amountCents = data.amount ?? data.payment?.amount ?? pending.amountCents;
           if (fulfillPaidRequest(checkoutId, amountCents)) {
-            broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
+            broadcast.broadcastQueue(venueCode, queueRepo.get(venueCode));
             return res.json({ fulfilled: true });
           }
         }
@@ -496,20 +498,20 @@ router.get('/:venueCode/autofill', async (req, res) => {
   const venue = db.getVenue(venueCode);
   if (!venue) return res.status(404).json({ error: 'Venue not found' });
 
-  const genreSetting = venue.settings?.autoplayGenre;
-  const genres = Array.isArray(genreSetting) ? genreSetting : (genreSetting ? [genreSetting] : []);
-
-  const queue = db.getQueue(venueCode);
-  if (queue.nowPlaying || (queue.upcoming && queue.upcoming.length > 0)) {
+  const preCheck = queueRepo.get(venueCode);
+  if (preCheck.nowPlaying || (preCheck.upcoming && preCheck.upcoming.length > 0)) {
     return res.json({ filled: false, reason: 'Queue is not empty' });
   }
 
   try {
+    const genreSetting = venue.settings?.autoplayGenre;
+    const genres = Array.isArray(genreSetting) ? genreSetting : (genreSetting ? [genreSetting] : []);
     const autoplayMode = venue.settings?.autoplayMode || 'playlist';
     const playlists = venue.playlists || [];
     const activePl = playlists.find((p) => p.id === venue.activePlaylistId)
       || playlists.find((p) => p.songs?.length > 0);
     const playlist = activePl?.songs || venue.playlist || [];
+
     let song = null;
     if (autoplayMode !== 'random' && playlist.length > 0) {
       song = pickFromPlaylist(playlist, venueCode);
@@ -530,15 +532,20 @@ router.get('/:venueCode/autofill', async (req, res) => {
       requestedAt: now,
     };
 
-    const updatedQueue = {
-      nowPlaying: { ...newSong, positionMs: 0, positionAnchoredAt: now, isPaused: false },
-      upcoming: [],
-    };
-    validateQueue(venueCode, updatedQueue);
-    db.updateQueue(venueCode, updatedQueue);
-    logEvent({ venueCode, action: 'autofill', songId: newSong.id, detail: `"${newSong.title}" autofilled` });
-    broadcast.broadcastQueue(venueCode, db.getQueue(venueCode));
+    const written = await queueRepo.update(venueCode, (queue) => {
+      if (queue.nowPlaying || (queue.upcoming && queue.upcoming.length > 0)) return null;
+      return {
+        nowPlaying: { ...newSong, positionMs: 0, positionAnchoredAt: now, isPaused: false },
+        upcoming: [],
+      };
+    });
 
+    if (!written.nowPlaying) {
+      return res.json({ filled: false, reason: 'Queue was filled by another request' });
+    }
+
+    logEvent({ venueCode, action: 'autofill', songId: newSong.id, detail: `"${newSong.title}" autofilled` });
+    broadcast.broadcastQueue(venueCode, written);
     res.json({ filled: true, song: newSong });
   } catch (err) {
     console.error('Autofill error:', err);

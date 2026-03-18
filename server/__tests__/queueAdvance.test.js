@@ -1,109 +1,114 @@
 /**
  * Tests for advanceToNextSong.
  *
- * The database module is fully mocked so no JSON files are touched.
+ * queueRepo is mocked so tests focus purely on the mutation logic
+ * (what the mutateFn does with a given queue), not on locking or persistence.
  */
 
-jest.mock('../utils/database');
-const db = require('../utils/database');
+jest.mock('../repos/queueRepo');
+const queueRepo = require('../repos/queueRepo');
 const { advanceToNextSong } = require('../utils/queueAdvance');
 
 const VENUE = 'TEST01';
-
-function makeQueue(nowPlaying, upcoming = []) {
-  return { nowPlaying, upcoming };
-}
 
 function makeSong(id, extra = {}) {
   return { id, appleId: `apple_${id}`, title: `Song ${id}`, ...extra };
 }
 
-beforeEach(() => {
-  jest.resetAllMocks();
-  db.updateQueue.mockImplementation(() => {});
-});
+// Helper: wire queueRepo.update to call mutateFn with inputQueue and return its result.
+function setupMock(inputQueue) {
+  queueRepo.update.mockImplementation(async (_venueCode, mutateFn) => {
+    const result = mutateFn(inputQueue);
+    return result ?? inputQueue; // queueRepo returns current queue on no-op
+  });
+}
 
-describe('advanceToNextSong — expectedSongId guard', () => {
-  test('advances when expectedSongId matches nowPlaying.id', () => {
-    const current = makeSong('s1');
-    const next = makeSong('s2');
-    db.getQueue.mockReturnValue(makeQueue(current, [next]));
+beforeEach(() => jest.resetAllMocks());
 
-    advanceToNextSong(VENUE, 's1');
+describe('expectedSongId guard', () => {
+  test('advances and returns new queue when expectedSongId matches nowPlaying.id', async () => {
+    const inputQueue = { nowPlaying: makeSong('s1'), upcoming: [makeSong('s2')] };
+    setupMock(inputQueue);
 
-    expect(db.updateQueue).toHaveBeenCalledWith(VENUE, expect.objectContaining({
+    const result = await advanceToNextSong(VENUE, 's1');
+
+    expect(result).toMatchObject({
       nowPlaying: expect.objectContaining({ id: 's2' }),
       upcoming: [],
-    }));
+    });
   });
 
-  test('does NOT advance when expectedSongId does not match nowPlaying.id (race guard)', () => {
-    // Simulates /skip running first — nowPlaying is already s2
-    const current = makeSong('s2');
-    db.getQueue.mockReturnValue(makeQueue(current, []));
+  test('no-op when expectedSongId does not match nowPlaying.id (race guard)', async () => {
+    // Simulate /skip having already run — nowPlaying is now s2
+    const inputQueue = { nowPlaying: makeSong('s2'), upcoming: [] };
+    setupMock(inputQueue);
 
-    advanceToNextSong(VENUE, 's1'); // stale ID from the client
+    // The mutateFn returns null → queueRepo returns current queue unchanged
+    queueRepo.update.mockImplementation(async (_v, mutateFn) => {
+      const r = mutateFn(inputQueue);
+      expect(r).toBeNull(); // guard fired
+      return inputQueue;
+    });
 
-    expect(db.updateQueue).not.toHaveBeenCalled();
+    await advanceToNextSong(VENUE, 's1');
+    expect(queueRepo.update).toHaveBeenCalledTimes(1);
   });
 
-  test('does NOT advance when nowPlaying is null but a songId is given (stale advance)', () => {
-    // Queue already empty — /advance should be a no-op
-    db.getQueue.mockReturnValue(makeQueue(null, []));
+  test('no-op when nowPlaying is null and a songId is given (stale advance)', async () => {
+    const inputQueue = { nowPlaying: null, upcoming: [] };
+    setupMock(inputQueue);
 
-    advanceToNextSong(VENUE, 's1');
+    queueRepo.update.mockImplementation(async (_v, mutateFn) => {
+      const r = mutateFn(inputQueue);
+      expect(r).toBeNull();
+      return inputQueue;
+    });
 
-    expect(db.updateQueue).not.toHaveBeenCalled();
+    await advanceToNextSong(VENUE, 's1');
   });
 
-  test('advances without expectedSongId (legacy / unconditional advance)', () => {
-    const current = makeSong('s1');
-    const next = makeSong('s2');
-    db.getQueue.mockReturnValue(makeQueue(current, [next]));
+  test('advances unconditionally when no expectedSongId is given', async () => {
+    const inputQueue = { nowPlaying: makeSong('s1'), upcoming: [makeSong('s2')] };
+    setupMock(inputQueue);
 
-    advanceToNextSong(VENUE); // no expectedSongId
+    const result = await advanceToNextSong(VENUE);
 
-    expect(db.updateQueue).toHaveBeenCalledWith(VENUE, expect.objectContaining({
-      nowPlaying: expect.objectContaining({ id: 's2' }),
-    }));
+    expect(result).toMatchObject({ nowPlaying: expect.objectContaining({ id: 's2' }) });
   });
 });
 
-describe('advanceToNextSong — queue transitions', () => {
-  test('sets nowPlaying to null when upcoming is empty', () => {
-    const current = makeSong('s1');
-    db.getQueue.mockReturnValue(makeQueue(current, []));
+describe('queue transitions', () => {
+  test('sets nowPlaying to null when upcoming is empty', async () => {
+    setupMock({ nowPlaying: makeSong('s1'), upcoming: [] });
 
-    advanceToNextSong(VENUE, 's1');
+    const result = await advanceToNextSong(VENUE, 's1');
 
-    expect(db.updateQueue).toHaveBeenCalledWith(VENUE, { nowPlaying: null, upcoming: [] });
+    expect(result).toEqual({ nowPlaying: null, upcoming: [] });
   });
 
-  test('pops the first upcoming song as nowPlaying (FIFO)', () => {
-    const current = makeSong('s1');
-    const next = makeSong('s2');
-    const after = makeSong('s3');
-    db.getQueue.mockReturnValue(makeQueue(current, [next, after]));
+  test('pops first upcoming song in FIFO order', async () => {
+    const inputQueue = {
+      nowPlaying: makeSong('s1'),
+      upcoming: [makeSong('s2'), makeSong('s3')],
+    };
+    setupMock(inputQueue);
 
-    advanceToNextSong(VENUE, 's1');
+    const result = await advanceToNextSong(VENUE, 's1');
 
-    expect(db.updateQueue).toHaveBeenCalledWith(VENUE, expect.objectContaining({
-      nowPlaying: expect.objectContaining({ id: 's2' }),
-      upcoming: [expect.objectContaining({ id: 's3' })],
-    }));
+    expect(result.nowPlaying.id).toBe('s2');
+    expect(result.upcoming).toHaveLength(1);
+    expect(result.upcoming[0].id).toBe('s3');
   });
 
-  test('sets anchor fields on the new nowPlaying', () => {
+  test('sets anchor fields (positionMs=0, positionAnchoredAt, isPaused=false) on new nowPlaying', async () => {
     const before = Date.now();
-    const current = makeSong('s1');
-    const next = makeSong('s2');
-    db.getQueue.mockReturnValue(makeQueue(current, [next]));
+    const inputQueue = { nowPlaying: makeSong('s1'), upcoming: [makeSong('s2')] };
+    setupMock(inputQueue);
 
-    advanceToNextSong(VENUE, 's1');
+    const result = await advanceToNextSong(VENUE, 's1');
 
-    const written = db.updateQueue.mock.calls[0][1];
-    expect(written.nowPlaying.positionMs).toBe(0);
-    expect(written.nowPlaying.positionAnchoredAt).toBeGreaterThanOrEqual(before);
-    expect(written.nowPlaying.isPaused).toBe(false);
+    expect(result.nowPlaying.positionMs).toBe(0);
+    expect(result.nowPlaying.positionAnchoredAt).toBeGreaterThanOrEqual(before);
+    expect(result.nowPlaying.isPaused).toBe(false);
   });
 });
