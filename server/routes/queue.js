@@ -306,11 +306,17 @@ router.post('/:venueCode/skip', authMiddleware, (req, res) => {
     return res.status(403).json({ error: 'Unauthorized' });
   }
   const { songId } = req.body;
-  // Snapshot before calling advanceToNextSong — same pattern as /advance so
-  // both handlers commit to the same expected ID at entry time and the guard
-  // in advanceToNextSong resolves any concurrent call as a no-op.
-  const expectedId = songId || db.getQueue(req.params.venueCode).nowPlaying?.id;
-  advanceToNextSong(req.params.venueCode, expectedId);
+  if (!songId) {
+    return res.status(400).json({ error: 'songId required for skip' });
+  }
+  // Verify the song the client wants to skip is still the active one.
+  // If it no longer matches (concurrent /advance already ran), treat as no-op
+  // so two racing callers can never skip two songs.
+  const currentSongId = db.getQueue(req.params.venueCode).nowPlaying?.id;
+  if (currentSongId && currentSongId !== songId) {
+    return res.status(409).json({ error: 'Skip rejected — song already changed', currentSongId });
+  }
+  advanceToNextSong(req.params.venueCode, songId);
   broadcast.broadcastQueue(req.params.venueCode, db.getQueue(req.params.venueCode));
   res.json({ success: true });
 });

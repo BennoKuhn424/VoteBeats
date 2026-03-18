@@ -38,7 +38,7 @@ export default function VenuePlayer() {
     playerError,
     setPlayerError,
     autofillNotice,
-    setAutofillNotice,
+    dismissAutofillNotice,
     retryInit,
     playSong,
     musicRef,
@@ -114,13 +114,23 @@ export default function VenuePlayer() {
       // synchronous SDK calls so they don't break the gesture chain. Calling
       // music.play() alone fails because MusicKit rejects it after a prior failed
       // autoplay attempt — a fresh setQueue is required.
-      currentSongIdRef.current = nowPlaying.id;
-      await playSong(nowPlaying);
+      try {
+        beginTransition();
+        currentSongIdRef.current = nowPlaying.id;
+        await playSong(nowPlaying);
+      } finally {
+        endTransition();
+      }
     } else if (state === 3) {
       // Paused — if server advanced to a newer song, play that; otherwise resume
       if (nowPlaying && nowPlaying.id !== currentSongIdRef.current) {
-        currentSongIdRef.current = nowPlaying.id;
-        await playSong(nowPlaying);
+        try {
+          beginTransition();
+          currentSongIdRef.current = nowPlaying.id;
+          await playSong(nowPlaying);
+        } finally {
+          endTransition();
+        }
       } else {
         try {
           await music.play();
@@ -139,8 +149,13 @@ export default function VenuePlayer() {
     } else if (state === 0 || state === 4 || state === 5) {
       // Nothing loaded / stopped / ended — load the current song and play
       if (nowPlaying) {
-        currentSongIdRef.current = nowPlaying.id;
-        await playSong(nowPlaying);
+        try {
+          beginTransition();
+          currentSongIdRef.current = nowPlaying.id;
+          await playSong(nowPlaying);
+        } finally {
+          endTransition();
+        }
       }
     }
   }
@@ -410,7 +425,7 @@ export default function VenuePlayer() {
         <div className="shrink-0 border-b border-zinc-200 bg-amber-50">
           <div className="max-w-3xl mx-auto px-4 py-2 flex items-center justify-between gap-3">
             <p className="text-sm font-medium text-amber-700">No songs found for autoplay — add tracks to your playlist</p>
-            <button type="button" onClick={() => setAutofillNotice(false)} className="text-xs text-zinc-400 hover:text-zinc-600 shrink-0">Dismiss</button>
+            <button type="button" onClick={dismissAutofillNotice} className="text-xs text-zinc-400 hover:text-zinc-600 shrink-0">Dismiss</button>
           </div>
         </div>
       )}

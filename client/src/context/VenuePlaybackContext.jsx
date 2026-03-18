@@ -39,9 +39,36 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const playFailCountRef = useRef(0);       // consecutive playSong non-interaction failures
   const queueRef = useRef(queue);           // stable ref for health-check interval
   const stuckSinceRef = useRef(null);       // timestamp when player went idle while server has nowPlaying
+  const divergenceSinceRef = useRef(null); // timestamp of first track-divergence detection (cooldown)
+  const autofillDismissedAtRef = useRef(0); // timestamp of last manual autofill notice dismiss
   // True once the user has clicked something on this page — required before
   // any music.play() call to satisfy browser autoplay policy.
   const hasUserGestureRef = useRef(false);
+
+  // Error priority — lower number = higher priority.
+  // Only overwrite current error if the new one is equally or more critical,
+  // so a soft "retrying…" notice never silences an auth failure banner.
+  const ERROR_PRIORITY = {
+    'Could not connect to Apple Music — tap Retry': 1,
+    'Player needs attention — tap to reconnect Apple Music': 2,
+    'Player disconnected — tap to reset': 3,
+    'Something went wrong — tap Play to retry': 4,
+    'Playback failed — retrying…': 5,
+  };
+  const setErrorWithPriority = useCallback((newMsg) => {
+    setPlayerError((prev) => {
+      if (!newMsg) return null;
+      const newP = ERROR_PRIORITY[newMsg] ?? 99;
+      const prevP = ERROR_PRIORITY[prev] ?? 99;
+      return newP <= prevP ? newMsg : prev;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const dismissAutofillNotice = useCallback(() => {
+    autofillDismissedAtRef.current = Date.now();
+    setAutofillNotice(false);
+  }, []);
 
   // beginTransition / endTransition keep the ref (for fast checks) and the
   // state (for UI disabled/spinner) in sync, and run a 10-second watchdog so
@@ -55,7 +82,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         console.warn('[watchdog] transition stuck >10 s — forcing reset');
         isTransitioningRef.current = false;
         setIsTransitioning(false);
-        setPlayerError('Something went wrong — tap Play to retry');
+        setErrorWithPriority('Something went wrong — tap Play to retry');
       }
     }, 10000);
   }, []);
@@ -165,17 +192,15 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         currentSongIdRef.current = null;
         playFailCountRef.current += 1;
         if (playFailCountRef.current >= 3) {
-          setPlayerError('Player needs attention — tap to reconnect Apple Music');
+          setErrorWithPriority('Player needs attention — tap to reconnect Apple Music');
           playFailCountRef.current = 0;
         } else {
-          // Show a subtle "retrying" notice on the first failure so the venue
-          // owner isn't left wondering why music stopped mid-song.
-          setPlayerError('Playback failed — retrying…');
+          setErrorWithPriority('Playback failed — retrying…');
         }
       }
       endTransition(); // safety: ensure isTransitioningRef never stays stuck
     }
-  }, [venueCode, endTransition]);
+  }, [venueCode, endTransition, setErrorWithPriority]);
 
   const tryAutofill = useCallback(async () => {
     if (autoplayModeRef.current === 'off') return false;
@@ -188,9 +213,12 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         autofill404UntilRef.current = Date.now() + backoff;
         console.warn(`Autofill: no songs — backing off ${backoff / 1000}s.`);
         autofillBackoffRef.current = Math.min(backoff * 2, 30000);
-        // Show the notice immediately on first backoff so the venue owner
-        // doesn't see silent "Nothing playing" for up to 20 s.
-        setAutofillNotice(true);
+        // Show notice immediately — but respect a 5-minute cooldown after a
+        // manual dismiss so repeated backoffs don't cause "alert fatigue".
+        const NOTICE_COOLDOWN_MS = 5 * 60 * 1000;
+        if (Date.now() - autofillDismissedAtRef.current > NOTICE_COOLDOWN_MS) {
+          setAutofillNotice(true);
+        }
         return false;
       }
       autofillBackoffRef.current = 5000; // reset on success
@@ -358,10 +386,19 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         const serverAppleId = String(serverNowPlaying?.appleId || '');
         const clientAppleId = String(music.nowPlayingItem?.id || '');
         if (serverAppleId && clientAppleId && serverAppleId !== clientAppleId) {
-          // HC_TRACK_DIVERGENCE — distinct code makes it easy to grep in production logs
-          console.warn('[HC_TRACK_DIVERGENCE]', { serverAppleId, clientAppleId });
-          setPlayerError('Player disconnected — tap to reset');
-          currentSongIdRef.current = null;
+          // Only escalate after two consecutive divergent checks (~24 s apart)
+          // to avoid false positives during transient MusicKit state changes.
+          if (!divergenceSinceRef.current) {
+            divergenceSinceRef.current = Date.now();
+            console.warn('[HC_TRACK_DIVERGENCE] first detection — waiting for confirmation', { serverAppleId, clientAppleId });
+          } else {
+            console.warn('[HC_TRACK_DIVERGENCE] confirmed', { serverAppleId, clientAppleId });
+            setErrorWithPriority('Player disconnected — tap to reset');
+            currentSongIdRef.current = null;
+            divergenceSinceRef.current = null;
+          }
+        } else {
+          divergenceSinceRef.current = null; // IDs match — reset cooldown
         }
       } else if (serverNowPlaying && (state === 0 || state === 4 || state === 5)) {
         // Server has a song but player is idle/stopped/ended — may be stuck
@@ -372,7 +409,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
           // (auto-advance may have already cleared it and we just missed the push)
           console.warn('[HC_IDLE_STUCK] player idle >15s while server has nowPlaying — re-fetching to confirm');
           fetchQueue();
-          setPlayerError('Player disconnected — tap to reset');
+          setErrorWithPriority('Player disconnected — tap to reset');
           currentSongIdRef.current = null;
           stuckSinceRef.current = null;
         }
@@ -381,7 +418,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       }
     }, 12000);
     return () => clearInterval(interval);
-  }, [venueCode, fetchQueue]);
+  }, [venueCode, fetchQueue, setErrorWithPriority]);
 
   const value = {
     queue,
@@ -408,6 +445,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     retryInit,
     playSong,
     tryAutofill,
+    dismissAutofillNotice,
     musicRef,
     currentSongIdRef,
     isTransitioning,
