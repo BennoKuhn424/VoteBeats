@@ -60,6 +60,9 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const queueRef = useRef(queue);           // stable ref for the health-check interval
   const stuckSinceRef = useRef(null);
   const divergenceSinceRef = useRef(null);
+  // Tracks when each health-check error was last fired to prevent re-bannering
+  // every 12s while the condition persists. Key = error message string.
+  const hcLastFiredRef = useRef({});
   const autofillDismissedAtRef = useRef(0);
   // True once the user has clicked anything — required for browser autoplay policy.
   const hasUserGestureRef = useRef(false);
@@ -134,6 +137,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
 
     let stateListener = null;
     let timeListener = null;
+    let itemListener = null;
 
     async function init() {
       try {
@@ -157,6 +161,11 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         setIsAuthorized(music.isAuthorized);
         setPlayerError(null);
 
+        // Ask iOS to treat this tab as playback (music), so audio is less likely to stop when backgrounded (iOS 17+).
+        if (typeof navigator !== 'undefined' && navigator.audioSession?.type !== undefined) {
+          try { navigator.audioSession.type = 'playback'; } catch (_) {}
+        }
+
         // Sync initial MusicKit state into playerState
         const initialState =
           music.playbackState === 2 ? PLAYER_STATES.PLAYING :
@@ -178,15 +187,59 @@ export function VenuePlaybackProvider({ venueCode, children }) {
           const mk = music.playbackState;
           if (mk === 2) updatePlayerState(PLAYER_STATES.PLAYING);
           else if (mk === 3) updatePlayerState(PLAYER_STATES.PAUSED);
-          else if (mk === 0 || mk === 4 || mk === 5) updatePlayerState(PLAYER_STATES.IDLE);
+          else if (mk === 0 || mk === 4 || mk === 5) {
+            updatePlayerState(PLAYER_STATES.IDLE);
+            // mk===5: song ended. MusicKit's own auto-advance is also JS-based and
+            // may not run when the screen is locked. Force-skip to the next pre-loaded
+            // item so iOS handles the audio transition at the OS level.
+            // Pre-emptively update currentSongIdRef to prevent nowPlayingItemDidChange
+            // from firing a duplicate server advance.
+            if (mk === 5 && autoplayModeRef.current !== 'off') {
+              const endedId = currentSongIdRef.current;
+              const upcoming = queueRef.current?.upcoming || [];
+              const nextSong = upcoming.find((s) => s.appleId && s.id !== endedId);
+              if (nextSong) {
+                // Pre-emptively update so nowPlayingItemDidChange doesn't double-fire.
+                currentSongIdRef.current = nextSong.id;
+                setQueue((prev) => ({
+                  nowPlaying: { ...nextSong, positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false },
+                  upcoming: (prev.upcoming || []).slice(1),
+                }));
+                music.skipToNextItem().catch(() => {
+                  currentSongIdRef.current = endedId; // restore on failure
+                });
+                api.advanceQueue(venueCode, endedId).catch(() => {});
+              }
+            }
+          }
           // mk === 1 (MusicKit loading): ignore, we manage this via 'transitioning'
         };
         timeListener = () => {
           setPlaybackTime(music.currentPlaybackTime || 0);
           setPlaybackDuration(music.currentPlaybackDuration || 0);
         };
+        // Detect background auto-advance: MusicKit moved to next pre-loaded item
+        // (e.g. while screen was locked). Find which song by appleId and sync state.
+        itemListener = () => {
+          const newAppleId = String(music.nowPlayingItem?.id || '');
+          if (!newAppleId) return;
+          const upcoming = queueRef.current?.upcoming ?? [];
+          const idx = upcoming.findIndex((s) => String(s?.appleId) === newAppleId);
+          if (idx < 0 || currentSongIdRef.current === upcoming[idx]?.id) return;
+          const nextSong = upcoming[idx];
+          const endedSongId = currentSongIdRef.current;
+          currentSongIdRef.current = nextSong.id;
+          setQueue((prev) => ({
+            nowPlaying: { ...nextSong, positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false },
+            upcoming: [...(prev.upcoming || []).slice(0, idx), ...(prev.upcoming || []).slice(idx + 1)],
+          }));
+          api.advanceQueue(venueCode, endedSongId).catch((e) =>
+            console.warn('[BG_ADVANCE] server sync failed:', e?.message));
+        };
+
         music.addEventListener('playbackStateDidChange', stateListener);
         music.addEventListener('playbackTimeDidChange', timeListener);
+        music.addEventListener('nowPlayingItemDidChange', itemListener);
       } catch (err) {
         console.error('[APPLE_INIT_FAIL] MusicKit init error:', err);
         setPlayerError('Could not connect to Apple Music — tap Retry');
@@ -199,6 +252,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       if (music) {
         if (stateListener) music.removeEventListener('playbackStateDidChange', stateListener);
         if (timeListener) music.removeEventListener('playbackTimeDidChange', timeListener);
+        if (itemListener) music.removeEventListener('nowPlayingItemDidChange', itemListener);
       }
     };
   }, [venueCode, initKey]); // initKey lets retryInit() re-run this effect
@@ -225,7 +279,14 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       // Stabilise before loading — state 1 (loading) also needs pause() first.
       try { await music.pause(); } catch {}
       try { await music.stop(); } catch {}
-      await music.setQueue({ songs: [song.appleId] });
+      // Pre-load multiple upcoming songs so MusicKit can auto-advance natively
+      // when the screen is locked — iOS can transition at the OS level without
+      // JavaScript running at each song end. More items = more tracks play through lock.
+      const upcoming = queueRef.current?.upcoming ?? [];
+      const others = upcoming.filter((s) => s.appleId && s.id !== song.id);
+      const LOCK_SCREEN_QUEUE_SIZE = 10; // current + up to 9 more
+      const ids = [song.appleId, ...others.slice(0, LOCK_SCREEN_QUEUE_SIZE - 1)].filter(Boolean);
+      await music.setQueue({ songs: ids });
       await music.play();
       // MusicKit listener will set PLAYING; clear any error on success
       setPlayerError(null);
@@ -406,6 +467,17 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   // ── Health check ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!venueCode) return;
+
+    // Only fire the same error banner once per cooldown window (60s).
+    // Prevents re-showing the same banner every 12s while a fault persists.
+    const HC_BANNER_COOLDOWN_MS = 60_000;
+    function hcSetError(msg) {
+      const now = Date.now();
+      if (now - (hcLastFiredRef.current[msg] ?? 0) < HC_BANNER_COOLDOWN_MS) return;
+      hcLastFiredRef.current[msg] = now;
+      setErrorWithPriority(msg);
+    }
+
     const interval = setInterval(() => {
       const music = musicRef.current;
       if (!music) return;
@@ -422,7 +494,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
             console.warn('[HC_TRACK_DIVERGENCE] first detection', { serverAppleId, clientAppleId });
           } else {
             console.warn('[HC_TRACK_DIVERGENCE] confirmed', { serverAppleId, clientAppleId });
-            setErrorWithPriority('Player disconnected — tap to reset');
+            hcSetError('Player disconnected — tap to reset');
             currentSongIdRef.current = null;
             divergenceSinceRef.current = null;
           }
@@ -435,7 +507,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         } else if (Date.now() - stuckSinceRef.current > 15000) {
           console.warn('[HC_IDLE_STUCK] player idle >15s while server has nowPlaying');
           fetchQueue();
-          setErrorWithPriority('Player disconnected — tap to reset');
+          hcSetError('Player disconnected — tap to reset');
           currentSongIdRef.current = null;
           stuckSinceRef.current = null;
         }
@@ -555,8 +627,61 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     autoplayModeRef.current = mode;
   }, []);
 
-  // clearError: dismiss the error banner.
-  const clearError = useCallback(() => setPlayerError(null), []);
+  // clearError: dismiss the error banner and reset the HC cooldown so a
+  // subsequent real fault can re-appear immediately after a manual dismiss.
+  const clearError = useCallback(() => {
+    hcLastFiredRef.current = {};
+    setPlayerError(null);
+  }, []);
+
+  // ── Media Session API: lock screen / Control Center show correct track and controls ──
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    const np = queue.nowPlaying;
+    const isPlaying = playerState === PLAYER_STATES.PLAYING;
+    const isPaused = playerState === PLAYER_STATES.PAUSED;
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : isPaused ? 'paused' : 'none';
+    if (np) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: np.title || 'Speeldit',
+        artist: np.artist || '',
+        album: '',
+        artwork: np.albumArt
+          ? [{ src: np.albumArt, sizes: '512x512', type: 'image/jpeg' }]
+          : [],
+      });
+      if (isPlaying && playbackDuration > 0 && 'setPositionState' in navigator.mediaSession) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: playbackDuration,
+            position: playbackTime,
+            playbackRate: 1,
+          });
+        } catch (_) {}
+      } else if ('setPositionState' in navigator.mediaSession) {
+        try { navigator.mediaSession.setPositionState(null); } catch (_) {}
+      }
+    }
+  }, [queue.nowPlaying, playerState, playbackTime, playbackDuration]);
+
+  // Media Session action handlers so lock screen play/pause/next work.
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    const handlers = [
+      ['play', () => { playPause(); }],
+      ['pause', () => { playPause(); }],
+      ['previoustrack', () => { restart(); }],
+      ['nexttrack', () => { skip(); }],
+    ];
+    for (const [action, handler] of handlers) {
+      try { navigator.mediaSession.setActionHandler(action, handler); } catch (_) {}
+    }
+    return () => {
+      for (const [action] of handlers) {
+        try { navigator.mediaSession.setActionHandler(action, null); } catch (_) {}
+      }
+    };
+  }, [playPause, skip, restart]);
 
   const value = {
     // Player state (single source of truth — replaces isPlaying, isTransitioning,
