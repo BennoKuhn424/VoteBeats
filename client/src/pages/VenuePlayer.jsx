@@ -109,28 +109,17 @@ export default function VenuePlayer() {
       await music.pause();
       if (nowPlaying) api.pausePlaying(venueCode, nowPlaying.id).catch(() => {});
     } else if (wasWaiting && nowPlaying) {
-      // Autoplay was blocked — we are now inside a real user gesture.
-      // Do the full playSong cycle (stop → setQueue → play). These are fast
-      // synchronous SDK calls so they don't break the gesture chain. Calling
-      // music.play() alone fails because MusicKit rejects it after a prior failed
-      // autoplay attempt — a fresh setQueue is required.
-      try {
-        beginTransition();
-        currentSongIdRef.current = nowPlaying.id;
-        await playSong(nowPlaying);
-      } finally {
-        endTransition();
-      }
+      // Autoplay was blocked — this tap is the required user gesture.
+      // Do NOT call beginTransition() here: setIsTransitioning triggers a React
+      // re-render which breaks WebKit's gesture tracking before music.play(),
+      // causing "user failed to interact with document first".
+      currentSongIdRef.current = nowPlaying.id;
+      await playSong(nowPlaying);
     } else if (state === 3) {
       // Paused — if server advanced to a newer song, play that; otherwise resume
       if (nowPlaying && nowPlaying.id !== currentSongIdRef.current) {
-        try {
-          beginTransition();
-          currentSongIdRef.current = nowPlaying.id;
-          await playSong(nowPlaying);
-        } finally {
-          endTransition();
-        }
+        currentSongIdRef.current = nowPlaying.id;
+        await playSong(nowPlaying);
       } else {
         try {
           await music.play();
@@ -147,15 +136,10 @@ export default function VenuePlayer() {
         }
       }
     } else if (state === 0 || state === 4 || state === 5) {
-      // Nothing loaded / stopped / ended — load the current song and play
+      // Nothing loaded / stopped / ended — same gesture-chain constraint applies.
       if (nowPlaying) {
-        try {
-          beginTransition();
-          currentSongIdRef.current = nowPlaying.id;
-          await playSong(nowPlaying);
-        } finally {
-          endTransition();
-        }
+        currentSongIdRef.current = nowPlaying.id;
+        await playSong(nowPlaying);
       }
     }
   }
