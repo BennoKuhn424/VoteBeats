@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Music2, ListMusic, LayoutList, ArrowLeft,
-  Play, Pause, SkipBack, SkipForward, Volume2,
+  Play, Pause, SkipBack, SkipForward, Volume2, Loader2,
 } from 'lucide-react';
 import api from '../utils/api';
 import QueueManager from '../components/venue/QueueManager';
@@ -43,7 +43,10 @@ export default function VenuePlayer() {
     playSong,
     musicRef,
     currentSongIdRef,
+    isTransitioning,
     isTransitioningRef,
+    beginTransition,
+    endTransition,
     hasUserGestureRef,
   } = playback;
 
@@ -58,7 +61,8 @@ export default function VenuePlayer() {
     if (!checkoutId) return;
     const savedPrompt = localStorage.getItem(`speeldit_generate_prompt_${venueCode}`) || '';
     const savedPlaylistId = localStorage.getItem(`speeldit_generate_playlist_${venueCode}`) || 'pl_default';
-    const savedCount = Number(localStorage.getItem(`speeldit_generate_count_${venueCode}`)) || 100;
+    const rawCount = Number(localStorage.getItem(`speeldit_generate_count_${venueCode}`));
+    const savedCount = (!isNaN(rawCount) && rawCount > 0 && rawCount <= 500) ? rawCount : 100;
     localStorage.removeItem(`speeldit_generate_${venueCode}`);
     localStorage.removeItem(`speeldit_generate_prompt_${venueCode}`);
     localStorage.removeItem(`speeldit_generate_playlist_${venueCode}`);
@@ -137,9 +141,10 @@ export default function VenuePlayer() {
   }
 
   async function handleSkip() {
+    if (isTransitioningRef.current) return;
     const music = musicRef.current;
     if (music) { try { await music.stop(); } catch {} }
-    isTransitioningRef.current = true;
+    beginTransition();
     currentSongIdRef.current = null;
 
     // Optimistic update: immediately show and start the next song so there's
@@ -157,7 +162,7 @@ export default function VenuePlayer() {
     } catch (err) {
       console.error('Skip error:', err);
     }
-    isTransitioningRef.current = false;
+    endTransition();
     await fetchQueue(); // reconcile with server state
   }
 
@@ -267,7 +272,8 @@ export default function VenuePlayer() {
               <button
                 type="button"
                 onClick={handlePrev}
-                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors"
+                disabled={isTransitioning}
+                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors disabled:opacity-40 disabled:pointer-events-none"
               >
                 <SkipBack className="h-5 w-5" />
               </button>
@@ -275,24 +281,28 @@ export default function VenuePlayer() {
                 <button
                   type="button"
                   onClick={handlePlayPause}
-                  className={`w-14 h-14 flex items-center justify-center rounded-full text-white transition-all duration-200 ${
+                  disabled={isTransitioning}
+                  className={`w-14 h-14 flex items-center justify-center rounded-full text-white transition-all duration-200 disabled:opacity-60 disabled:pointer-events-none ${
                     isPlaying
                       ? 'bg-brand-500 hover:bg-brand-600 shadow-md'
                       : 'bg-brand-500 hover:bg-brand-600 shadow-lg ring-4 ring-brand-200 animate-pulse'
                   }`}
                 >
-                  {isPlaying
-                    ? <Pause className="h-6 w-6" />
-                    : <Play className="h-6 w-6 ml-0.5" />}
+                  {isTransitioning
+                    ? <Loader2 className="h-6 w-6 animate-spin" />
+                    : isPlaying
+                      ? <Pause className="h-6 w-6" />
+                      : <Play className="h-6 w-6 ml-0.5" />}
                 </button>
                 <span className="text-xs font-medium text-zinc-500 select-none">
-                  {isPlaying ? 'Playing' : waitingForGesture ? 'Tap to play' : 'Paused'}
+                  {isTransitioning ? 'Loading…' : isPlaying ? 'Playing' : waitingForGesture ? 'Tap to play' : 'Paused'}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={handleSkip}
-                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors"
+                disabled={isTransitioning}
+                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors disabled:opacity-40 disabled:pointer-events-none"
               >
                 <SkipForward className="h-5 w-5" />
               </button>

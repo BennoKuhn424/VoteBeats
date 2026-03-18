@@ -27,9 +27,12 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     return (!isNaN(parsed) && parsed >= 0) ? Math.min(parsed, 100) : 70;
   });
 
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
   const musicRef = useRef(null);
   const currentSongIdRef = useRef(null);
   const isTransitioningRef = useRef(false);
+  const transitionWatchdogRef = useRef(null);
   const autoplayModeRef = useRef(autoplayMode);
   const autofill404UntilRef = useRef(0);
   const autofillBackoffRef = useRef(5000); // escalates: 5s → 10s → 20s → 30s
@@ -39,6 +42,29 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   // True once the user has clicked something on this page — required before
   // any music.play() call to satisfy browser autoplay policy.
   const hasUserGestureRef = useRef(false);
+
+  // beginTransition / endTransition keep the ref (for fast checks) and the
+  // state (for UI disabled/spinner) in sync, and run a 10-second watchdog so
+  // a crash mid-transition can never leave the player permanently frozen.
+  const beginTransition = useCallback(() => {
+    isTransitioningRef.current = true;
+    setIsTransitioning(true);
+    clearTimeout(transitionWatchdogRef.current);
+    transitionWatchdogRef.current = setTimeout(() => {
+      if (isTransitioningRef.current) {
+        console.warn('[watchdog] transition stuck >10 s — forcing reset');
+        isTransitioningRef.current = false;
+        setIsTransitioning(false);
+        setPlayerError('Something went wrong — tap Play to retry');
+      }
+    }, 10000);
+  }, []);
+
+  const endTransition = useCallback(() => {
+    clearTimeout(transitionWatchdogRef.current);
+    isTransitioningRef.current = false;
+    setIsTransitioning(false);
+  }, []);
 
   useEffect(() => { autoplayModeRef.current = autoplayMode; }, [autoplayMode]);
   useEffect(() => { queueRef.current = queue; }, [queue]);
@@ -144,9 +170,9 @@ export function VenuePlaybackProvider({ venueCode, children }) {
           playFailCountRef.current = 0;
         }
       }
-      isTransitioningRef.current = false;
+      endTransition(); // safety: ensure isTransitioningRef never stays stuck
     }
-  }, [venueCode]);
+  }, [venueCode, endTransition]);
 
   const tryAutofill = useCallback(async () => {
     if (autoplayModeRef.current === 'off') return false;
@@ -186,10 +212,13 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         // calling music.play() which would trigger the browser autoplay dialog.
         setWaitingForGesture(true);
       } else {
-        isTransitioningRef.current = true;
-        currentSongIdRef.current = nowPlaying.id;
-        await playSong(nowPlaying);
-        isTransitioningRef.current = false;
+        try {
+          beginTransition();
+          currentSongIdRef.current = nowPlaying.id;
+          await playSong(nowPlaying);
+        } finally {
+          endTransition();
+        }
       }
     }
 
@@ -200,16 +229,19 @@ export function VenuePlaybackProvider({ venueCode, children }) {
           const r = await api.getQueue(venueCode);
           setQueue(r.data);
           const np = r.data?.nowPlaying;
-          if (np && np.id !== currentSongIdRef.current && !isTransitioningRef.current) {
-            isTransitioningRef.current = true;
-            currentSongIdRef.current = np.id;
-            await playSong(np);
-            isTransitioningRef.current = false;
+          if (np?.appleId && np.id !== currentSongIdRef.current && !isTransitioningRef.current) {
+            try {
+              beginTransition();
+              currentSongIdRef.current = np.id;
+              await playSong(np);
+            } finally {
+              endTransition();
+            }
           }
         } catch {}
       }
     }
-  }, [venueCode, playSong, tryAutofill]);
+  }, [venueCode, playSong, tryAutofill, beginTransition, endTransition]);
 
   const fetchQueue = useCallback(async () => {
     if (!venueCode) return;
@@ -266,14 +298,14 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       if (music.playbackState === 5 && currentSongIdRef.current) {
         const endedSongId = currentSongIdRef.current;
         currentSongIdRef.current = null;
-        isTransitioningRef.current = true;
+        beginTransition();
         try {
           // /advance runs autofill internally and returns nowPlaying in one
           // round-trip — no follow-up GET /queue or GET /autofill needed.
           const res = await api.advanceQueue(venueCode, endedSongId);
           if (autoplayModeRef.current !== 'off') {
             const np = res.data?.nowPlaying;
-            if (np) {
+            if (np?.appleId) {
               setQueue((prev) => ({ ...prev, nowPlaying: np }));
               currentSongIdRef.current = np.id;
               await playSong(np);
@@ -283,13 +315,16 @@ export function VenuePlaybackProvider({ venueCode, children }) {
               fetchQueue();
             }
           }
-        } catch {}
-        isTransitioningRef.current = false;
+        } catch (err) {
+          console.error('Advance error:', err);
+        } finally {
+          endTransition();
+        }
       }
     }
     music.addEventListener('playbackStateDidChange', onStateChange);
     return () => music.removeEventListener('playbackStateDidChange', onStateChange);
-  }, [venueCode, playSong, fetchQueue]);
+  }, [venueCode, playSong, fetchQueue, beginTransition, endTransition]);
 
   // ── Auto-clear autofill notice when a song starts ───────────────────────
   useEffect(() => {
@@ -363,7 +398,10 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     tryAutofill,
     musicRef,
     currentSongIdRef,
+    isTransitioning,
     isTransitioningRef,
+    beginTransition,
+    endTransition,
     hasUserGestureRef,
   };
 
