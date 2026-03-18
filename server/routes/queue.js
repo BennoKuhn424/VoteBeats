@@ -275,7 +275,11 @@ router.post('/:venueCode/advance', async (req, res) => {
   const { venueCode } = req.params;
   const { songId } = req.body;
 
-  advanceToNextSong(venueCode, songId || db.getQueue(venueCode).nowPlaying?.id);
+  // Snapshot the expected song ID before any async work so that even if
+  // a /skip request starts while we await serverAutofill below, the
+  // advanceToNextSong guard uses the value we committed to at entry time.
+  const expectedId = songId || db.getQueue(venueCode).nowPlaying?.id;
+  advanceToNextSong(venueCode, expectedId);
   let queue = db.getQueue(venueCode);
 
   // If queue is now empty and autoplay is on, fill it synchronously so the
@@ -302,7 +306,11 @@ router.post('/:venueCode/skip', authMiddleware, (req, res) => {
     return res.status(403).json({ error: 'Unauthorized' });
   }
   const { songId } = req.body;
-  advanceToNextSong(req.params.venueCode, songId || db.getQueue(req.params.venueCode).nowPlaying?.id);
+  // Snapshot before calling advanceToNextSong — same pattern as /advance so
+  // both handlers commit to the same expected ID at entry time and the guard
+  // in advanceToNextSong resolves any concurrent call as a no-op.
+  const expectedId = songId || db.getQueue(req.params.venueCode).nowPlaying?.id;
+  advanceToNextSong(req.params.venueCode, expectedId);
   broadcast.broadcastQueue(req.params.venueCode, db.getQueue(req.params.venueCode));
   res.json({ success: true });
 });

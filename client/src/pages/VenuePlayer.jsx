@@ -150,25 +150,27 @@ export default function VenuePlayer() {
     const music = musicRef.current;
     if (music) { try { await music.stop(); } catch {} }
     beginTransition();
+    const skippedSongId = queue.nowPlaying?.id;
     currentSongIdRef.current = null;
 
-    // Optimistic update: immediately show and start the next song so there's
-    // no silent gap while the /skip request is in flight.
+    // Optimistic update: show the next song immediately and start loading it
+    // in parallel with the /skip network request so there is no silent gap.
     const optimisticNext = queue.upcoming[0];
     if (optimisticNext) {
       const nextNow = { ...optimisticNext, positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false };
       setQueue({ nowPlaying: nextNow, upcoming: queue.upcoming.slice(1) });
       currentSongIdRef.current = optimisticNext.id;
-      playSong(optimisticNext); // fire without await — reconcile after /skip
     }
 
-    try {
-      await api.skipSong(venueCode, queue.nowPlaying?.id);
-    } catch (err) {
-      console.error('Skip error:', err);
-    }
+    // Run the network request and playSong concurrently, then wait for both
+    // before ending the transition — ensures endTransition is never called
+    // while playSong is still in flight.
+    await Promise.allSettled([
+      api.skipSong(venueCode, skippedSongId).catch((err) => console.error('Skip error:', err)),
+      optimisticNext ? playSong(optimisticNext) : Promise.resolve(),
+    ]);
     endTransition();
-    await fetchQueue(); // reconcile with server state
+    await fetchQueue(); // reconcile optimistic state with server reality
   }
 
   async function handlePrev() {

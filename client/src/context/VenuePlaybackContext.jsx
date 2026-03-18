@@ -358,7 +358,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         const serverAppleId = String(serverNowPlaying?.appleId || '');
         const clientAppleId = String(music.nowPlayingItem?.id || '');
         if (serverAppleId && clientAppleId && serverAppleId !== clientAppleId) {
-          console.warn('Health check: track divergence', { serverAppleId, clientAppleId });
+          // HC_TRACK_DIVERGENCE — distinct code makes it easy to grep in production logs
+          console.warn('[HC_TRACK_DIVERGENCE]', { serverAppleId, clientAppleId });
           setPlayerError('Player disconnected — tap to reset');
           currentSongIdRef.current = null;
         }
@@ -367,7 +368,10 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         if (!stuckSinceRef.current) {
           stuckSinceRef.current = Date.now();
         } else if (Date.now() - stuckSinceRef.current > 15000) {
-          console.warn('Health check: player stuck idle while server has nowPlaying');
+          // HC_IDLE_STUCK — fetch first to confirm server still has a song
+          // (auto-advance may have already cleared it and we just missed the push)
+          console.warn('[HC_IDLE_STUCK] player idle >15s while server has nowPlaying — re-fetching to confirm');
+          fetchQueue();
           setPlayerError('Player disconnected — tap to reset');
           currentSongIdRef.current = null;
           stuckSinceRef.current = null;
@@ -377,7 +381,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       }
     }, 12000);
     return () => clearInterval(interval);
-  }, [venueCode]);
+  }, [venueCode, fetchQueue]);
 
   const value = {
     queue,
