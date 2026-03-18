@@ -9,63 +9,79 @@ export function useVenuePlayback() {
   return useContext(VenuePlaybackContext);
 }
 
+// ── Player state machine ──────────────────────────────────────────────────────
+// Single source of truth for what the player is doing.
+// Impossible combinations (e.g. playing + transitioning) cannot be represented.
+//
+//   notReady         MusicKit not yet initialised
+//   idle             Ready; nothing loaded or stopped between songs
+//   waitingForGesture Autoplay blocked by browser policy — waiting for a tap
+//   transitioning    Loading a new song (skip / advance / auto-transition)
+//   playing          Actively playing
+//   paused           Paused by user or server
+//
+// playerError (separate) can appear alongside any state — it is a banner
+// notification, not a playback state.
+export const PLAYER_STATES = /** @type {const} */ ({
+  NOT_READY: 'notReady',
+  IDLE: 'idle',
+  WAITING: 'waitingForGesture',
+  TRANSITIONING: 'transitioning',
+  PLAYING: 'playing',
+  PAUSED: 'paused',
+});
+
 export function VenuePlaybackProvider({ venueCode, children }) {
+  // ── Core state ───────────────────────────────────────────────────────────
   const [queue, setQueue] = useState({ nowPlaying: null, upcoming: [] });
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [playerState, setPlayerState] = useState(PLAYER_STATES.NOT_READY);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState(0);
   const [isAuthorized, setIsAuthorized] = useState(false);
-  const [musicReady, setMusicReady] = useState(false);
-  const [waitingForGesture, setWaitingForGesture] = useState(false);
   const [autoplayMode, setAutoplayMode] = useState('playlist');
   const [playerError, setPlayerError] = useState(null);
   const [autofillNotice, setAutofillNotice] = useState(false);
-  // Incremented by retryInit() to re-run the MusicKit init effect
-  const [initKey, setInitKey] = useState(0);
+  const [initKey, setInitKey] = useState(0); // incremented by retryInit()
   const [volume, setVolume] = useState(() => {
     const parsed = Number(localStorage.getItem('speeldit_volume'));
     return (!isNaN(parsed) && parsed >= 0) ? Math.min(parsed, 100) : 70;
   });
 
-  const [isTransitioning, setIsTransitioning] = useState(false);
-
+  // ── Refs (internal — not exposed in context value) ───────────────────────
   const musicRef = useRef(null);
   const currentSongIdRef = useRef(null);
-  const isTransitioningRef = useRef(false);
+  // Synchronous mirror of playerState for guards that cannot wait for a render.
+  const playerStateRef = useRef(PLAYER_STATES.NOT_READY);
   const transitionWatchdogRef = useRef(null);
   const autoplayModeRef = useRef(autoplayMode);
   const autofill404UntilRef = useRef(0);
-  const autofillBackoffRef = useRef(5000); // escalates: 5s → 10s → 20s → 30s
-  const playFailCountRef = useRef(0);       // consecutive playSong non-interaction failures
-  const queueRef = useRef(queue);           // stable ref for health-check interval
-  const stuckSinceRef = useRef(null);       // timestamp when player went idle while server has nowPlaying
-  const divergenceSinceRef = useRef(null); // timestamp of first track-divergence detection (cooldown)
-  const autofillDismissedAtRef = useRef(0); // timestamp of last manual autofill notice dismiss
-  // True once the user has clicked something on this page — required before
-  // any music.play() call to satisfy browser autoplay policy.
+  const autofillBackoffRef = useRef(5000); // escalates 5s→10s→20s→30s
+  const playFailCountRef = useRef(0);
+  const queueRef = useRef(queue);           // stable ref for the health-check interval
+  const stuckSinceRef = useRef(null);
+  const divergenceSinceRef = useRef(null);
+  const autofillDismissedAtRef = useRef(0);
+  // True once the user has clicked anything — required for browser autoplay policy.
   const hasUserGestureRef = useRef(false);
-  // Stable ref so playPause() always reads the latest value without
-  // needing waitingForGesture in its dependency array.
-  const waitingForGestureRef = useRef(false);
 
-  // Internal error codes — used in logs so you can grep production output
-  // by code rather than by the display string (which can change freely).
-  // APPLE_INIT_FAIL  → MusicKit configure/token failed
-  // PLAY_FAIL_RETRY  → playSong failed once, retrying
-  // PLAY_FAIL_ATTN   → playSong failed 3+ times, needs manual intervention
-  // PLAYER_WATCHDOG  → transition stuck >10s, force-reset
-  // HC_PLAYER_STUCK  → health check: server has song but MusicKit idle >15s
-  // HC_TRACK_DIV     → health check: MusicKit playing different track than server
+  // ── Sync refs ────────────────────────────────────────────────────────────
+  useEffect(() => { autoplayModeRef.current = autoplayMode; }, [autoplayMode]);
+  useEffect(() => { queueRef.current = queue; }, [queue]);
 
-  // Error priority — lower number = higher priority.
-  // Only overwrite current error if the new one is equally or more critical,
-  // so a soft "retrying…" notice never silences an auth failure banner.
+  // ── setPlayerState wrapper: keeps ref in sync ─────────────────────────────
+  const updatePlayerState = useCallback((next) => {
+    playerStateRef.current = next;
+    setPlayerState(next);
+  }, []);
+
+  // ── Error priority ───────────────────────────────────────────────────────
+  // Lower number = higher priority. Soft notices never overwrite hard errors.
   const ERROR_PRIORITY = {
-    'Could not connect to Apple Music — tap Retry': 1,   // APPLE_INIT_FAIL
-    'Player needs attention — tap to reconnect Apple Music': 2, // PLAY_FAIL_ATTN
-    'Player disconnected — tap to reset': 3,             // HC_TRACK_DIV / HC_PLAYER_STUCK
-    'Something went wrong — tap Play to retry': 4,       // PLAYER_WATCHDOG
-    'Playback failed — retrying…': 5,                    // PLAY_FAIL_RETRY
+    'Could not connect to Apple Music — tap Retry': 1,
+    'Player needs attention — tap to reconnect Apple Music': 2,
+    'Player disconnected — tap to reset': 3,
+    'Something went wrong — tap Play to retry': 4,
+    'Playback failed — retrying…': 5,
   };
   const setErrorWithPriority = useCallback((newMsg) => {
     setPlayerError((prev) => {
@@ -77,39 +93,40 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Autofill notice ──────────────────────────────────────────────────────
   const dismissAutofillNotice = useCallback(() => {
     autofillDismissedAtRef.current = Date.now();
     setAutofillNotice(false);
   }, []);
 
-  // beginTransition / endTransition keep the ref (for fast checks) and the
-  // state (for UI disabled/spinner) in sync, and run a 10-second watchdog so
-  // a crash mid-transition can never leave the player permanently frozen.
+  // ── Transition helpers (internal — not in context value) ──────────────────
+  // beginTransition / endTransition keep playerStateRef (synchronous guard)
+  // and playerState (UI) consistent, with a 10-second watchdog.
   const beginTransition = useCallback(() => {
-    isTransitioningRef.current = true;
-    setIsTransitioning(true);
+    updatePlayerState(PLAYER_STATES.TRANSITIONING);
     clearTimeout(transitionWatchdogRef.current);
     transitionWatchdogRef.current = setTimeout(() => {
-      if (isTransitioningRef.current) {
+      if (playerStateRef.current === PLAYER_STATES.TRANSITIONING) {
         console.warn('[PLAYER_WATCHDOG] transition stuck >10 s — forcing reset');
-        isTransitioningRef.current = false;
-        setIsTransitioning(false);
+        updatePlayerState(PLAYER_STATES.IDLE);
         setErrorWithPriority('Something went wrong — tap Play to retry');
       }
     }, 10000);
-  }, [setErrorWithPriority]);
+  }, [updatePlayerState, setErrorWithPriority]);
 
   const endTransition = useCallback(() => {
     clearTimeout(transitionWatchdogRef.current);
-    isTransitioningRef.current = false;
-    setIsTransitioning(false);
-  }, []);
+    // Resolve to the actual MusicKit state so we don't show 'idle' when playing
+    const music = musicRef.current;
+    const mk = music?.playbackState;
+    const resolved =
+      mk === 2 ? PLAYER_STATES.PLAYING :
+      mk === 3 ? PLAYER_STATES.PAUSED :
+      PLAYER_STATES.IDLE;
+    updatePlayerState(resolved);
+  }, [updatePlayerState]);
 
-  useEffect(() => { autoplayModeRef.current = autoplayMode; }, [autoplayMode]);
-  useEffect(() => { queueRef.current = queue; }, [queue]);
-  useEffect(() => { waitingForGestureRef.current = waitingForGesture; }, [waitingForGesture]);
-
-  // ── Initialize MusicKit ──────────────────────────────────────────────────
+  // ── MusicKit init ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!venueCode) return;
     const token = localStorage.getItem('speeldit_token');
@@ -138,13 +155,32 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         musicRef.current = music;
         music.volume = volume / 100;
         setIsAuthorized(music.isAuthorized);
-        setMusicReady(true);
-        setPlayerError(null); // clear any previous init error
-        setIsPlaying(music.playbackState === 2);
+        setPlayerError(null);
+
+        // Sync initial MusicKit state into playerState
+        const initialState =
+          music.playbackState === 2 ? PLAYER_STATES.PLAYING :
+          music.playbackState === 3 ? PLAYER_STATES.PAUSED :
+          PLAYER_STATES.IDLE;
+        updatePlayerState(initialState);
+
         setPlaybackTime(music.currentPlaybackTime || 0);
         setPlaybackDuration(music.currentPlaybackDuration || 0);
 
-        stateListener = () => { setIsPlaying(music.playbackState === 2); };
+        // MusicKit state listener — drives playerState when not transitioning.
+        stateListener = () => {
+          // Don't let MusicKit's internal states (1=loading) override 'transitioning'.
+          if (playerStateRef.current === PLAYER_STATES.TRANSITIONING) return;
+          // Don't clear 'waitingForGesture' — only user gesture clears that.
+          if (playerStateRef.current === PLAYER_STATES.WAITING &&
+              music.playbackState !== 2 && music.playbackState !== 3) return;
+
+          const mk = music.playbackState;
+          if (mk === 2) updatePlayerState(PLAYER_STATES.PLAYING);
+          else if (mk === 3) updatePlayerState(PLAYER_STATES.PAUSED);
+          else if (mk === 0 || mk === 4 || mk === 5) updatePlayerState(PLAYER_STATES.IDLE);
+          // mk === 1 (MusicKit loading): ignore, we manage this via 'transitioning'
+        };
         timeListener = () => {
           setPlaybackTime(music.currentPlaybackTime || 0);
           setPlaybackDuration(music.currentPlaybackDuration || 0);
@@ -177,6 +213,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     if (musicRef.current) musicRef.current.volume = volume / 100;
   }, [volume]);
 
+  // ── playSong ─────────────────────────────────────────────────────────────
   const playSong = useCallback(async (song) => {
     const music = musicRef.current;
     if (!music || !song?.appleId) return;
@@ -185,23 +222,20 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         await music.authorize();
         setIsAuthorized(music.isAuthorized);
       }
-      // Bring player to a stable idle state before loading a new queue.
-      // Always attempt both — state 1 (loading) also needs pause() before stop().
-      // All errors are swallowed; after stop() the player is in state 0.
+      // Stabilise before loading — state 1 (loading) also needs pause() first.
       try { await music.pause(); } catch {}
       try { await music.stop(); } catch {}
       await music.setQueue({ songs: [song.appleId] });
       await music.play();
-      setWaitingForGesture(false);
+      // MusicKit listener will set PLAYING; clear any error on success
       setPlayerError(null);
-      playFailCountRef.current = 0; // reset consecutive failure count
+      playFailCountRef.current = 0;
       await api.reportPlaying(venueCode, song.id, 0);
     } catch (err) {
       if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
-        setWaitingForGesture(true);
+        updatePlayerState(PLAYER_STATES.WAITING);
       } else {
         console.error('Play error:', err);
-        // Clear ref so the next tap triggers a fresh load attempt
         currentSongIdRef.current = null;
         playFailCountRef.current += 1;
         if (playFailCountRef.current >= 3) {
@@ -212,31 +246,32 @@ export function VenuePlaybackProvider({ venueCode, children }) {
           console.warn(`[PLAY_FAIL_RETRY] playSong failed (attempt ${playFailCountRef.current}):`, err?.message);
           setErrorWithPriority('Playback failed — retrying…');
         }
+        // Safety: don't leave player stuck in 'transitioning'
+        if (playerStateRef.current === PLAYER_STATES.TRANSITIONING) {
+          endTransition();
+        }
       }
-      endTransition(); // safety: ensure isTransitioningRef never stays stuck
     }
-  }, [venueCode, endTransition, setErrorWithPriority]);
+  }, [venueCode, endTransition, updatePlayerState, setErrorWithPriority]);
 
+  // ── tryAutofill ──────────────────────────────────────────────────────────
   const tryAutofill = useCallback(async () => {
     if (autoplayModeRef.current === 'off') return false;
     if (Date.now() < autofill404UntilRef.current) return false;
     try {
       const res = await api.autofillQueue(venueCode);
       if (res.data?.filled === false) {
-        // Server found no songs — apply backoff without a red 404 in the console
         const backoff = autofillBackoffRef.current;
         autofill404UntilRef.current = Date.now() + backoff;
         console.warn(`Autofill: no songs — backing off ${backoff / 1000}s.`);
         autofillBackoffRef.current = Math.min(backoff * 2, 30000);
-        // Show notice immediately — but respect a 5-minute cooldown after a
-        // manual dismiss so repeated backoffs don't cause "alert fatigue".
         const NOTICE_COOLDOWN_MS = 5 * 60 * 1000;
         if (Date.now() - autofillDismissedAtRef.current > NOTICE_COOLDOWN_MS) {
           setAutofillNotice(true);
         }
         return false;
       }
-      autofillBackoffRef.current = 5000; // reset on success
+      autofillBackoffRef.current = 5000;
       setAutofillNotice(false);
       return true;
     } catch (err) {
@@ -245,20 +280,20 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     }
   }, [venueCode]);
 
+  // ── handleQueueUpdate ────────────────────────────────────────────────────
   const handleQueueUpdate = useCallback(async (newQueue) => {
     setQueue(newQueue);
     const nowPlaying = newQueue.nowPlaying;
 
-    if (nowPlaying && nowPlaying.id !== currentSongIdRef.current && !isTransitioningRef.current) {
+    if (nowPlaying && nowPlaying.id !== currentSongIdRef.current &&
+        playerStateRef.current !== PLAYER_STATES.TRANSITIONING) {
       const currentAppleId = musicRef.current?.nowPlayingItem?.id;
       if (currentAppleId && String(currentAppleId) === String(nowPlaying.appleId)) {
         currentSongIdRef.current = nowPlaying.id;
       } else if (musicRef.current?.playbackState === 3) {
-        // Paused — don't force a new song; user will unpause manually
+        // Paused — don't force a new song
       } else if (!hasUserGestureRef.current) {
-        // Page just loaded — no user gesture yet. Show "Tap to play" instead of
-        // calling music.play() which would trigger the browser autoplay dialog.
-        setWaitingForGesture(true);
+        updatePlayerState(PLAYER_STATES.WAITING);
       } else {
         try {
           beginTransition();
@@ -270,14 +305,16 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       }
     }
 
-    if (!nowPlaying && autoplayModeRef.current !== 'off' && !isTransitioningRef.current) {
+    if (!nowPlaying && autoplayModeRef.current !== 'off' &&
+        playerStateRef.current !== PLAYER_STATES.TRANSITIONING) {
       const filled = await tryAutofill();
       if (filled) {
         try {
           const r = await api.getQueue(venueCode);
           setQueue(r.data);
           const np = r.data?.nowPlaying;
-          if (np?.appleId && np.id !== currentSongIdRef.current && !isTransitioningRef.current) {
+          if (np?.appleId && np.id !== currentSongIdRef.current &&
+              playerStateRef.current !== PLAYER_STATES.TRANSITIONING) {
             try {
               beginTransition();
               currentSongIdRef.current = np.id;
@@ -289,58 +326,46 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         } catch {}
       }
     }
-  }, [venueCode, playSong, tryAutofill, beginTransition, endTransition]);
+  }, [venueCode, playSong, tryAutofill, beginTransition, endTransition, updatePlayerState]);
 
+  // ── fetchQueue ───────────────────────────────────────────────────────────
   const fetchQueue = useCallback(async () => {
     if (!venueCode) return;
     try {
-      // Short timeout: fail fast so the next poll cycle (15 s) can retry
-      // instead of blocking for 30 s (3 × 10 s retries).
       const res = await api.getQueue(venueCode, undefined, { timeout: 5000, 'axios-retry': { retries: 1 } });
       await handleQueueUpdate(res.data);
     } catch (err) {
-      // Swallow — don't crash the player on a transient network blip
       console.warn('Queue fetch failed:', err?.message);
     }
   }, [venueCode, handleQueueUpdate]);
 
-  // ── Socket.IO — primary real-time updates ────────────────────────────────
+  // ── Socket.IO ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!venueCode) return;
 
-    function joinRoom() {
-      socket.emit('join', venueCode);
-    }
-
+    function joinRoom() { socket.emit('join', venueCode); }
     socket.connect();
     joinRoom();
 
     function onConnect() {
-      // Re-join venue room after any reconnection (iOS resume, network switch)
       joinRoom();
-      // Re-fetch so we catch any updates missed during the disconnection window
       setTimeout(fetchQueue, 300);
     }
-
     socket.on('connect', onConnect);
     socket.on('queue:updated', handleQueueUpdate);
-
-    // Initial fetch
     fetchQueue();
 
     return () => {
-      // Pass explicit handler references so we only remove our own listeners
-      // and don't accidentally clear handlers added by other effects.
       socket.off('connect', onConnect);
       socket.off('queue:updated', handleQueueUpdate);
       socket.disconnect();
     };
   }, [venueCode, fetchQueue, handleQueueUpdate]);
 
-  // ── Fallback poll — visibility-aware, 15s, pauses when backgrounded ──────
+  // ── Visibility-aware fallback poll ───────────────────────────────────────
   useVisibilityAwarePolling(fetchQueue, 15000);
 
-  // ── MusicKit song-ended handler ──────────────────────────────────────────
+  // ── Song-ended handler ───────────────────────────────────────────────────
   useEffect(() => {
     const music = musicRef.current;
     if (!music || !venueCode) return;
@@ -351,8 +376,6 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         currentSongIdRef.current = null;
         beginTransition();
         try {
-          // /advance runs autofill internally and returns nowPlaying in one
-          // round-trip — no follow-up GET /queue or GET /autofill needed.
           const res = await api.advanceQueue(venueCode, endedSongId);
           if (autoplayModeRef.current !== 'off') {
             const np = res.data?.nowPlaying;
@@ -361,8 +384,6 @@ export function VenuePlaybackProvider({ venueCode, children }) {
               currentSongIdRef.current = np.id;
               await playSong(np);
             } else {
-              // Server returned no next song (empty playlist / autofill failed).
-              // Do one reconciling fetch so the UI reflects the real server state.
               fetchQueue();
             }
           }
@@ -377,35 +398,28 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     return () => music.removeEventListener('playbackStateDidChange', onStateChange);
   }, [venueCode, playSong, fetchQueue, beginTransition, endTransition]);
 
-  // ── Auto-clear autofill notice when a song starts ───────────────────────
+  // ── Auto-clear autofill notice when a song starts ────────────────────────
   useEffect(() => {
     if (queue.nowPlaying) setAutofillNotice(false);
   }, [queue.nowPlaying]);
 
-  // ── Health check: detect MusicKit / server state divergence ─────────────
-  // Every 12 s check two conditions:
-  // 1. Player is playing but on a different track than the server expects.
-  // 2. Server has nowPlaying but MusicKit has been idle/ended for >15 s
-  //    (e.g. after an Apple Music popup killed playback).
+  // ── Health check ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!venueCode) return;
     const interval = setInterval(() => {
       const music = musicRef.current;
       if (!music) return;
       const serverNowPlaying = queueRef.current?.nowPlaying;
-      const state = music.playbackState;
+      const mk = music.playbackState;
 
-      if (state === 2) {
-        // Playing — reset stuck timer and check track divergence
+      if (mk === 2) {
         stuckSinceRef.current = null;
         const serverAppleId = String(serverNowPlaying?.appleId || '');
         const clientAppleId = String(music.nowPlayingItem?.id || '');
         if (serverAppleId && clientAppleId && serverAppleId !== clientAppleId) {
-          // Only escalate after two consecutive divergent checks (~24 s apart)
-          // to avoid false positives during transient MusicKit state changes.
           if (!divergenceSinceRef.current) {
             divergenceSinceRef.current = Date.now();
-            console.warn('[HC_TRACK_DIVERGENCE] first detection — waiting for confirmation', { serverAppleId, clientAppleId });
+            console.warn('[HC_TRACK_DIVERGENCE] first detection', { serverAppleId, clientAppleId });
           } else {
             console.warn('[HC_TRACK_DIVERGENCE] confirmed', { serverAppleId, clientAppleId });
             setErrorWithPriority('Player disconnected — tap to reset');
@@ -413,85 +427,77 @@ export function VenuePlaybackProvider({ venueCode, children }) {
             divergenceSinceRef.current = null;
           }
         } else {
-          divergenceSinceRef.current = null; // IDs match — reset cooldown
+          divergenceSinceRef.current = null;
         }
-      } else if (serverNowPlaying && (state === 0 || state === 4 || state === 5)) {
-        // Server has a song but player is idle/stopped/ended — may be stuck
+      } else if (serverNowPlaying && (mk === 0 || mk === 4 || mk === 5)) {
         if (!stuckSinceRef.current) {
           stuckSinceRef.current = Date.now();
         } else if (Date.now() - stuckSinceRef.current > 15000) {
-          // HC_IDLE_STUCK — fetch first to confirm server still has a song
-          // (auto-advance may have already cleared it and we just missed the push)
-          console.warn('[HC_IDLE_STUCK] player idle >15s while server has nowPlaying — re-fetching to confirm');
+          console.warn('[HC_IDLE_STUCK] player idle >15s while server has nowPlaying');
           fetchQueue();
           setErrorWithPriority('Player disconnected — tap to reset');
           currentSongIdRef.current = null;
           stuckSinceRef.current = null;
         }
       } else {
-        stuckSinceRef.current = null; // state 1 (loading) or 3 (paused) — not stuck
+        stuckSinceRef.current = null;
       }
     }, 12000);
     return () => clearInterval(interval);
   }, [venueCode, fetchQueue, setErrorWithPriority]);
 
   // ── High-level player controls ───────────────────────────────────────────
-  // These are the only methods VenuePlayer needs. Internal refs (musicRef,
-  // currentSongIdRef, etc.) are kept private and not exposed in the value.
 
-  // Play/pause — handles all MusicKit state machine branches.
-  // IMPORTANT: no beginTransition() call here — setIsTransitioning triggers a
-  // React re-render which breaks WebKit's user gesture chain before music.play(),
-  // causing "user failed to interact with document first" on Safari/iOS.
+  // playPause: handles all MusicKit state branches.
+  // No beginTransition() here — setPlayerState('transitioning') would trigger a
+  // React re-render that breaks WebKit's user gesture chain before music.play().
   const playPause = useCallback(async () => {
     const music = musicRef.current;
     if (!music) return;
     hasUserGestureRef.current = true;
-    const wasWaiting = waitingForGestureRef.current;
-    setWaitingForGesture(false);
-    const state = music.playbackState;
+    const wasWaiting = playerStateRef.current === PLAYER_STATES.WAITING;
     const nowPlaying = queueRef.current.nowPlaying;
+    const mk = music.playbackState;
 
-    if (state === 2) {
-      // Currently playing → pause
+    if (mk === 2) {
+      // Playing → pause
       await music.pause();
       if (nowPlaying) api.pausePlaying(venueCode, nowPlaying.id).catch(() => {});
     } else if (wasWaiting && nowPlaying) {
-      // Autoplay was blocked — this tap is the required user gesture.
+      // Unblock autoplay — this tap satisfies browser gesture requirement
       currentSongIdRef.current = nowPlaying.id;
       await playSong(nowPlaying);
-    } else if (state === 3) {
-      // Paused — if server advanced to a newer song, play that; otherwise resume
+    } else if (mk === 3) {
+      // Paused — play server's current song or resume
       if (nowPlaying && nowPlaying.id !== currentSongIdRef.current) {
         currentSongIdRef.current = nowPlaying.id;
         await playSong(nowPlaying);
       } else {
         try {
           await music.play();
-          // Tell server to clear pausedAt and recalibrate startedAt at current position
           if (nowPlaying) {
             api.reportPlaying(venueCode, nowPlaying.id, music.currentPlaybackTime || 0).catch(() => {});
           }
         } catch (err) {
           if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
-            setWaitingForGesture(true);
+            updatePlayerState(PLAYER_STATES.WAITING);
           } else {
             console.error('Play error:', err);
           }
         }
       }
-    } else if (state === 0 || state === 4 || state === 5) {
+    } else if (mk === 0 || mk === 4 || mk === 5) {
       // Nothing loaded / stopped / ended
       if (nowPlaying) {
         currentSongIdRef.current = nowPlaying.id;
         await playSong(nowPlaying);
       }
     }
-  }, [venueCode, playSong]);
+  }, [venueCode, playSong, updatePlayerState]);
 
-  // Skip — optimistic update + concurrent API + playSong, then reconcile.
+  // skip: optimistic update + concurrent API + playSong, then reconcile.
   const skip = useCallback(async () => {
-    if (isTransitioningRef.current) return;
+    if (playerStateRef.current === PLAYER_STATES.TRANSITIONING) return;
     const music = musicRef.current;
     if (music) { try { await music.stop(); } catch {} }
     beginTransition();
@@ -499,8 +505,6 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     const skippedSongId = currentQueue.nowPlaying?.id;
     currentSongIdRef.current = null;
 
-    // Optimistic update: show the next song immediately and start loading it
-    // in parallel with the /skip network request so there is no silent gap.
     const optimisticNext = currentQueue.upcoming[0];
     if (optimisticNext) {
       const nextNow = { ...optimisticNext, positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false };
@@ -508,28 +512,24 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       currentSongIdRef.current = optimisticNext.id;
     }
 
-    // Run the network request and playSong concurrently, then wait for both
-    // before ending the transition — ensures endTransition is never called
-    // while playSong is still in flight.
     await Promise.allSettled([
       api.skipSong(venueCode, skippedSongId).catch((err) => console.error('Skip error:', err)),
       optimisticNext ? playSong(optimisticNext) : Promise.resolve(),
     ]);
     endTransition();
-    await fetchQueue(); // reconcile optimistic state with server reality
+    await fetchQueue();
   }, [venueCode, playSong, beginTransition, endTransition, fetchQueue]);
 
-  // Restart — rewind current song to position 0.
+  // restart: rewind current song to position 0.
   const restart = useCallback(async () => {
     const music = musicRef.current;
     const np = queueRef.current.nowPlaying;
-    // Guard: seekToTime throws "without a previous descriptor" if no queue is set
     if (!music || !np) return;
     try { await music.seekToTime(0); } catch {}
     api.reportPlaying(venueCode, np.id, 0).catch(() => {});
   }, [venueCode]);
 
-  // Authorize — trigger Apple Music sign-in.
+  // authorize: trigger Apple Music sign-in.
   const authorize = useCallback(async () => {
     const music = musicRef.current;
     if (!music) return;
@@ -539,7 +539,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     } catch (err) { console.error('Auth error:', err); }
   }, []);
 
-  // changeMode — update autoplay mode state + server setting together.
+  // changeMode: update autoplay mode state + server setting.
   const changeMode = useCallback(async (mode) => {
     setAutoplayMode(mode);
     autoplayModeRef.current = mode;
@@ -549,27 +549,26 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     }).catch(console.error);
   }, [venueCode]);
 
-  // initAutoplayMode — set state + ref from saved settings without an API call.
-  // Use this on initial load; use changeMode() for user-initiated changes.
+  // initAutoplayMode: set state from saved settings — no API call.
   const initAutoplayMode = useCallback((mode) => {
     setAutoplayMode(mode);
     autoplayModeRef.current = mode;
   }, []);
 
-  // clearError — dismiss the current error banner.
+  // clearError: dismiss the error banner.
   const clearError = useCallback(() => setPlayerError(null), []);
 
   const value = {
-    // Queue state
+    // Player state (single source of truth — replaces isPlaying, isTransitioning,
+    // waitingForGesture, musicReady)
+    playerState,
+    // Queue
     queue,
     fetchQueue,
-    // Playback state (read-only)
-    isPlaying,
+    // Audio metrics
     playbackTime,
     playbackDuration,
     isAuthorized,
-    musicReady,
-    waitingForGesture,
     volume,
     setVolume,
     autoplayMode,
@@ -577,9 +576,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     playerError,
     autofillNotice,
     dismissAutofillNotice,
-    // Transitions
-    isTransitioning,
-    // Controls (high-level — internal refs are NOT exposed)
+    // Controls (all MusicKit internals are private)
     playPause,
     skip,
     restart,
@@ -588,8 +585,6 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     initAutoplayMode,
     clearError,
     retryInit,
-    // playSong is still exposed for edge-cases (e.g. future components that
-    // need to trigger playback directly), but prefer the high-level controls.
     playSong,
   };
 

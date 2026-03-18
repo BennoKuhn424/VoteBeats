@@ -8,7 +8,7 @@ import api from '../utils/api';
 import QueueManager from '../components/venue/QueueManager';
 import PlaylistManager from '../components/venue/PlaylistManager';
 import { formatDuration } from '../utils/helpers';
-import { useVenuePlayback } from '../context/VenuePlaybackContext';
+import { useVenuePlayback, PLAYER_STATES } from '../context/VenuePlaybackContext';
 
 export default function VenuePlayer() {
   const { venueCode } = useParams();
@@ -19,21 +19,18 @@ export default function VenuePlayer() {
   const [generateStatus, setGenerateStatus] = useState(null);
 
   const {
+    playerState,
     queue,
     fetchQueue,
-    isPlaying,
     playbackTime,
     playbackDuration,
     isAuthorized,
-    musicReady,
-    waitingForGesture,
     volume,
     setVolume,
     autoplayMode,
     playerError,
     autofillNotice,
     dismissAutofillNotice,
-    isTransitioning,
     retryInit,
     playPause,
     skip,
@@ -43,6 +40,11 @@ export default function VenuePlayer() {
     initAutoplayMode,
     clearError,
   } = useVenuePlayback();
+
+  const isPlaying = playerState === PLAYER_STATES.PLAYING;
+  const isTransitioning = playerState === PLAYER_STATES.TRANSITIONING;
+  const waitingForGesture = playerState === PLAYER_STATES.WAITING;
+  const musicReady = playerState !== PLAYER_STATES.NOT_READY;
 
   // ── Detect ?generatePlaylist=1 after Yoco redirect ────────────────────────
   useEffect(() => {
