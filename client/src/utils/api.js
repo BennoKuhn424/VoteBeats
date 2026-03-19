@@ -93,6 +93,10 @@ export default {
     api.post(`/venue/${venueCode}/playlists/${playlistId}/generate`, { checkoutId, prompt, count }, { timeout: 60000 }),
   updateSettings: (venueCode, settings) =>
     api.put(`/venue/${venueCode}/settings`, settings),
+  banArtist: (venueCode, artist) =>
+    api.post(`/venue/${venueCode}/ban-artist`, { artist }),
   getVenueEarnings: (venueCode, year, month) =>
     api.get(`/venue/${venueCode}/earnings`, { params: { year, month } }),
+  getAnalytics: (venueCode, days) =>
+    api.get(`/venue/${venueCode}/analytics`, { params: { days } }),
 };

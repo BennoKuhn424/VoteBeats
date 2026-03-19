@@ -128,6 +128,25 @@ module.exports = {
     const grossCents = forVenue.reduce((sum, p) => sum + (p.amountCents || 0), 0);
     return { grossCents, count: forVenue.length, payments: forVenue };
   },
+  // Analytics: track song requests, plays, and votes
+  recordAnalyticsEvent: (venueCode, event) => {
+    let analytics = readJSON('analytics.json');
+    if (!analytics || typeof analytics !== 'object') analytics = {};
+    if (!analytics[venueCode]) analytics[venueCode] = [];
+    analytics[venueCode].push({ ...event, timestamp: Date.now() });
+    // Keep last 5000 events per venue
+    if (analytics[venueCode].length > 5000) {
+      analytics[venueCode] = analytics[venueCode].slice(-5000);
+    }
+    writeJSON('analytics.json', analytics);
+  },
+  getAnalytics: (venueCode, sinceMs) => {
+    const analytics = readJSON('analytics.json');
+    const events = analytics[venueCode] || [];
+    if (sinceMs) return events.filter((e) => e.timestamp >= sinceMs);
+    return events;
+  },
+
   getAllVenueEarningsForMonth: (year, month) => {
     const payments = readJSON('payments.json');
     const list = Array.isArray(payments.list) ? payments.list : [];

@@ -529,7 +529,16 @@ function filterByVenueSettings(songs, venue) {
 
   let filtered = songs;
 
-  if (venue.settings.allowExplicit === false) {
+  // Time-based explicit filter: allow explicit after a certain hour (venue local time).
+  // If explicitAfterHour is set, it overrides allowExplicit during the scheduled hours.
+  const explicitAfterHour = venue.settings.explicitAfterHour;
+  if (typeof explicitAfterHour === 'number' && explicitAfterHour >= 0 && explicitAfterHour <= 23) {
+    const currentHour = new Date().getHours();
+    const explicitAllowedNow = currentHour >= explicitAfterHour;
+    if (!explicitAllowedNow) {
+      filtered = filtered.filter((s) => !s.isExplicit);
+    }
+  } else if (venue.settings.allowExplicit === false) {
     filtered = filtered.filter((s) => !s.isExplicit);
   }
 

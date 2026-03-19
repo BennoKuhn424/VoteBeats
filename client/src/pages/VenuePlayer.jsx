@@ -120,6 +120,13 @@ export default function VenuePlayer() {
     try { await api.removeSong(venueCode, songId); fetchQueue(); } catch {}
   }
 
+  async function handleBanArtist(artist) {
+    if (!artist) return;
+    try {
+      await api.banArtist(venueCode, artist);
+    } catch {}
+  }
+
   const nowPlaying = queue.nowPlaying;
   const progress = playbackDuration > 0 ? (playbackTime / playbackDuration) * 100 : 0;
 
@@ -348,7 +355,7 @@ export default function VenuePlayer() {
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-6">
         {activeTab === 'playlist' && <PlaylistManager venueCode={venueCode} variant="light" />}
         {activeTab === 'queue' && (
-          <QueueManager queue={queue} onSkip={skip} onRemove={handleRemoveSong} variant="light" />
+          <QueueManager queue={queue} onSkip={skip} onRemove={handleRemoveSong} onBan={handleBanArtist} variant="light" />
         )}
       </main>
     </div>

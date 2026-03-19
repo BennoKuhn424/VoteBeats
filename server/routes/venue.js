@@ -37,11 +37,20 @@ router.get('/:venueCode', authMiddleware, (req, res) => {
 router.put('/:venueCode/settings', authMiddleware, (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
-  const { allowExplicit, maxSongsPerUser, genreFilters, blockedArtists, requirePaymentForRequest, requestPriceCents, autoplayQueue, autoplayMode } = req.body;
+  const { allowExplicit, explicitAfterHour, maxSongsPerUser, genreFilters, blockedArtists, requirePaymentForRequest, requestPriceCents, autoplayQueue, autoplayMode } = req.body;
   const venue = db.getVenue(req.params.venueCode);
   if (!venue.settings) venue.settings = {};
 
   if (typeof allowExplicit === 'boolean') venue.settings.allowExplicit = allowExplicit;
+  // Time-based explicit: null = use allowExplicit toggle, 0-23 = allow explicit after that hour
+  if (explicitAfterHour !== undefined) {
+    if (explicitAfterHour === null || explicitAfterHour === '') {
+      delete venue.settings.explicitAfterHour;
+    } else {
+      const h = Number(explicitAfterHour);
+      if (!isNaN(h) && h >= 0 && h <= 23) venue.settings.explicitAfterHour = h;
+    }
+  }
   if (typeof maxSongsPerUser === 'number') venue.settings.maxSongsPerUser = maxSongsPerUser;
   if (Array.isArray(genreFilters)) venue.settings.genreFilters = genreFilters;
   if (Array.isArray(blockedArtists)) venue.settings.blockedArtists = blockedArtists;
@@ -53,6 +62,18 @@ router.put('/:venueCode/settings', authMiddleware, (req, res) => {
   if (typeof autoplayMode === 'string' && ['off', 'playlist', 'random'].includes(autoplayMode)) {
     venue.settings.autoplayMode = autoplayMode;
   }
+  // Playlist schedule: array of { playlistId, startHour, endHour, days? }
+  if (req.body.playlistSchedule !== undefined) {
+    const schedule = req.body.playlistSchedule;
+    if (Array.isArray(schedule)) {
+      venue.settings.playlistSchedule = schedule.filter(
+        (s) => s.playlistId && typeof s.startHour === 'number' && typeof s.endHour === 'number'
+      );
+    } else {
+      delete venue.settings.playlistSchedule;
+    }
+  }
+
   if (req.body.autoplayGenre !== undefined) {
     const ag = req.body.autoplayGenre;
     if (Array.isArray(ag) && ag.length > 0) {
@@ -156,6 +177,25 @@ router.delete('/:venueCode/playlists/:playlistId/songs/:appleId', authMiddleware
   pl.songs = pl.songs.filter((s) => s.appleId !== req.params.appleId);
   db.saveVenue(venue.code, venue);
   res.json({ playlist: pl });
+});
+
+// POST /api/venue/:venueCode/ban-artist – quick-ban an artist from the player
+router.post('/:venueCode/ban-artist', authMiddleware, (req, res) => {
+  if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
+  const { artist } = req.body;
+  if (!artist?.trim()) return res.status(400).json({ error: 'Artist name is required' });
+
+  const venue = db.getVenue(req.params.venueCode);
+  if (!venue.settings) venue.settings = {};
+  if (!Array.isArray(venue.settings.blockedArtists)) venue.settings.blockedArtists = [];
+
+  const normalized = artist.trim().toLowerCase();
+  if (!venue.settings.blockedArtists.some((a) => a.toLowerCase() === normalized)) {
+    venue.settings.blockedArtists.push(artist.trim());
+    db.saveVenue(venue.code, venue);
+  }
+
+  res.json({ success: true, blockedArtists: venue.settings.blockedArtists });
 });
 
 // ── AI Playlist generation (R1 per song, min R25) ────────────────────────────
@@ -379,6 +419,57 @@ router.get('/:venueCode/earnings', authMiddleware, (req, res) => {
     platformShareCents,
     platformShareRand: (platformShareCents / 100).toFixed(2),
     paymentsCount: count,
+  });
+});
+
+// GET /api/venue/:venueCode/analytics?days=7
+router.get('/:venueCode/analytics', authMiddleware, (req, res) => {
+  if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
+
+  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 30);
+  const sinceMs = Date.now() - days * 24 * 60 * 60 * 1000;
+  const events = db.getAnalytics(req.params.venueCode, sinceMs);
+
+  // Aggregate: top requested songs, top artists, vote ratios, hourly activity
+  const songRequests = {};
+  const artistRequests = {};
+  const hourlyActivity = Array(24).fill(0);
+  let upvotes = 0;
+  let downvotes = 0;
+
+  for (const e of events) {
+    const hour = new Date(e.timestamp).getHours();
+    hourlyActivity[hour]++;
+
+    if (e.type === 'request') {
+      const key = `${e.songTitle} — ${e.artist}`;
+      songRequests[key] = (songRequests[key] || 0) + 1;
+      artistRequests[e.artist] = (artistRequests[e.artist] || 0) + 1;
+    } else if (e.type === 'vote') {
+      if (e.voteValue === 1) upvotes++;
+      else if (e.voteValue === -1) downvotes++;
+    }
+  }
+
+  const topSongs = Object.entries(songRequests)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 20)
+    .map(([name, count]) => ({ name, count }));
+
+  const topArtists = Object.entries(artistRequests)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 10)
+    .map(([name, count]) => ({ name, count }));
+
+  res.json({
+    days,
+    totalRequests: events.filter((e) => e.type === 'request').length,
+    totalVotes: upvotes + downvotes,
+    upvotes,
+    downvotes,
+    topSongs,
+    topArtists,
+    hourlyActivity,
   });
 });
 

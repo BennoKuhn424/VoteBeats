@@ -1,6 +1,7 @@
+import { Ban } from 'lucide-react';
 import Button from '../shared/Button';
 
-export default function QueueManager({ queue, onSkip, onRemove, variant = 'dark' }) {
+export default function QueueManager({ queue, onSkip, onRemove, onBan, variant = 'dark' }) {
   const { nowPlaying, upcoming } = queue || {};
   const orderedUpcoming = upcoming || [];
   const isLight = variant === 'light';
@@ -34,9 +35,25 @@ export default function QueueManager({ queue, onSkip, onRemove, variant = 'dark'
               <p className={songTitleClass}>{nowPlaying.title}</p>
               <p className={artistClass}>{nowPlaying.artist}</p>
             </div>
-            <Button variant="danger" onClick={onSkip} className="!py-2.5 !px-4 shrink-0">
-              Skip
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              {onBan && (
+                <button
+                  type="button"
+                  onClick={() => onBan(nowPlaying.artist)}
+                  title={`Ban ${nowPlaying.artist}`}
+                  className={`p-2.5 rounded-lg transition-colors ${
+                    isLight
+                      ? 'text-zinc-400 hover:text-red-600 hover:bg-red-50'
+                      : 'text-dark-400 hover:text-red-400 hover:bg-dark-600'
+                  }`}
+                >
+                  <Ban className="h-4 w-4" />
+                </button>
+              )}
+              <Button variant="danger" onClick={onSkip} className="!py-2.5 !px-4">
+                Skip
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -70,7 +87,21 @@ export default function QueueManager({ queue, onSkip, onRemove, variant = 'dark'
                   <p className={upcomingArtistClass}>{song.artist || 'Unknown artist'}</p>
                 </div>
               </div>
-              <div className="flex justify-end gap-3">
+              <div className="flex justify-end gap-2">
+                {onBan && (
+                  <button
+                    type="button"
+                    onClick={() => onBan(song.artist)}
+                    title={`Ban ${song.artist}`}
+                    className={`p-2.5 rounded-lg transition-colors text-xs ${
+                      isLight
+                        ? 'text-zinc-400 hover:text-red-600 hover:bg-red-50'
+                        : 'text-dark-400 hover:text-red-400 hover:bg-dark-600'
+                    }`}
+                  >
+                    <Ban className="h-3.5 w-3.5" />
+                  </button>
+                )}
                 <Button
                   variant="secondary"
                   className={`!py-2.5 !px-4 text-xs shrink-0 ${isLight ? '!bg-zinc-200 !text-zinc-800 hover:!bg-zinc-300 !border-zinc-300' : ''}`}

@@ -40,8 +40,28 @@ async function serverAutofill(venueCode, venue) {
     const genres = Array.isArray(genreSetting) ? genreSetting : (genreSetting ? [genreSetting] : []);
     const autoplayMode = venue?.settings?.autoplayMode || 'playlist';
     const playlists = venue?.playlists || [];
-    const activePl = playlists.find((p) => p.id === venue?.activePlaylistId)
-      || playlists.find((p) => p.songs?.length > 0);
+
+    // Dayparting: check if a playlist is scheduled for the current hour
+    let activePl = null;
+    const schedule = venue?.settings?.playlistSchedule;
+    if (Array.isArray(schedule) && schedule.length > 0) {
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentDay = now.getDay(); // 0=Sun, 1=Mon, ...
+      const slot = schedule.find((s) => {
+        const hourMatch = s.startHour <= s.endHour
+          ? currentHour >= s.startHour && currentHour < s.endHour
+          : currentHour >= s.startHour || currentHour < s.endHour; // wraps midnight
+        if (!hourMatch) return false;
+        if (Array.isArray(s.days) && s.days.length > 0) return s.days.includes(currentDay);
+        return true; // no day restriction
+      });
+      if (slot) activePl = playlists.find((p) => p.id === slot.playlistId);
+    }
+    if (!activePl) {
+      activePl = playlists.find((p) => p.id === venue?.activePlaylistId)
+        || playlists.find((p) => p.songs?.length > 0);
+    }
     const playlist = activePl?.songs || venue?.playlist || [];
 
     let song = null;
@@ -174,6 +194,7 @@ router.post('/:venueCode/request', async (req, res) => {
       upcoming: [...(queue.upcoming || []), newSong],
     }));
     logEvent({ venueCode, action: 'request', songId: newSong.id, detail: `"${newSong.title}" added to queue` });
+    db.recordAnalyticsEvent(venueCode, { type: 'request', songTitle: newSong.title, artist: newSong.artist, songId: newSong.id });
     broadcast.broadcastQueue(venueCode, updated);
     res.json({ success: true, song: newSong });
   } catch (err) {
@@ -182,6 +203,23 @@ router.post('/:venueCode/request', async (req, res) => {
   }
 });
 
+// ── Downvote throttle: max 5 downvotes per device per 60s ────────────────────
+const downvoteTimestamps = {}; // { deviceId: [ts, ts, …] }
+const DOWNVOTE_WINDOW_MS = 60_000;
+const DOWNVOTE_MAX = 5;
+
+function isDownvoteThrottled(deviceId) {
+  const now = Date.now();
+  const stamps = (downvoteTimestamps[deviceId] || []).filter((t) => now - t < DOWNVOTE_WINDOW_MS);
+  downvoteTimestamps[deviceId] = stamps;
+  if (stamps.length >= DOWNVOTE_MAX) return true;
+  stamps.push(now);
+  return false;
+}
+
+// Downvote threshold: if net votes drop to this or below, remove from queue
+const DOWNVOTE_REMOVAL_THRESHOLD = -3;
+
 // POST /api/queue/:venueCode/vote
 router.post('/:venueCode/vote', async (req, res) => {
   const { venueCode } = req.params;
@@ -189,6 +227,11 @@ router.post('/:venueCode/vote', async (req, res) => {
 
   if (voteValue !== 1 && voteValue !== -1) {
     return res.status(400).json({ error: 'Invalid vote value' });
+  }
+
+  // Throttle downvotes to prevent trolling
+  if (voteValue === -1 && isDownvoteThrottled(deviceId)) {
+    return res.status(429).json({ error: 'Too many downvotes — slow down' });
   }
 
   // Compute vote delta from the votes table (separate from queue)
@@ -218,6 +261,18 @@ router.post('/:venueCode/vote', async (req, res) => {
 
   const newVoteCount = (targetSong.votes || 0) + voteDelta;
 
+  // Auto-remove upcoming songs that drop to the threshold (never remove nowPlaying)
+  if (newVoteCount <= DOWNVOTE_REMOVAL_THRESHOLD && snapshot.nowPlaying?.id !== songId) {
+    const updated = await queueRepo.update(venueCode, (queue) => ({
+      ...queue,
+      upcoming: (queue.upcoming || []).filter((s) => s.id !== songId),
+    }));
+    db.clearVotesForSong(venueCode, songId);
+    logEvent({ venueCode, action: 'vote-remove', songId, detail: `auto-removed at ${newVoteCount} votes` });
+    broadcast.broadcastQueue(venueCode, updated);
+    return res.json({ success: true, newVoteCount, removed: true, myVote: null });
+  }
+
   const updated = await queueRepo.update(venueCode, (queue) => {
     const updateVotes = (s) =>
       s.id === songId ? { ...s, votes: (s.votes || 0) + voteDelta } : s;
@@ -230,6 +285,9 @@ router.post('/:venueCode/vote', async (req, res) => {
   });
 
   logEvent({ venueCode, action: 'vote', songId, detail: `delta=${voteDelta}` });
+  if (voteDelta !== 0) {
+    db.recordAnalyticsEvent(venueCode, { type: 'vote', songId, voteValue: existingVote === voteValue ? 0 : voteValue, songTitle: targetSong.title, artist: targetSong.artist });
+  }
   broadcast.broadcastQueue(venueCode, updated);
 
   res.json({
@@ -508,8 +566,28 @@ router.get('/:venueCode/autofill', async (req, res) => {
     const genres = Array.isArray(genreSetting) ? genreSetting : (genreSetting ? [genreSetting] : []);
     const autoplayMode = venue.settings?.autoplayMode || 'playlist';
     const playlists = venue.playlists || [];
-    const activePl = playlists.find((p) => p.id === venue.activePlaylistId)
-      || playlists.find((p) => p.songs?.length > 0);
+
+    // Dayparting: check if a playlist is scheduled for the current hour
+    let activePl = null;
+    const schedule = venue.settings?.playlistSchedule;
+    if (Array.isArray(schedule) && schedule.length > 0) {
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentDay = now.getDay();
+      const slot = schedule.find((s) => {
+        const hourMatch = s.startHour <= s.endHour
+          ? currentHour >= s.startHour && currentHour < s.endHour
+          : currentHour >= s.startHour || currentHour < s.endHour;
+        if (!hourMatch) return false;
+        if (Array.isArray(s.days) && s.days.length > 0) return s.days.includes(currentDay);
+        return true;
+      });
+      if (slot) activePl = playlists.find((p) => p.id === slot.playlistId);
+    }
+    if (!activePl) {
+      activePl = playlists.find((p) => p.id === venue.activePlaylistId)
+        || playlists.find((p) => p.songs?.length > 0);
+    }
     const playlist = activePl?.songs || venue.playlist || [];
 
     let song = null;

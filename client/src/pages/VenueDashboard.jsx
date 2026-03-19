@@ -18,6 +18,7 @@ import QRCodeDisplay from '../components/venue/QRCodeDisplay';
 import QueueManager from '../components/venue/QueueManager';
 import VenueSettings from '../components/venue/Settings';
 import EarningsCard from '../components/venue/EarningsCard';
+import AnalyticsDashboard from '../components/venue/AnalyticsDashboard';
 
 export default function VenueDashboard() {
   const [venue, setVenue] = useState(null);
@@ -84,6 +85,11 @@ export default function VenueDashboard() {
     } catch (err) {
       console.error('Error removing song:', err);
     }
+  }
+
+  async function handleBanArtist(artist) {
+    if (!venue || !artist) return;
+    try { await api.banArtist(venue.code, artist); } catch {}
   }
 
   function handleLogout() {
@@ -225,6 +231,11 @@ export default function VenueDashboard() {
           </div>
         </div>
 
+        {/* Analytics */}
+        <div className="mb-6 p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">
+          <AnalyticsDashboard venueCode={venue.code} variant="light" />
+        </div>
+
         {/* Bottom Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Customer Voting Link */}
@@ -277,6 +288,7 @@ export default function VenueDashboard() {
               queue={queue}
               onSkip={handleSkip}
               onRemove={handleRemove}
+              onBan={handleBanArtist}
               variant="light"
             />
           </div>
