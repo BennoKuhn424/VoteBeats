@@ -46,6 +46,32 @@ export default function VenuePlayer() {
   const waitingForGesture = playerState === PLAYER_STATES.WAITING;
   const musicReady = playerState !== PLAYER_STATES.NOT_READY;
 
+  // ── Wake Lock: keep screen on so JS stays alive for uninterrupted playback ─
+  useEffect(() => {
+    if (!('wakeLock' in navigator)) return;
+    let lock = null;
+
+    async function requestLock() {
+      try {
+        lock = await navigator.wakeLock.request('screen');
+        lock.addEventListener('release', () => { lock = null; });
+      } catch (_) {} // fails if tab is hidden or low battery — safe to ignore
+    }
+
+    requestLock();
+
+    // Browser releases the lock when the tab is hidden; re-acquire on return
+    function onVisibility() {
+      if (document.visibilityState === 'visible' && !lock) requestLock();
+    }
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (lock) lock.release().catch(() => {});
+    };
+  }, []);
+
   // ── Detect ?generatePlaylist=1 after Yoco redirect ────────────────────────
   useEffect(() => {
     if (!venueCode) return;

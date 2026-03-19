@@ -66,6 +66,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const autofill404UntilRef = useRef(0);
   const autofillBackoffRef = useRef(5000); // escalates 5s→10s→20s→30s
   const playFailCountRef = useRef(0);
+  const playLockRef = useRef(false);        // serialises playSong calls
   const queueRef = useRef(queue);           // stable ref for the health-check interval
   const stuckSinceRef = useRef(null);
   const divergenceSinceRef = useRef(null);
@@ -290,6 +291,12 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const playSong = useCallback(async (song) => {
     const music = musicRef.current;
     if (!music || !song?.appleId) return;
+    // Don't attempt playback when offline — it will fail and trigger error cascades.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    // Serialise: only one playSong at a time. Prevents the MusicKit
+    // "play() called without a previous stop()/pause()" crash.
+    if (playLockRef.current) return;
+    playLockRef.current = true;
     try {
       if (!music.isAuthorized) {
         await music.authorize();
@@ -303,7 +310,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       // JavaScript running at each song end. More items = more tracks play through lock.
       const upcoming = queueRef.current?.upcoming ?? [];
       const others = upcoming.filter((s) => s.appleId && s.id !== song.id);
-      const LOCK_SCREEN_QUEUE_SIZE = 3; // current + 2 more; enough for 2 bg transitions
+      const LOCK_SCREEN_QUEUE_SIZE = 10; // current + 9 more; ~30-40 min of lock-screen playback
       const ids = [song.appleId, ...others.slice(0, LOCK_SCREEN_QUEUE_SIZE - 1)].filter(Boolean);
       await music.setQueue({ songs: ids });
       await music.play();
@@ -331,12 +338,15 @@ export function VenuePlaybackProvider({ venueCode, children }) {
           endTransition();
         }
       }
+    } finally {
+      playLockRef.current = false;
     }
   }, [venueCode, endTransition, updatePlayerState, setErrorWithPriority]);
 
   // ── tryAutofill ──────────────────────────────────────────────────────────
   const tryAutofill = useCallback(async () => {
     if (autoplayModeRef.current === 'off') return false;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
     if (Date.now() < autofill404UntilRef.current) return false;
     try {
       const res = await api.autofillQueue(venueCode);
@@ -411,6 +421,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   // ── fetchQueue ───────────────────────────────────────────────────────────
   const fetchQueue = useCallback(async () => {
     if (!venueCode) return;
+    // Skip fetch when offline — the 'online' event will trigger a re-fetch.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     try {
       const res = await api.getQueue(venueCode, undefined, { timeout: 5000, 'axios-retry': { retries: 1 } });
       await handleQueueUpdate(res.data);
@@ -445,6 +457,19 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   // ── Visibility-aware fallback poll ───────────────────────────────────────
   useVisibilityAwarePolling(fetchQueue, 15000);
 
+  // ── Network recovery: reset error state when coming back online ─────────
+  useEffect(() => {
+    function onOnline() {
+      playFailCountRef.current = 0;
+      setPlayerError(null);
+      hcLastFiredRef.current = {};
+      stuckSinceRef.current = null;
+      divergenceSinceRef.current = null;
+    }
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, []);
+
   // ── Auto-clear autofill notice when a song starts ────────────────────────
   useEffect(() => {
     if (queue.nowPlaying) setAutofillNotice(false);
@@ -467,6 +492,13 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     const interval = setInterval(() => {
       const music = musicRef.current;
       if (!music) return;
+      // Skip health check when offline — network errors are expected,
+      // recovery will happen via the 'online' event and visibility handler.
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        stuckSinceRef.current = null;
+        divergenceSinceRef.current = null;
+        return;
+      }
       const serverNowPlaying = queueRef.current?.nowPlaying;
       const mk = music.playbackState;
 
@@ -645,7 +677,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
           });
         } catch (_) {}
       } else if ('setPositionState' in navigator.mediaSession) {
-        try { navigator.mediaSession.setPositionState(); } catch (_) {}
+        try { navigator.mediaSession.setPositionState(null); } catch (_) {}
       }
     }
   }, [queue.nowPlaying, playerState, playbackTime, playbackDuration]);
