@@ -25,10 +25,16 @@ async function fulfillPaidRequest(checkoutId, amountCentsOverride) {
     requestedAt: Date.now(),
   };
 
-  await queueRepo.update(venueCode, (queue) => ({
-    nowPlaying: queue.nowPlaying,
-    upcoming: [...(queue.upcoming || []), song],
-  }));
+  await queueRepo.update(venueCode, (queue) => {
+    // If nothing is playing, promote directly to nowPlaying so it starts immediately
+    if (!queue.nowPlaying) {
+      return {
+        nowPlaying: { ...song, positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false },
+        upcoming: queue.upcoming || [],
+      };
+    }
+    return { nowPlaying: queue.nowPlaying, upcoming: [...(queue.upcoming || []), song] };
+  });
 
   const amountCentsToLog =
     amountCentsOverride ?? amountCents ?? venue?.settings?.requestPriceCents ?? 1000;

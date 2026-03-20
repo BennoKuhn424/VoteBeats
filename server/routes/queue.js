@@ -190,7 +190,9 @@ router.post('/:venueCode/request', async (req, res) => {
     let rejection = null;
     const updated = await queueRepo.update(venueCode, (queue) => {
       const upcoming = queue.upcoming || [];
-      const alreadyInQueue = upcoming.some(
+      const np = queue.nowPlaying;
+      const alreadyNowPlaying = np && ((np.id && np.id === songId) || (np.appleId && np.appleId === song.appleId));
+      const alreadyInQueue = alreadyNowPlaying || upcoming.some(
         (s) => (s.id && s.id === songId) || (s.appleId && s.appleId === song.appleId)
       );
       if (alreadyInQueue) {
@@ -200,6 +202,13 @@ router.post('/:venueCode/request', async (req, res) => {
       if (upcoming.filter((s) => s.requestedBy === deviceId).length >= maxPerUser) {
         rejection = { status: 400, body: { error: `Max ${maxPerUser} songs per user` } };
         return null;
+      }
+      // If nothing is playing, promote directly to nowPlaying so it starts immediately
+      if (!queue.nowPlaying) {
+        return {
+          nowPlaying: { ...newSong, positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false },
+          upcoming,
+        };
       }
       return { nowPlaying: queue.nowPlaying, upcoming: [...upcoming, newSong] };
     });
