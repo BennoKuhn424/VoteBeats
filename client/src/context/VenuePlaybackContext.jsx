@@ -193,14 +193,24 @@ export function VenuePlaybackProvider({ venueCode, children }) {
           else if (mk === 3) updatePlayerState(PLAYER_STATES.PAUSED);
           else if (mk === 0 || mk === 4 || mk === 5) {
             updatePlayerState(PLAYER_STATES.IDLE);
-            // mk===5: song ended. Tell the server to advance, then let
-            // MusicKit's pre-loaded queue handle the audio transition.
-            // Don't call skipToNextItem() — MusicKit will auto-advance
-            // its own queue to the next pre-loaded item.
-            if (mk === 5 && autoplayModeRef.current !== 'off') {
+            // mk===5: song ended. Skip to next pre-loaded item so playback
+            // continues, then tell the server to advance.
+            // Guard with playLockRef so we don't race with an active playSong.
+            if (mk === 5 && autoplayModeRef.current !== 'off' && !playLockRef.current) {
               const endedId = currentSongIdRef.current;
-              if (endedId && !playLockRef.current) {
-                // Advance server queue; the broadcast will update our state.
+              const upcoming = queueRef.current?.upcoming || [];
+              const nextSong = upcoming.find((s) => s.appleId && s.id !== endedId);
+              if (nextSong) {
+                currentSongIdRef.current = nextSong.id;
+                setQueue((prev) => ({
+                  nowPlaying: { ...nextSong, positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false },
+                  upcoming: (prev.upcoming || []).slice(1),
+                }));
+                music.skipToNextItem().catch(() => {
+                  currentSongIdRef.current = endedId; // restore on failure
+                });
+              }
+              if (endedId) {
                 api.advanceQueue(venueCode, endedId).catch(() => {});
               }
             }
