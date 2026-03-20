@@ -383,10 +383,12 @@ export function VenuePlaybackProvider({ venueCode, children }) {
 
   // ── handleQueueUpdate ────────────────────────────────────────────────────
   const handleQueueUpdate = useCallback(async (newQueue) => {
+    // Always update queue state so the UI stays current, even during playSong
     setQueue(newQueue);
     const nowPlaying = newQueue.nowPlaying;
 
-    // Don't interfere if a playSong is already in flight
+    // Don't start a new song if playSong is already in flight — but we still
+    // updated the queue above so the UI reflects the latest state.
     if (playLockRef.current) return;
 
     if (nowPlaying && nowPlaying.id !== currentSongIdRef.current &&
@@ -480,6 +482,20 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     window.addEventListener('online', onOnline);
     return () => window.removeEventListener('online', onOnline);
   }, []);
+
+  // ── Periodic position report: keep server anchor accurate ────────────────
+  // Without this, the server extrapolates position from the last anchor and
+  // can drift, triggering early auto-advance.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const music = musicRef.current;
+      const songId = currentSongIdRef.current;
+      if (!music || !songId || music.playbackState !== 2) return; // only while playing
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      api.reportPlaying(venueCode, songId, music.currentPlaybackTime || 0).catch(() => {});
+    }, 30000); // every 30s
+    return () => clearInterval(interval);
+  }, [venueCode]);
 
   // ── Auto-clear autofill notice when a song starts ────────────────────────
   useEffect(() => {

@@ -66,16 +66,21 @@ setInterval(() => {
       // Skip advance while paused
       if (np.isPaused || np.pausedAt) return;
 
-      let durationMs = (np.duration || 180) * 1000;
-      if (durationMs < 60000) durationMs = 180000;
+      // Duration in seconds → ms. If missing or suspiciously short, use a
+      // generous fallback so we never cut a song short. The client's mk===5
+      // event is the primary advance trigger; this interval is a safety net.
+      let durationMs = (np.duration || 0) * 1000;
+      if (durationMs < 30000) durationMs = 600000; // 10 min fallback — let client drive
 
       // Anchor pattern position
       const posMs = np.positionMs ?? 0;
       const anchoredAt = np.positionAnchoredAt ?? np.startedAt ?? Date.now();
       const currentPos = posMs + (Date.now() - anchoredAt);
 
-      if (currentPos >= durationMs) {
-        const updated = await advanceToNextSong(venueCode);
+      // Add a 10s buffer so the client's song-end event always fires first.
+      // This interval is a safety net, not the primary advance mechanism.
+      if (currentPos >= durationMs + 10000) {
+        const updated = await advanceToNextSong(venueCode, np.id);
         broadcast.broadcastQueue(venueCode, updated);
       }
     } else if (upcoming.length > 0) {

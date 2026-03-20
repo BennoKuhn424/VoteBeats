@@ -108,14 +108,14 @@ router.get('/:venueCode', async (req, res) => {
   let queue = queueRepo.get(venueCode);
   const venue = db.getVenue(venueCode);
 
-  // Auto-advance based on anchor position so any page poll can trigger it
+  // Auto-advance based on anchor position — safety net only.
+  // The client's MusicKit song-end event (mk===5) is the primary trigger.
   const np = queue.nowPlaying;
   if (np && !np.isPaused && !np.pausedAt) {
-    const duration = np.duration || 180;
-    let durationMs = duration * 1000;
-    if (durationMs < 60000) durationMs = 180000;
-    const currentPos = getCurrentPositionMs(np) + 5000; // 5s grace
-    if (currentPos >= durationMs) {
+    let durationMs = (np.duration || 0) * 1000;
+    if (durationMs < 30000) durationMs = 600000; // generous fallback
+    const currentPos = getCurrentPositionMs(np);
+    if (currentPos >= durationMs + 10000) {
       queue = await advanceToNextSong(venueCode, np.id);
       broadcast.broadcastQueue(venueCode, queue);
       if (!queue.nowPlaying) {
