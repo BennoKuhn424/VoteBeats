@@ -423,8 +423,9 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       const currentAppleId = musicRef.current?.nowPlayingItem?.id;
       if (currentAppleId && String(currentAppleId) === String(nowPlaying.appleId)) {
         currentSongIdRef.current = nowPlaying.id;
-      } else if (musicRef.current?.playbackState === 3) {
-        // Paused — don't force a new song
+      } else if (musicRef.current?.playbackState === 3 && currentSongIdRef.current) {
+        // Paused AND a song is loaded — user intentionally paused, don't interrupt.
+        // If currentSongIdRef is null, nothing is loaded so we should play.
       } else if (!hasUserGestureRef.current) {
         updatePlayerState(PLAYER_STATES.WAITING);
       } else {
