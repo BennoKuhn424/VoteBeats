@@ -148,6 +148,10 @@ export default function CustomerVoting() {
             song={queue.nowPlaying}
             hasLyrics={!!lyricsData}
             onLyrics={() => setShowLyrics(true)}
+            venueCode={venueCode}
+            deviceId={deviceId}
+            myVote={queue.myVotes?.[queue.nowPlaying.id] ?? null}
+            onVote={fetchQueue}
           />
         )}
 

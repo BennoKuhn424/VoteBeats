@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
+import { ThumbsUp, ThumbsDown } from 'lucide-react';
 import { formatDuration } from '../../utils/helpers';
+import api from '../../utils/api';
 
-export default function NowPlaying({ song, hasLyrics, onLyrics }) {
+export default function NowPlaying({ song, hasLyrics, onLyrics, venueCode, deviceId, myVote, onVote }) {
   const [progress, setProgress] = useState(0);
+  const [voting, setVoting] = useState(false);
 
   useEffect(() => {
     if (!song) return;
@@ -24,6 +27,21 @@ export default function NowPlaying({ song, hasLyrics, onLyrics }) {
     const interval = setInterval(updateProgress, 1000);
     return () => clearInterval(interval);
   }, [song?.appleId, song?.positionMs, song?.positionAnchoredAt, song?.isPaused]);
+
+  async function handleVote(value) {
+    if (voting || !song?.id || !venueCode || !deviceId) return;
+    setVoting(true);
+    try {
+      await api.vote(venueCode, song.id, value, deviceId);
+      onVote?.();
+    } catch (err) {
+      if (err.response?.status === 429) {
+        // throttled — silently ignore
+      }
+    } finally {
+      setVoting(false);
+    }
+  }
 
   if (!song) return null;
 
@@ -56,15 +74,43 @@ export default function NowPlaying({ song, hasLyrics, onLyrics }) {
         />
       </div>
 
-      {hasLyrics && (
+      <div className="flex items-center gap-3">
         <button
           type="button"
-          onClick={onLyrics}
-          className="w-full py-2.5 rounded-xl bg-black text-white font-semibold text-sm flex items-center justify-center gap-2 active:opacity-80 transition-opacity"
+          onClick={() => handleVote(1)}
+          disabled={voting}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50 ${
+            myVote === 1
+              ? 'bg-green-500 text-white'
+              : 'bg-carbon-100 text-carbon-600 hover:bg-green-50 hover:text-green-600'
+          }`}
         >
-          🎤 Lyrics
+          <ThumbsUp className="h-4 w-4" />
+          Like
         </button>
-      )}
+        <button
+          type="button"
+          onClick={() => handleVote(-1)}
+          disabled={voting}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50 ${
+            myVote === -1
+              ? 'bg-red-500 text-white'
+              : 'bg-carbon-100 text-carbon-600 hover:bg-red-50 hover:text-red-600'
+          }`}
+        >
+          <ThumbsDown className="h-4 w-4" />
+          Dislike
+        </button>
+        {hasLyrics && (
+          <button
+            type="button"
+            onClick={onLyrics}
+            className="flex-1 py-2.5 rounded-xl bg-black text-white font-semibold text-sm flex items-center justify-center gap-2 active:opacity-80 transition-opacity"
+          >
+            🎤 Lyrics
+          </button>
+        )}
+      </div>
     </div>
   );
 }
