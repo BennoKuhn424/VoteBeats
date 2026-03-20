@@ -67,6 +67,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const autofillBackoffRef = useRef(5000); // escalates 5s→10s→20s→30s
   const playFailCountRef = useRef(0);
   const playLockRef = useRef(false);        // serialises playSong calls
+  const playSongRef = useRef(null);          // stable ref for playSong (used in stateListener)
   const queueRef = useRef(queue);           // stable ref for the health-check interval
   const stuckSinceRef = useRef(null);
   const divergenceSinceRef = useRef(null);
@@ -181,7 +182,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         setPlaybackDuration(music.currentPlaybackDuration || 0);
 
         // MusicKit state listener — drives playerState when not transitioning.
-        stateListener = () => {
+        stateListener = async () => {
           // Don't let MusicKit's internal states (1=loading) override 'transitioning'.
           if (playerStateRef.current === PLAYER_STATES.TRANSITIONING) return;
           // Don't clear 'waitingForGesture' — only user gesture clears that.
@@ -193,25 +194,46 @@ export function VenuePlaybackProvider({ venueCode, children }) {
           else if (mk === 3) updatePlayerState(PLAYER_STATES.PAUSED);
           else if (mk === 0 || mk === 4 || mk === 5) {
             updatePlayerState(PLAYER_STATES.IDLE);
-            // mk===5: song ended. Skip to next pre-loaded item so playback
-            // continues, then tell the server to advance.
+            // mk===5: song ended. Try to advance to the next song.
             // Guard with playLockRef so we don't race with an active playSong.
             if (mk === 5 && autoplayModeRef.current !== 'off' && !playLockRef.current) {
               const endedId = currentSongIdRef.current;
+              // Clear currentSongIdRef so handleQueueUpdate can trigger playSong
+              // when the server broadcast arrives (in case skipToNextItem fails).
+              currentSongIdRef.current = null;
+
               const upcoming = queueRef.current?.upcoming || [];
               const nextSong = upcoming.find((s) => s.appleId && s.id !== endedId);
+
               if (nextSong) {
-                currentSongIdRef.current = nextSong.id;
+                // Optimistically update UI
                 setQueue((prev) => ({
                   nowPlaying: { ...nextSong, positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false },
                   upcoming: (prev.upcoming || []).slice(1),
                 }));
-                music.skipToNextItem().catch(() => {
-                  currentSongIdRef.current = endedId; // restore on failure
-                });
+                // Try MusicKit's pre-loaded queue first
+                try {
+                  await music.skipToNextItem();
+                  // skipToNextItem worked — claim the song
+                  currentSongIdRef.current = nextSong.id;
+                } catch {
+                  // skipToNextItem failed — fall back to full playSong
+                  // currentSongIdRef stays null so handleQueueUpdate can also try
+                }
               }
+
+              // Tell server to advance; its broadcast will trigger playSong
+              // via handleQueueUpdate if skipToNextItem didn't work above.
               if (endedId) {
                 api.advanceQueue(venueCode, endedId).catch(() => {});
+              }
+
+              // If skipToNextItem didn't claim the song and we have a next song,
+              // play it directly rather than waiting for the broadcast.
+              // Uses playSongRef to avoid stale closure from useEffect mount.
+              if (nextSong && !currentSongIdRef.current && !playLockRef.current) {
+                currentSongIdRef.current = nextSong.id;
+                playSongRef.current?.(nextSong);
               }
             }
           }
@@ -353,6 +375,10 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       playLockRef.current = false;
     }
   }, [venueCode, endTransition, updatePlayerState, setErrorWithPriority]);
+
+  // Keep playSongRef in sync so the stateListener (which captures a closure
+  // on mount) can always call the latest playSong.
+  useEffect(() => { playSongRef.current = playSong; }, [playSong]);
 
   // ── tryAutofill ──────────────────────────────────────────────────────────
   const tryAutofill = useCallback(async () => {
