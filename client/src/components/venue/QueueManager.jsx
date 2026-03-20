@@ -26,17 +26,22 @@ export default function QueueManager({ queue, onSkip, onRemove, onBan, variant =
         <div className={nowPlayingCardClass}>
           <p className={titleClass}>NOW PLAYING</p>
           <div className="flex items-center gap-3">
-            <img
-              src={nowPlaying.albumArt}
-              alt={nowPlaying.title}
-              className="w-14 h-14 rounded-xl object-cover shrink-0"
-            />
+            {nowPlaying.albumArt ? (
+              <img
+                src={nowPlaying.albumArt}
+                alt={nowPlaying.title}
+                className="w-14 h-14 rounded-xl object-cover shrink-0"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-xl bg-zinc-200 shrink-0" />
+            )}
             <div className="flex-1 min-w-0">
               <p className={songTitleClass}>{nowPlaying.title}</p>
               <p className={artistClass}>{nowPlaying.artist}</p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {onBan && (
+              {onBan && nowPlaying.artist && (
                 <button
                   type="button"
                   onClick={() => onBan(nowPlaying.artist)}
@@ -77,18 +82,23 @@ export default function QueueManager({ queue, onSkip, onRemove, onBan, variant =
                 <span className={`${indexClass} font-bold w-5 text-right shrink-0`}>
                   {i + 1}
                 </span>
-                <img
-                  src={song.albumArt}
-                  alt={song.title || 'Song'}
-                  className="w-10 h-10 rounded-lg object-cover shrink-0"
-                />
+                {song.albumArt ? (
+                  <img
+                    src={song.albumArt}
+                    alt={song.title || 'Song'}
+                    className="w-10 h-10 rounded-lg object-cover shrink-0"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-lg bg-zinc-200 shrink-0" />
+                )}
                 <div className="flex-1 min-w-0">
                   <p className={upcomingSongClass}>{song.title || 'Unknown'}</p>
                   <p className={upcomingArtistClass}>{song.artist || 'Unknown artist'}</p>
                 </div>
               </div>
               <div className="flex justify-end gap-2">
-                {onBan && (
+                {onBan && song.artist && (
                   <button
                     type="button"
                     onClick={() => onBan(song.artist)}

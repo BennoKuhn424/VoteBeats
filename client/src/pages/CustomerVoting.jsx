@@ -61,26 +61,26 @@ export default function CustomerVoting() {
     socket.connect();
     joinRoom();
 
-    socket.on('connect', () => {
-      // Re-join after reconnect (iOS resume, network switch, server restart)
+    function onConnect() {
       joinRoom();
-      // Re-fetch to catch any updates missed while disconnected
       setTimeout(fetchQueue, 300);
-    });
+    }
 
-    socket.on('queue:updated', (data) => {
-      // Keep local myVotes so vote indicators don't flicker on server push
+    function onQueueUpdated(data) {
       setQueue((prev) => ({ ...data, myVotes: prev.myVotes || data.myVotes || {} }));
       setError(null);
       setLoading(false);
-    });
+    }
+
+    socket.on('connect', onConnect);
+    socket.on('queue:updated', onQueueUpdated);
 
     // Initial fetch
     fetchQueue();
 
     return () => {
-      socket.off('connect');
-      socket.off('queue:updated');
+      socket.off('connect', onConnect);
+      socket.off('queue:updated', onQueueUpdated);
       socket.disconnect();
     };
   }, [venueCode, fetchQueue]);

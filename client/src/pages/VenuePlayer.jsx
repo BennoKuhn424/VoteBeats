@@ -117,18 +117,27 @@ export default function VenuePlayer() {
   }, [venueCode, navigate, initAutoplayMode]);
 
   async function handleRemoveSong(songId) {
-    try { await api.removeSong(venueCode, songId); fetchQueue(); } catch {}
+    try {
+      await api.removeSong(venueCode, songId);
+      fetchQueue();
+    } catch (err) {
+      console.warn('Remove failed:', err?.message);
+    }
   }
 
   async function handleBanArtist(artist) {
-    if (!artist) return;
+    if (!artist?.trim()) return;
     try {
       await api.banArtist(venueCode, artist);
-    } catch {}
+      fetchQueue();
+    } catch (err) {
+      console.warn('Ban failed:', err?.message);
+    }
   }
 
   const nowPlaying = queue.nowPlaying;
-  const progress = playbackDuration > 0 ? (playbackTime / playbackDuration) * 100 : 0;
+  const rawProgress = playbackDuration > 0 ? (playbackTime / playbackDuration) * 100 : 0;
+  const progress = Number.isFinite(rawProgress) ? Math.min(rawProgress, 100) : 0;
 
   if (!venue) {
     return (

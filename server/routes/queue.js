@@ -153,6 +153,13 @@ router.post('/:venueCode/request', async (req, res) => {
   const { venueCode } = req.params;
   const { song, deviceId } = req.body;
 
+  if (!song || !song.appleId || !song.title) {
+    return res.status(400).json({ error: 'Song with appleId and title is required' });
+  }
+  if (!deviceId) {
+    return res.status(400).json({ error: 'deviceId is required' });
+  }
+
   const venue = db.getVenue(venueCode);
   if (!venue) {
     return res.status(404).json({ error: 'Venue not found' });
@@ -474,11 +481,17 @@ router.post('/:venueCode/create-payment', async (req, res) => {
     return res.status(503).json({ error: 'Payment integration not configured' });
   }
 
-  const baseUrl =
-    (typeof clientOrigin === 'string' && clientOrigin) ||
-    req.headers.origin ||
-    process.env.PUBLIC_URL ||
-    'http://localhost:5173';
+  // Validate clientOrigin to prevent open redirect — only allow same origin or PUBLIC_URL
+  const allowedOrigins = [req.headers.origin, process.env.PUBLIC_URL].filter(Boolean);
+  let baseUrl = process.env.PUBLIC_URL || req.headers.origin || 'http://localhost:5173';
+  if (typeof clientOrigin === 'string' && clientOrigin) {
+    try {
+      const parsed = new URL(clientOrigin);
+      if (allowedOrigins.some((o) => { try { return new URL(o).origin === parsed.origin; } catch { return false; } })) {
+        baseUrl = clientOrigin;
+      }
+    } catch {} // invalid URL — use default
+  }
   const base = baseUrl.replace(/\/$/, '');
   const successUrl = `${base}/v/${venueCode}/request-success`;
   const cancelUrl = `${base}/v/${venueCode}`;
