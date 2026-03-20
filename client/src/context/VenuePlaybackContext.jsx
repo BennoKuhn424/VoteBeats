@@ -3,6 +3,15 @@ import api from '../utils/api';
 import socket from '../utils/socket';
 import { useVisibilityAwarePolling } from '../hooks/useVisibilityAwarePolling';
 
+// Race a promise against a timeout — prevents MusicKit calls from hanging forever
+function withTimeout(promise, ms) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 // Lower number = higher priority. Soft notices never overwrite hard errors.
 const ERROR_PRIORITY = {
   'Could not connect to Apple Music — tap Retry': 1,
@@ -70,6 +79,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const pendingQueueRef = useRef(null);     // queue update received while playLock held
   const playSongRef = useRef(null);          // stable ref for playSong (used in stateListener)
   const handleQueueUpdateRef = useRef(null); // stable ref for replaying stashed updates
+  const fetchQueueRef = useRef(null);        // stable ref for stateListener safety-net fetch
   const queueRef = useRef(queue);           // stable ref for the health-check interval
   const stuckSinceRef = useRef(null);
   const divergenceSinceRef = useRef(null);
@@ -198,33 +208,32 @@ export function VenuePlaybackProvider({ venueCode, children }) {
           else if (mk === 3) updatePlayerState(PLAYER_STATES.PAUSED);
           else if (mk === 0 || mk === 4 || mk === 5) {
             updatePlayerState(PLAYER_STATES.IDLE);
-            // mk===5: song ended. Advance to next song (fire-and-forget).
-            if (mk === 5 && autoplayModeRef.current !== 'off' && !playLockRef.current) {
+            // mk===5: song ended naturally.
+            // 1. Try MusicKit's pre-loaded queue (skipToNextItem) — works even on lock screen.
+            // 2. Tell server to advance — server broadcast triggers handleQueueUpdate which
+            //    calls playSong. This is the ONLY playSong path from song-end, eliminating
+            //    the race between fire-and-forget playSong and handleQueueUpdate.
+            if (mk === 5 && autoplayModeRef.current !== 'off') {
               const endedId = currentSongIdRef.current;
               currentSongIdRef.current = null;
 
-              const upcoming = queueRef.current?.upcoming || [];
-              const nextSong = upcoming.find((s) => s.appleId && s.id !== endedId);
-
-              if (nextSong) {
-                setQueue((prev) => ({
-                  nowPlaying: { ...nextSong, positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false },
-                  upcoming: (prev.upcoming || []).slice(1),
-                }));
-                // Try MusicKit's pre-loaded queue, then fall back to playSong
-                music.skipToNextItem()
-                  .then(() => { currentSongIdRef.current = nextSong.id; })
-                  .catch(() => {
-                    // skipToNextItem failed — play directly
-                    if (!playLockRef.current) {
-                      currentSongIdRef.current = nextSong.id;
-                      playSongRef.current?.(nextSong);
-                    }
-                  });
-              }
+              // Try native MusicKit advance (pre-loaded queue). If it works,
+              // itemListener will sync server state. If it fails, the server
+              // advance + broadcast below will trigger handleQueueUpdate → playSong.
+              music.skipToNextItem().catch(() => {});
 
               if (endedId) {
-                api.advanceQueue(venueCode, endedId).catch(() => {});
+                api.advanceQueue(venueCode, endedId)
+                  .catch(() => {})
+                  .finally(() => {
+                    // Server broadcasts queue:updated, but as a safety net
+                    // fetch the queue if nothing started playing within 2s.
+                    setTimeout(() => {
+                      if (!currentSongIdRef.current && !playLockRef.current) {
+                        fetchQueueRef.current?.();
+                      }
+                    }, 2000);
+                  });
               }
             }
           }
@@ -305,40 +314,36 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const playSong = useCallback(async (song) => {
     const music = musicRef.current;
     if (!music || !song?.appleId) return;
-    // Don't attempt playback when offline — it will fail and trigger error cascades.
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-    // Serialise: only one playSong at a time. Prevents the MusicKit
-    // "play() called without a previous stop()/pause()" crash.
+    // Serialise: only one playSong at a time.
     if (playLockRef.current) return;
     playLockRef.current = true;
+    // Safety net: force-release the lock after 20s no matter what.
+    // Prevents a hung MusicKit call from permanently killing the player.
+    const lockSafety = setTimeout(() => {
+      if (playLockRef.current) {
+        console.warn('[PLAY_LOCK_TIMEOUT] forcing lock release after 20s');
+        playLockRef.current = false;
+      }
+    }, 20000);
     try {
       if (!music.isAuthorized) {
         await music.authorize();
         setIsAuthorized(music.isAuthorized);
       }
-      // Fully stop MusicKit before loading a new queue.
-      // Order matters: stop() first clears the playback pipeline,
-      // then pause() ensures no lingering "playing" state that causes
-      // the "play() called without a previous stop()/pause()" crash.
       const mk = music.playbackState;
-      if (mk === 2 || mk === 1) { // playing or loading
-        try { await music.stop(); } catch {}
-      } else if (mk === 3) { // paused
-        try { await music.stop(); } catch {}
+      if (mk === 1 || mk === 2 || mk === 3) {
+        try { await withTimeout(music.stop(), 5000); } catch {}
       }
-      // Small delay lets MusicKit settle its internal state machine
       await new Promise((r) => setTimeout(r, 100));
 
-      // Pre-load multiple upcoming songs so MusicKit can auto-advance natively
-      // when the screen is locked — iOS can transition at the OS level without
-      // JavaScript running at each song end. More items = more tracks play through lock.
+      // Pre-load a few upcoming songs for lock-screen auto-advance.
+      // Keep it small (3) — more songs = slower setQueue = higher failure risk.
       const upcoming = queueRef.current?.upcoming ?? [];
       const others = upcoming.filter((s) => s.appleId && s.id !== song.id);
-      const LOCK_SCREEN_QUEUE_SIZE = 10; // current + 9 more; ~30-40 min of lock-screen playback
-      const ids = [song.appleId, ...others.slice(0, LOCK_SCREEN_QUEUE_SIZE - 1)].filter(Boolean);
-      await music.setQueue({ songs: ids });
-      await music.play();
-      // MusicKit listener will set PLAYING; clear any error on success
+      const ids = [song.appleId, ...others.slice(0, 2)].filter(Boolean);
+      await withTimeout(music.setQueue({ songs: ids }), 15000);
+      await withTimeout(music.play(), 10000);
       setPlayerError(null);
       playFailCountRef.current = 0;
       api.reportPlaying(venueCode, song.id, 0).catch(() => {});
@@ -346,29 +351,26 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
         updatePlayerState(PLAYER_STATES.WAITING);
       } else {
-        console.error('Play error:', err);
+        console.error('[PLAY_ERROR]', err?.message || err);
         currentSongIdRef.current = null;
         playFailCountRef.current += 1;
         if (playFailCountRef.current >= 3) {
-          console.warn('[PLAY_FAIL_ATTN] playSong failed 3+ times consecutively');
+          console.warn('[PLAY_FAIL_ATTN] playSong failed 3+ times');
           setErrorWithPriority('Player needs attention — tap to reconnect Apple Music');
           playFailCountRef.current = 0;
         } else {
-          console.warn(`[PLAY_FAIL_RETRY] playSong failed (attempt ${playFailCountRef.current}):`, err?.message);
           setErrorWithPriority('Playback failed — retrying…');
         }
-        // Safety: don't leave player stuck in 'transitioning'
         if (playerStateRef.current === PLAYER_STATES.TRANSITIONING) {
           endTransition();
         }
       }
     } finally {
+      clearTimeout(lockSafety);
       playLockRef.current = false;
-      // If a queue update arrived while we held the lock, replay it now
       const pending = pendingQueueRef.current;
       if (pending) {
         pendingQueueRef.current = null;
-        // Defer so our caller (e.g. endTransition) finishes first
         Promise.resolve().then(() => handleQueueUpdateRef.current?.(pending));
       }
     }
@@ -432,8 +434,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       } else {
         beginTransition();
         currentSongIdRef.current = nowPlaying.id;
-        await playSong(nowPlaying);
-        endTransition();
+        try { await playSong(nowPlaying); } finally { endTransition(); }
       }
     }
 
@@ -451,8 +452,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
               !playLockRef.current) {
             beginTransition();
             currentSongIdRef.current = np.id;
-            await playSong(np);
-            endTransition();
+            try { await playSong(np); } finally { endTransition(); }
           }
         } catch {}
       }
@@ -473,6 +473,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       console.warn('Queue fetch failed:', err?.message);
     }
   }, [venueCode, handleQueueUpdate]);
+
+  useEffect(() => { fetchQueueRef.current = fetchQueue; }, [fetchQueue]);
 
   // ── Socket.IO ────────────────────────────────────────────────────────────
   useEffect(() => {
