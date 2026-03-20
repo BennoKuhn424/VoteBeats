@@ -67,7 +67,9 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const autofillBackoffRef = useRef(5000); // escalates 5s→10s→20s→30s
   const playFailCountRef = useRef(0);
   const playLockRef = useRef(false);        // serialises playSong calls
+  const pendingQueueRef = useRef(null);     // queue update received while playLock held
   const playSongRef = useRef(null);          // stable ref for playSong (used in stateListener)
+  const handleQueueUpdateRef = useRef(null); // stable ref for replaying stashed updates
   const queueRef = useRef(queue);           // stable ref for the health-check interval
   const stuckSinceRef = useRef(null);
   const divergenceSinceRef = useRef(null);
@@ -362,6 +364,13 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       }
     } finally {
       playLockRef.current = false;
+      // If a queue update arrived while we held the lock, replay it now
+      const pending = pendingQueueRef.current;
+      if (pending) {
+        pendingQueueRef.current = null;
+        // Defer so our caller (e.g. endTransition) finishes first
+        Promise.resolve().then(() => handleQueueUpdateRef.current?.(pending));
+      }
     }
   }, [venueCode, endTransition, updatePlayerState, setErrorWithPriority]);
 
@@ -402,9 +411,12 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     setQueue(newQueue);
     const nowPlaying = newQueue.nowPlaying;
 
-    // Don't start a new song if playSong is already in flight — but we still
-    // updated the queue above so the UI reflects the latest state.
-    if (playLockRef.current) return;
+    // Don't start a new song if playSong is already in flight — stash it so
+    // playSong can replay it when the lock releases.
+    if (playLockRef.current) {
+      pendingQueueRef.current = newQueue;
+      return;
+    }
 
     if (nowPlaying && nowPlaying.id !== currentSongIdRef.current &&
         playerStateRef.current !== PLAYER_STATES.TRANSITIONING) {
@@ -446,6 +458,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       }
     }
   }, [venueCode, playSong, tryAutofill, beginTransition, endTransition, updatePlayerState]);
+
+  useEffect(() => { handleQueueUpdateRef.current = handleQueueUpdate; }, [handleQueueUpdate]);
 
   // ── fetchQueue ───────────────────────────────────────────────────────────
   const fetchQueue = useCallback(async () => {
@@ -674,6 +688,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   const authorize = useCallback(async () => {
     const music = musicRef.current;
     if (!music) return;
+    hasUserGestureRef.current = true; // user tapped — satisfies autoplay policy
     try {
       await music.authorize();
       setIsAuthorized(music.isAuthorized);
