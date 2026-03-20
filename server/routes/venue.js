@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../utils/database');
+const venueRepo = require('../repos/venueRepo');
 const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
@@ -132,70 +133,85 @@ router.put('/:venueCode/playlists/:playlistId/activate', authMiddleware, (req, r
 });
 
 // PUT /api/venue/:venueCode/playlists/:playlistId/rename – rename a playlist
-router.put('/:venueCode/playlists/:playlistId/rename', authMiddleware, (req, res) => {
+router.put('/:venueCode/playlists/:playlistId/rename', authMiddleware, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
   const { name } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
 
-  const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
-  const pl = venue.playlists.find((p) => p.id === req.params.playlistId);
-  if (!pl) return res.status(404).json({ error: 'Playlist not found' });
-  pl.name = name.trim();
-  db.saveVenue(venue.code, venue);
-  res.json({ playlists: venue.playlists });
+  let rejection = null;
+  const updated = await venueRepo.update(req.params.venueCode, (venue) => {
+    normalizePlaylists(venue);
+    const pl = venue.playlists.find((p) => p.id === req.params.playlistId);
+    if (!pl) { rejection = { status: 404, body: { error: 'Playlist not found' } }; return null; }
+    pl.name = name.trim();
+    return venue;
+  });
+  if (rejection) return res.status(rejection.status).json(rejection.body);
+  res.json({ playlists: updated.playlists });
 });
 
 // ── Per-playlist song management ─────────────────────────────────────────────
 
 // POST /api/venue/:venueCode/playlists/:playlistId/songs – add a song
-router.post('/:venueCode/playlists/:playlistId/songs', authMiddleware, (req, res) => {
+router.post('/:venueCode/playlists/:playlistId/songs', authMiddleware, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
-
-  const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
-  const pl = venue.playlists.find((p) => p.id === req.params.playlistId);
-  if (!pl) return res.status(404).json({ error: 'Playlist not found' });
 
   const { id, appleId, title, artist, albumArt, duration } = req.body;
   if (!appleId || !title) return res.status(400).json({ error: 'appleId and title are required' });
 
-  if (pl.songs.some((s) => s.appleId === appleId)) return res.json({ playlist: pl });
-  if (pl.songs.length >= 500) return res.status(400).json({ error: 'Playlist limit reached (500 songs)' });
+  let rejection = null;
+  let resultPlaylist = null;
+  await venueRepo.update(req.params.venueCode, (venue) => {
+    normalizePlaylists(venue);
+    const pl = venue.playlists.find((p) => p.id === req.params.playlistId);
+    if (!pl) { rejection = { status: 404, body: { error: 'Playlist not found' } }; return null; }
+    if (pl.songs.some((s) => s.appleId === appleId)) { resultPlaylist = pl; return null; }
+    if (pl.songs.length >= 500) { rejection = { status: 400, body: { error: 'Playlist limit reached (500 songs)' } }; return null; }
+    pl.songs.push({ id: id || `pl_${Date.now()}`, appleId, title, artist, albumArt, duration });
+    resultPlaylist = pl;
+    return venue;
+  });
 
-  pl.songs.push({ id: id || `pl_${Date.now()}`, appleId, title, artist, albumArt, duration });
-  db.saveVenue(venue.code, venue);
-  res.json({ playlist: pl });
+  if (rejection) return res.status(rejection.status).json(rejection.body);
+  res.json({ playlist: resultPlaylist });
 });
 
 // DELETE /api/venue/:venueCode/playlists/:playlistId/songs/:appleId – remove a song
-router.delete('/:venueCode/playlists/:playlistId/songs/:appleId', authMiddleware, (req, res) => {
+router.delete('/:venueCode/playlists/:playlistId/songs/:appleId', authMiddleware, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
-  const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
-  const pl = venue.playlists.find((p) => p.id === req.params.playlistId);
-  if (!pl) return res.status(404).json({ error: 'Playlist not found' });
+  let resultPlaylist = null;
+  let rejection = null;
+  await venueRepo.update(req.params.venueCode, (venue) => {
+    normalizePlaylists(venue);
+    const pl = venue.playlists.find((p) => p.id === req.params.playlistId);
+    if (!pl) { rejection = { status: 404, body: { error: 'Playlist not found' } }; return null; }
+    pl.songs = pl.songs.filter((s) => s.appleId !== req.params.appleId);
+    resultPlaylist = pl;
+    return venue;
+  });
 
-  pl.songs = pl.songs.filter((s) => s.appleId !== req.params.appleId);
-  db.saveVenue(venue.code, venue);
-  res.json({ playlist: pl });
+  if (rejection) return res.status(rejection.status).json(rejection.body);
+  res.json({ playlist: resultPlaylist });
 });
 
 // POST /api/venue/:venueCode/ban-artist – quick-ban an artist from the player
-router.post('/:venueCode/ban-artist', authMiddleware, (req, res) => {
+router.post('/:venueCode/ban-artist', authMiddleware, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
   const { artist } = req.body;
   if (!artist?.trim()) return res.status(400).json({ error: 'Artist name is required' });
 
-  const venue = db.getVenue(req.params.venueCode);
-  if (!venue.settings) venue.settings = {};
-  if (!Array.isArray(venue.settings.blockedArtists)) venue.settings.blockedArtists = [];
+  const updated = await venueRepo.update(req.params.venueCode, (venue) => {
+    if (!venue.settings) venue.settings = {};
+    if (!Array.isArray(venue.settings.blockedArtists)) venue.settings.blockedArtists = [];
+    const normalized = artist.trim().toLowerCase();
+    if (!venue.settings.blockedArtists.some((a) => a.toLowerCase() === normalized)) {
+      venue.settings.blockedArtists.push(artist.trim());
+    }
+    return venue;
+  });
 
-  const normalized = artist.trim().toLowerCase();
-  if (!venue.settings.blockedArtists.some((a) => a.toLowerCase() === normalized)) {
-    venue.settings.blockedArtists.push(artist.trim());
-    db.saveVenue(venue.code, venue);
-  }
-
-  res.json({ success: true, blockedArtists: venue.settings.blockedArtists });
+  res.json({ success: true, blockedArtists: updated?.settings?.blockedArtists || [] });
 });
 
 // ── AI Playlist generation (R1 per song, min R25) ────────────────────────────

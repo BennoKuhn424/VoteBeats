@@ -166,19 +166,8 @@ router.post('/:venueCode/request', async (req, res) => {
     });
   }
 
-  // Pre-check outside the lock for fast error responses
-  const currentQueue = queueRepo.get(venueCode);
-  const upcoming = currentQueue.upcoming || [];
   const songId = song.id || song.appleId;
-  const alreadyInQueue = upcoming.some(
-    (s) => (s.id && s.id === songId) || (s.appleId && s.appleId === song.appleId)
-  );
-  if (alreadyInQueue) {
-    return res.status(400).json({ error: 'This song is already in the queue' });
-  }
-  if (upcoming.filter((s) => s.requestedBy === deviceId).length >= (venue.settings?.maxSongsPerUser ?? 3)) {
-    return res.status(400).json({ error: `Max ${venue.settings?.maxSongsPerUser ?? 3} songs per user` });
-  }
+  const maxPerUser = venue.settings?.maxSongsPerUser ?? 3;
 
   const newSong = {
     ...song,
@@ -189,10 +178,29 @@ router.post('/:venueCode/request', async (req, res) => {
   };
 
   try {
-    const updated = await queueRepo.update(venueCode, (queue) => ({
-      nowPlaying: queue.nowPlaying,
-      upcoming: [...(queue.upcoming || []), newSong],
-    }));
+    // All validation inside the lock to prevent race conditions
+    // (duplicate check + per-user limit are atomic with the write)
+    let rejection = null;
+    const updated = await queueRepo.update(venueCode, (queue) => {
+      const upcoming = queue.upcoming || [];
+      const alreadyInQueue = upcoming.some(
+        (s) => (s.id && s.id === songId) || (s.appleId && s.appleId === song.appleId)
+      );
+      if (alreadyInQueue) {
+        rejection = { status: 400, body: { error: 'This song is already in the queue' } };
+        return null; // no-op
+      }
+      if (upcoming.filter((s) => s.requestedBy === deviceId).length >= maxPerUser) {
+        rejection = { status: 400, body: { error: `Max ${maxPerUser} songs per user` } };
+        return null;
+      }
+      return { nowPlaying: queue.nowPlaying, upcoming: [...upcoming, newSong] };
+    });
+
+    if (rejection) {
+      return res.status(rejection.status).json(rejection.body);
+    }
+
     logEvent({ venueCode, action: 'request', songId: newSong.id, detail: `"${newSong.title}" added to queue` });
     db.recordAnalyticsEvent(venueCode, { type: 'request', songTitle: newSong.title, artist: newSong.artist, songId: newSong.id });
     broadcast.broadcastQueue(venueCode, updated);
@@ -207,9 +215,22 @@ router.post('/:venueCode/request', async (req, res) => {
 const downvoteTimestamps = {}; // { deviceId: [ts, ts, …] }
 const DOWNVOTE_WINDOW_MS = 60_000;
 const DOWNVOTE_MAX = 5;
+let lastThrottlePrune = Date.now();
 
 function isDownvoteThrottled(deviceId) {
   const now = Date.now();
+
+  // Prune stale entries every 10 minutes to prevent memory leak
+  if (now - lastThrottlePrune > 600_000) {
+    lastThrottlePrune = now;
+    for (const id of Object.keys(downvoteTimestamps)) {
+      const stamps = downvoteTimestamps[id];
+      if (!stamps.length || stamps[stamps.length - 1] < now - DOWNVOTE_WINDOW_MS) {
+        delete downvoteTimestamps[id];
+      }
+    }
+  }
+
   const stamps = (downvoteTimestamps[deviceId] || []).filter((t) => now - t < DOWNVOTE_WINDOW_MS);
   downvoteTimestamps[deviceId] = stamps;
   if (stamps.length >= DOWNVOTE_MAX) return true;
@@ -234,46 +255,56 @@ router.post('/:venueCode/vote', async (req, res) => {
     return res.status(429).json({ error: 'Too many downvotes — slow down' });
   }
 
-  // Compute vote delta from the votes table (separate from queue)
-  const existingVote = db.getVote(venueCode, songId, deviceId);
-  let voteDelta = 0;
-  if (existingVote === voteValue) {
-    db.removeVote(venueCode, songId, deviceId);
-    voteDelta = -voteValue;
-  } else if (existingVote) {
-    db.setVote(venueCode, songId, deviceId, voteValue);
-    voteDelta = voteValue * 2;
-  } else {
-    db.setVote(venueCode, songId, deviceId, voteValue);
-    voteDelta = voteValue;
-  }
-
-  // Check that the song still exists before applying the delta
-  const snapshot = queueRepo.get(venueCode);
-  const targetSong =
-    (snapshot.upcoming || []).find((s) => s.id === songId) ||
-    (snapshot.nowPlaying?.id === songId ? snapshot.nowPlaying : null);
-
-  if (!targetSong) {
-    db.removeVote(venueCode, songId, deviceId);
-    return res.status(404).json({ error: 'Song is no longer in the queue' });
-  }
-
-  const newVoteCount = (targetSong.votes || 0) + voteDelta;
-
-  // Auto-remove upcoming songs that drop to the threshold (never remove nowPlaying)
-  if (newVoteCount <= DOWNVOTE_REMOVAL_THRESHOLD && snapshot.nowPlaying?.id !== songId) {
-    const updated = await queueRepo.update(venueCode, (queue) => ({
-      ...queue,
-      upcoming: (queue.upcoming || []).filter((s) => s.id !== songId),
-    }));
-    db.clearVotesForSong(venueCode, songId);
-    logEvent({ venueCode, action: 'vote-remove', songId, detail: `auto-removed at ${newVoteCount} votes` });
-    broadcast.broadcastQueue(venueCode, updated);
-    return res.json({ success: true, newVoteCount, removed: true, myVote: null });
-  }
+  // All vote logic inside the queue lock to prevent race conditions:
+  // - vote DB read/write and queue update are atomic
+  // - concurrent votes on the same song are serialised
+  let result = null;
 
   const updated = await queueRepo.update(venueCode, (queue) => {
+    // Compute vote delta from the votes table (inside lock)
+    const existingVote = db.getVote(venueCode, songId, deviceId);
+    let voteDelta = 0;
+    if (existingVote === voteValue) {
+      db.removeVote(venueCode, songId, deviceId);
+      voteDelta = -voteValue;
+    } else if (existingVote) {
+      db.setVote(venueCode, songId, deviceId, voteValue);
+      voteDelta = voteValue * 2;
+    } else {
+      db.setVote(venueCode, songId, deviceId, voteValue);
+      voteDelta = voteValue;
+    }
+
+    // Check that the song still exists
+    const targetSong =
+      (queue.upcoming || []).find((s) => s.id === songId) ||
+      (queue.nowPlaying?.id === songId ? queue.nowPlaying : null);
+
+    if (!targetSong) {
+      db.removeVote(venueCode, songId, deviceId);
+      result = { error: true, status: 404, body: { error: 'Song is no longer in the queue' } };
+      return null; // no-op
+    }
+
+    const newVoteCount = (targetSong.votes || 0) + voteDelta;
+    const myVote = existingVote === voteValue ? null : voteValue;
+
+    // Auto-remove upcoming songs that drop to the threshold (never remove nowPlaying)
+    if (newVoteCount <= DOWNVOTE_REMOVAL_THRESHOLD && queue.nowPlaying?.id !== songId) {
+      db.clearVotesForSong(venueCode, songId);
+      logEvent({ venueCode, action: 'vote-remove', songId, detail: `auto-removed at ${newVoteCount} votes` });
+      result = { newVoteCount, removed: true, myVote: null };
+      return { ...queue, upcoming: (queue.upcoming || []).filter((s) => s.id !== songId) };
+    }
+
+    // Track analytics
+    if (voteDelta !== 0) {
+      db.recordAnalyticsEvent(venueCode, { type: 'vote', songId, voteValue: myVote, songTitle: targetSong.title, artist: targetSong.artist });
+    }
+    logEvent({ venueCode, action: 'vote', songId, detail: `delta=${voteDelta}` });
+
+    result = { newVoteCount, myVote };
+
     const updateVotes = (s) =>
       s.id === songId ? { ...s, votes: (s.votes || 0) + voteDelta } : s;
     return {
@@ -284,17 +315,12 @@ router.post('/:venueCode/vote', async (req, res) => {
     };
   });
 
-  logEvent({ venueCode, action: 'vote', songId, detail: `delta=${voteDelta}` });
-  if (voteDelta !== 0) {
-    db.recordAnalyticsEvent(venueCode, { type: 'vote', songId, voteValue: existingVote === voteValue ? 0 : voteValue, songTitle: targetSong.title, artist: targetSong.artist });
+  if (result?.error) {
+    return res.status(result.status).json(result.body);
   }
-  broadcast.broadcastQueue(venueCode, updated);
 
-  res.json({
-    success: true,
-    newVoteCount,
-    myVote: existingVote === voteValue ? null : voteValue,
-  });
+  broadcast.broadcastQueue(venueCode, updated);
+  res.json({ success: true, ...result });
 });
 
 // POST /api/queue/:venueCode/playing

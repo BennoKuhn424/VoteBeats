@@ -176,6 +176,16 @@ export default function VenuePlayer() {
             </div>
           </div>
 
+          {/* ── MusicKit initializing ────────────────────────────────────────── */}
+          {!musicReady && (
+            <div className="flex flex-col items-center gap-3 py-4 border-t border-zinc-100">
+              <Loader2 className="h-6 w-6 animate-spin text-brand-500" />
+              <p className="text-sm text-zinc-500 text-center">
+                Connecting to Apple Music…
+              </p>
+            </div>
+          )}
+
           {/* ── Apple Music not yet connected ────────────────────────────────── */}
           {musicReady && !isAuthorized && (
             <div className="flex flex-col items-center gap-3 py-4 border-t border-zinc-100">

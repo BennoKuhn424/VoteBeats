@@ -193,25 +193,14 @@ export function VenuePlaybackProvider({ venueCode, children }) {
           else if (mk === 3) updatePlayerState(PLAYER_STATES.PAUSED);
           else if (mk === 0 || mk === 4 || mk === 5) {
             updatePlayerState(PLAYER_STATES.IDLE);
-            // mk===5: song ended. MusicKit's own auto-advance is also JS-based and
-            // may not run when the screen is locked. Force-skip to the next pre-loaded
-            // item so iOS handles the audio transition at the OS level.
-            // Pre-emptively update currentSongIdRef to prevent nowPlayingItemDidChange
-            // from firing a duplicate server advance.
+            // mk===5: song ended. Tell the server to advance, then let
+            // MusicKit's pre-loaded queue handle the audio transition.
+            // Don't call skipToNextItem() — MusicKit will auto-advance
+            // its own queue to the next pre-loaded item.
             if (mk === 5 && autoplayModeRef.current !== 'off') {
               const endedId = currentSongIdRef.current;
-              const upcoming = queueRef.current?.upcoming || [];
-              const nextSong = upcoming.find((s) => s.appleId && s.id !== endedId);
-              if (nextSong) {
-                // Pre-emptively update so nowPlayingItemDidChange doesn't double-fire.
-                currentSongIdRef.current = nextSong.id;
-                setQueue((prev) => ({
-                  nowPlaying: { ...nextSong, positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false },
-                  upcoming: (prev.upcoming || []).slice(1),
-                }));
-                music.skipToNextItem().catch(() => {
-                  currentSongIdRef.current = endedId; // restore on failure
-                });
+              if (endedId && !playLockRef.current) {
+                // Advance server queue; the broadcast will update our state.
                 api.advanceQueue(venueCode, endedId).catch(() => {});
               }
             }
@@ -225,6 +214,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         // Detect background auto-advance: MusicKit moved to next pre-loaded item
         // (e.g. while screen was locked). Find which song by appleId and sync state.
         itemListener = () => {
+          // Don't interfere while playSong is actively loading a new queue
+          if (playLockRef.current) return;
           const newAppleId = String(music.nowPlayingItem?.id || '');
           if (!newAppleId) return;
           const upcoming = queueRef.current?.upcoming ?? [];
@@ -302,9 +293,19 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         await music.authorize();
         setIsAuthorized(music.isAuthorized);
       }
-      // Stabilise before loading — state 1 (loading) also needs pause() first.
-      try { await music.pause(); } catch {}
-      try { await music.stop(); } catch {}
+      // Fully stop MusicKit before loading a new queue.
+      // Order matters: stop() first clears the playback pipeline,
+      // then pause() ensures no lingering "playing" state that causes
+      // the "play() called without a previous stop()/pause()" crash.
+      const mk = music.playbackState;
+      if (mk === 2 || mk === 1) { // playing or loading
+        try { await music.stop(); } catch {}
+      } else if (mk === 3) { // paused
+        try { await music.stop(); } catch {}
+      }
+      // Small delay lets MusicKit settle its internal state machine
+      await new Promise((r) => setTimeout(r, 100));
+
       // Pre-load multiple upcoming songs so MusicKit can auto-advance natively
       // when the screen is locked — iOS can transition at the OS level without
       // JavaScript running at each song end. More items = more tracks play through lock.
@@ -317,7 +318,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       // MusicKit listener will set PLAYING; clear any error on success
       setPlayerError(null);
       playFailCountRef.current = 0;
-      await api.reportPlaying(venueCode, song.id, 0);
+      api.reportPlaying(venueCode, song.id, 0).catch(() => {});
     } catch (err) {
       if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
         updatePlayerState(PLAYER_STATES.WAITING);
@@ -375,8 +376,12 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     setQueue(newQueue);
     const nowPlaying = newQueue.nowPlaying;
 
+    // Don't interfere if a playSong is already in flight
+    if (playLockRef.current) return;
+
     if (nowPlaying && nowPlaying.id !== currentSongIdRef.current &&
         playerStateRef.current !== PLAYER_STATES.TRANSITIONING) {
+      // Check if MusicKit is already playing this track (e.g. from pre-loaded queue)
       const currentAppleId = musicRef.current?.nowPlayingItem?.id;
       if (currentAppleId && String(currentAppleId) === String(nowPlaying.appleId)) {
         currentSongIdRef.current = nowPlaying.id;
@@ -385,33 +390,29 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       } else if (!hasUserGestureRef.current) {
         updatePlayerState(PLAYER_STATES.WAITING);
       } else {
-        try {
-          beginTransition();
-          currentSongIdRef.current = nowPlaying.id;
-          await playSong(nowPlaying);
-        } finally {
-          endTransition();
-        }
+        beginTransition();
+        currentSongIdRef.current = nowPlaying.id;
+        await playSong(nowPlaying);
+        endTransition();
       }
     }
 
     if (!nowPlaying && autoplayModeRef.current !== 'off' &&
-        playerStateRef.current !== PLAYER_STATES.TRANSITIONING) {
+        playerStateRef.current !== PLAYER_STATES.TRANSITIONING &&
+        !playLockRef.current) {
       const filled = await tryAutofill();
       if (filled) {
         try {
           const r = await api.getQueue(venueCode);
-          setQueue(r.data);
           const np = r.data?.nowPlaying;
+          setQueue(r.data);
           if (np?.appleId && np.id !== currentSongIdRef.current &&
-              playerStateRef.current !== PLAYER_STATES.TRANSITIONING) {
-            try {
-              beginTransition();
-              currentSongIdRef.current = np.id;
-              await playSong(np);
-            } finally {
-              endTransition();
-            }
+              playerStateRef.current !== PLAYER_STATES.TRANSITIONING &&
+              !playLockRef.current) {
+            beginTransition();
+            currentSongIdRef.current = np.id;
+            await playSong(np);
+            endTransition();
           }
         } catch {}
       }
@@ -588,26 +589,34 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   // skip: optimistic update + concurrent API + playSong, then reconcile.
   const skip = useCallback(async () => {
     if (playerStateRef.current === PLAYER_STATES.TRANSITIONING) return;
+    if (playLockRef.current) return; // don't skip while a song is loading
     const music = musicRef.current;
     if (music) { try { await music.stop(); } catch {} }
     beginTransition();
     const currentQueue = queueRef.current;
     const skippedSongId = currentQueue.nowPlaying?.id;
-    currentSongIdRef.current = null;
 
     const optimisticNext = currentQueue.upcoming[0];
     if (optimisticNext) {
       const nextNow = { ...optimisticNext, positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false };
       setQueue({ nowPlaying: nextNow, upcoming: currentQueue.upcoming.slice(1) });
+      // Set currentSongIdRef BEFORE playSong so handleQueueUpdate won't
+      // see a mismatch and try to play the same song again.
       currentSongIdRef.current = optimisticNext.id;
+    } else {
+      currentSongIdRef.current = null;
     }
 
+    // Run server skip and playSong concurrently
     await Promise.allSettled([
       api.skipSong(venueCode, skippedSongId).catch((err) => console.error('Skip error:', err)),
       optimisticNext ? playSong(optimisticNext) : Promise.resolve(),
     ]);
     endTransition();
-    await fetchQueue();
+
+    // Reconcile with server — but DON'T re-trigger playSong for the song
+    // we just started (handleQueueUpdate checks currentSongIdRef).
+    fetchQueue().catch(() => {});
   }, [venueCode, playSong, beginTransition, endTransition, fetchQueue]);
 
   // restart: rewind current song to position 0.
