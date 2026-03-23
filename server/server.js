@@ -45,7 +45,8 @@ app.use(express.json());
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/token', require('./routes/token'));
-app.use('/api/queue', require('./routes/queue'));
+const queueRouter = require('./routes/queue');
+app.use('/api/queue', queueRouter);
 app.use('/api/search', require('./routes/search'));
 app.use('/api/lyrics', require('./routes/lyrics'));
 app.use('/api/music', require('./routes/music'));
@@ -87,6 +88,9 @@ setInterval(() => {
       // Auto-start first song when nothing is playing
       const updated = await advanceToNextSong(venueCode);
       broadcast.broadcastQueue(venueCode, updated);
+    } else {
+      // Queue completely empty — trigger autofill if autoplay is on
+      await queueRouter.autofillIfQueueEmpty?.(venueCode);
     }
   });
 }, 5000);

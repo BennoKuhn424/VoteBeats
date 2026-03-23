@@ -447,8 +447,19 @@ router.post('/:venueCode/skip', authMiddleware, async (req, res) => {
     return res.status(409).json({ error: 'Skip rejected — song already changed', currentSongId });
   }
 
-  const queue = await advanceToNextSong(venueCode, songId);
+  let queue = await advanceToNextSong(venueCode, songId);
   logEvent({ venueCode, action: 'skip', songId, detail: 'venue owner skipped song' });
+
+  // If queue empty after skip, autofill so playback continues
+  if (!queue.nowPlaying && (!queue.upcoming || queue.upcoming.length === 0)) {
+    const venue = db.getVenue(venueCode);
+    const s = venue?.settings;
+    if (s?.autoplayMode !== 'off' && s?.autoplayQueue !== false) {
+      await serverAutofill(venueCode, venue).catch(() => {});
+      queue = queueRepo.get(venueCode);
+    }
+  }
+
   broadcast.broadcastQueue(venueCode, queue);
   res.json({ success: true });
 });
@@ -679,4 +690,20 @@ router.get('/:venueCode/autofill', async (req, res) => {
   }
 });
 
+// Called by server interval when queue is completely empty — trigger autofill
+// if autoplay is on, then broadcast. Returns updated queue or null.
+async function autofillIfQueueEmpty(venueCode) {
+  const queue = queueRepo.get(venueCode);
+  if (queue.nowPlaying || (queue.upcoming?.length ?? 0) > 0) return null;
+  const venue = db.getVenue(venueCode);
+  if (!venue) return null;
+  const s = venue?.settings;
+  if (s?.autoplayMode === 'off' || s?.autoplayQueue === false) return null;
+  await serverAutofill(venueCode, venue).catch(() => {});
+  const updated = queueRepo.get(venueCode);
+  if (updated.nowPlaying) broadcast.broadcastQueue(venueCode, updated);
+  return updated;
+}
+
+router.autofillIfQueueEmpty = autofillIfQueueEmpty;
 module.exports = router;

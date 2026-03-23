@@ -388,6 +388,12 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     try {
       const res = await api.autofillQueue(venueCode);
       if (res.data?.filled === false) {
+        // "Queue is not empty" = another process (e.g. server) already filled.
+        // Don't back off — reset so we don't block future autofills.
+        if (res.data?.reason === 'Queue is not empty') {
+          autofillBackoffRef.current = 5000;
+          return false;
+        }
         const backoff = autofillBackoffRef.current;
         autofill404UntilRef.current = Date.now() + backoff;
         console.warn(`Autofill: no songs — backing off ${backoff / 1000}s.`);
