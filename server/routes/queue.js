@@ -28,6 +28,11 @@ function getCurrentPositionMs(np) {
 // inside the lock catches the second one).
 const pendingAutofillVenues = new Set();
 
+// Customer volume feedback — per device cooldown (spam prevention)
+const volumeFeedbackLastByDevice = new Map();
+const VOLUME_FEEDBACK_COOLDOWN_MS = 90 * 1000;
+const VOLUME_REPORT_MAX_AGE_MS = 30 * 60 * 1000; // after this, analytics still stores % but marks stale
+
 async function serverAutofill(venueCode, venue) {
   if (pendingAutofillVenues.has(venueCode)) return;
   pendingAutofillVenues.add(venueCode);
@@ -101,6 +106,65 @@ async function serverAutofill(venueCode, venue) {
   }
 }
 
+// POST /api/queue/:venueCode/report-volume — venue player reports slider level (0–100)
+router.post('/:venueCode/report-volume', (req, res) => {
+  const { venueCode } = req.params;
+  if (!db.getVenue(venueCode)) return res.status(404).json({ error: 'Venue not found' });
+  const raw = req.body?.volumePercent;
+  const n = typeof raw === 'number' ? raw : parseFloat(raw);
+  if (Number.isNaN(n)) return res.status(400).json({ error: 'volumePercent required' });
+  db.setPlayerVolumeReport(venueCode, n);
+  res.json({ ok: true });
+});
+
+// POST /api/queue/:venueCode/volume-feedback — customer: too loud / too soft
+router.post('/:venueCode/volume-feedback', (req, res) => {
+  const { venueCode } = req.params;
+  const { direction, deviceId } = req.body || {};
+  if (!db.getVenue(venueCode)) return res.status(404).json({ error: 'Venue not found' });
+  if (!deviceId || typeof deviceId !== 'string') {
+    return res.status(400).json({ error: 'deviceId required' });
+  }
+  if (direction !== 'too_loud' && direction !== 'too_soft') {
+    return res.status(400).json({ error: 'direction must be too_loud or too_soft' });
+  }
+
+  const key = `${venueCode}:${deviceId}`;
+  const now = Date.now();
+  const last = volumeFeedbackLastByDevice.get(key) || 0;
+  if (now - last < VOLUME_FEEDBACK_COOLDOWN_MS) {
+    return res.status(429).json({ error: 'Please wait a minute before sending another suggestion' });
+  }
+  volumeFeedbackLastByDevice.set(key, now);
+
+  const report = db.getPlayerVolumeReport(venueCode);
+  let volumePercent = null;
+  let volumeStale = true;
+  if (report && typeof report.percent === 'number') {
+    volumePercent = report.percent;
+    volumeStale = now - (report.updatedAt || 0) > VOLUME_REPORT_MAX_AGE_MS;
+  }
+
+  db.recordAnalyticsEvent(venueCode, {
+    type: 'volumeFeedback',
+    direction,
+    volumePercent,
+    volumeStale,
+    deviceId: deviceId.slice(0, 64),
+  });
+
+  const payload = {
+    direction,
+    volumePercent,
+    volumeStale,
+    at: now,
+  };
+  broadcast.broadcastVolumeFeedback(venueCode, payload);
+  logEvent({ venueCode, action: 'volume_feedback', detail: direction });
+
+  res.json({ success: true, volumePercent, volumeStale });
+});
+
 // GET /api/queue/:venueCode?deviceId=xxx
 router.get('/:venueCode', async (req, res) => {
   const { venueCode } = req.params;
@@ -145,7 +209,16 @@ router.get('/:venueCode', async (req, res) => {
       }
     : { requirePaymentForRequest: false, requestPriceCents: 1000, autoplayQueue: true, hasAutoplayGenre: false };
 
-  res.json({ ...queue, myVotes, requestSettings });
+  const volReport = db.getPlayerVolumeReport(venueCode);
+  const reportedPlayerVolume =
+    volReport && typeof volReport.percent === 'number'
+      ? {
+          percent: volReport.percent,
+          stale: Date.now() - (volReport.updatedAt || 0) > VOLUME_REPORT_MAX_AGE_MS,
+        }
+      : null;
+
+  res.json({ ...queue, myVotes, requestSettings, reportedPlayerVolume });
 });
 
 // POST /api/queue/:venueCode/request

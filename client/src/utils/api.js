@@ -55,6 +55,10 @@ export default {
   pausePlaying: (venueCode, songId) =>
     api.post(`/queue/${venueCode}/pause`, { songId }),
   advanceQueue: (venueCode, songId) => api.post(`/queue/${venueCode}/advance`, { songId }),
+  reportPlayerVolume: (venueCode, volumePercent) =>
+    api.post(`/queue/${venueCode}/report-volume`, { volumePercent }),
+  submitVolumeFeedback: (venueCode, direction, deviceId) =>
+    api.post(`/queue/${venueCode}/volume-feedback`, { direction, deviceId }),
   autofillQueue: (venueCode) => api.get(`/queue/${venueCode}/autofill`),
   removeSong: (venueCode, songId) => api.delete(`/queue/${venueCode}/song/${songId}`),
 

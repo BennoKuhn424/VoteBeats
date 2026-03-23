@@ -147,6 +147,20 @@ module.exports = {
     return events;
   },
 
+  // Last volume reported by venue player (for customer feedback correlation)
+  getPlayerVolumeReport: (venueCode) => {
+    const data = readJSON('playerVolume.json');
+    const row = data[venueCode];
+    if (!row || typeof row.percent !== 'number') return null;
+    return { percent: row.percent, updatedAt: row.updatedAt || 0 };
+  },
+  setPlayerVolumeReport: (venueCode, percent) => {
+    const p = Math.round(Math.max(0, Math.min(100, Number(percent) || 0)));
+    const data = readJSON('playerVolume.json');
+    data[venueCode] = { percent: p, updatedAt: Date.now() };
+    writeJSON('playerVolume.json', data);
+  },
+
   getAllVenueEarningsForMonth: (year, month) => {
     const payments = readJSON('payments.json');
     const list = Array.isArray(payments.list) ? payments.list : [];

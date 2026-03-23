@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BarChart3, TrendingUp, ThumbsUp, ThumbsDown, Music2, Users } from 'lucide-react';
+import { BarChart3, TrendingUp, ThumbsUp, ThumbsDown, Music2, Users, Volume2 } from 'lucide-react';
 import api from '../../utils/api';
 
 export default function AnalyticsDashboard({ venueCode, variant = 'light' }) {
@@ -29,6 +29,15 @@ export default function AnalyticsDashboard({ venueCode, variant = 'light' }) {
   if (!data) return null;
 
   const maxHourly = Math.max(...data.hourlyActivity, 1);
+  const vf = data.volumeFeedback;
+  const hasVolumeAnalytics = vf && vf.total > 0;
+  const maxVolBin = hasVolumeAnalytics
+    ? Math.max(
+        1,
+        ...vf.tooLoudByVolumeBin,
+        ...vf.tooSoftByVolumeBin
+      )
+    : 1;
 
   return (
     <div className="space-y-6">
@@ -79,6 +88,72 @@ export default function AnalyticsDashboard({ venueCode, variant = 'light' }) {
           </div>
         ))}
       </div>
+
+      {/* Volume feedback — correlated with venue player slider % */}
+      {hasVolumeAnalytics && (
+        <div className={`p-4 rounded-xl ${isLight ? 'bg-zinc-50 border border-zinc-200' : 'bg-dark-700 border border-dark-600'}`}>
+          <div className="flex items-center gap-2 mb-2">
+            <Volume2 className={`h-4 w-4 ${isLight ? 'text-zinc-500' : 'text-dark-400'}`} />
+            <span className={`text-sm font-medium ${isLight ? 'text-zinc-600' : 'text-dark-300'}`}>
+              Volume suggestions
+            </span>
+          </div>
+          <p className={`text-xs mb-3 ${isLight ? 'text-zinc-500' : 'text-dark-500'}`}>
+            When guests tap &quot;too loud&quot; or &quot;too quiet&quot;, we store the venue player&apos;s volume
+            slider (0–100%). Use this to see which levels get the most complaints.
+          </p>
+          <div className="flex flex-wrap gap-3 mb-3 text-xs">
+            <span className={`font-semibold ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
+              Too loud: {vf.tooLoud}
+            </span>
+            <span className={`font-semibold ${isLight ? 'text-sky-700' : 'text-sky-300'}`}>
+              Too quiet: {vf.tooSoft}
+            </span>
+            {vf.unknownVolume > 0 && (
+              <span className={isLight ? 'text-zinc-500' : 'text-dark-500'}>
+                Unknown level: {vf.unknownVolume}
+              </span>
+            )}
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide">
+              <span className="w-3 h-3 rounded-sm bg-amber-500/80" />
+              <span className={isLight ? 'text-zinc-500' : 'text-dark-500'}>Too loud by player volume</span>
+            </div>
+            <div className="flex items-end gap-px h-16">
+              {vf.tooLoudByVolumeBin.map((count, i) => (
+                <div key={`l-${i}`} className="flex-1 flex flex-col items-center gap-0.5">
+                  <div
+                    className="w-full bg-amber-500/90 rounded-t-sm min-h-[2px]"
+                    style={{ height: `${(count / maxVolBin) * 100}%` }}
+                    title={`${vf.binLabels[i]} — ${count}`}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide mt-2">
+              <span className="w-3 h-3 rounded-sm bg-sky-500/80" />
+              <span className={isLight ? 'text-zinc-500' : 'text-dark-500'}>Too quiet by player volume</span>
+            </div>
+            <div className="flex items-end gap-px h-16">
+              {vf.tooSoftByVolumeBin.map((count, i) => (
+                <div key={`s-${i}`} className="flex-1 flex flex-col items-center gap-0.5">
+                  <div
+                    className="w-full bg-sky-500/90 rounded-t-sm min-h-[2px]"
+                    style={{ height: `${(count / maxVolBin) * 100}%` }}
+                    title={`${vf.binLabels[i]} — ${count}`}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between mt-1">
+              <span className={`text-[10px] ${isLight ? 'text-zinc-400' : 'text-dark-500'}`}>0%</span>
+              <span className={`text-[10px] ${isLight ? 'text-zinc-400' : 'text-dark-500'}`}>50%</span>
+              <span className={`text-[10px] ${isLight ? 'text-zinc-400' : 'text-dark-500'}`}>100%</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hourly activity chart */}
       <div className={`p-4 rounded-xl ${isLight ? 'bg-zinc-50 border border-zinc-200' : 'bg-dark-700 border border-dark-600'}`}>

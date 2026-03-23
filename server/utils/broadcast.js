@@ -14,4 +14,11 @@ function broadcastQueue(venueCode, queue) {
   }
 }
 
-module.exports = { init, broadcastQueue };
+/** Customer volume suggestion — venue dashboard listens for live alerts */
+function broadcastVolumeFeedback(venueCode, payload) {
+  if (_io && venueCode && payload) {
+    _io.to(`venue:${venueCode}`).emit('volume:feedback', payload);
+  }
+}
+
+module.exports = { init, broadcastQueue, broadcastVolumeFeedback };

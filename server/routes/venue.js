@@ -453,6 +453,11 @@ router.get('/:venueCode/analytics', authMiddleware, (req, res) => {
   let upvotes = 0;
   let downvotes = 0;
 
+  // 10% volume bins: index 0 = 0–9%, … 9 = 90–100%
+  const volumeTooLoudByBin = Array(10).fill(0);
+  const volumeTooSoftByBin = Array(10).fill(0);
+  let volumeFeedbackUnknown = 0;
+
   for (const e of events) {
     const hour = new Date(e.timestamp).getHours();
     hourlyActivity[hour]++;
@@ -464,6 +469,15 @@ router.get('/:venueCode/analytics', authMiddleware, (req, res) => {
     } else if (e.type === 'vote') {
       if (e.voteValue === 1) upvotes++;
       else if (e.voteValue === -1) downvotes++;
+    } else if (e.type === 'volumeFeedback') {
+      const pct = e.volumePercent;
+      if (typeof pct !== 'number' || pct < 0 || pct > 100) {
+        volumeFeedbackUnknown++;
+        continue;
+      }
+      const bin = Math.min(9, Math.floor(pct / 10));
+      if (e.direction === 'too_loud') volumeTooLoudByBin[bin]++;
+      else if (e.direction === 'too_soft') volumeTooSoftByBin[bin]++;
     }
   }
 
@@ -477,6 +491,17 @@ router.get('/:venueCode/analytics', authMiddleware, (req, res) => {
     .slice(0, 10)
     .map(([name, count]) => ({ name, count }));
 
+  const vfEvents = events.filter((e) => e.type === 'volumeFeedback');
+  const volumeFeedback = {
+    total: vfEvents.length,
+    tooLoud: vfEvents.filter((e) => e.direction === 'too_loud').length,
+    tooSoft: vfEvents.filter((e) => e.direction === 'too_soft').length,
+    unknownVolume: volumeFeedbackUnknown,
+    tooLoudByVolumeBin: volumeTooLoudByBin,
+    tooSoftByVolumeBin: volumeTooSoftByBin,
+    binLabels: ['0–9%', '10–19%', '20–29%', '30–39%', '40–49%', '50–59%', '60–69%', '70–79%', '80–89%', '90–100%'],
+  };
+
   res.json({
     days,
     totalRequests: events.filter((e) => e.type === 'request').length,
@@ -486,6 +511,7 @@ router.get('/:venueCode/analytics', authMiddleware, (req, res) => {
     topSongs,
     topArtists,
     hourlyActivity,
+    volumeFeedback,
   });
 });
 

@@ -8,6 +8,7 @@ import NowPlaying from '../components/customer/NowPlaying';
 import UpcomingQueue from '../components/customer/UpcomingQueue';
 import SearchBar from '../components/shared/SearchBar';
 import LyricsView from '../components/customer/LyricsView';
+import VolumeSuggestion from '../components/customer/VolumeSuggestion';
 
 export default function CustomerVoting() {
   const { venueCode } = useParams();
@@ -17,6 +18,7 @@ export default function CustomerVoting() {
   const [showLyrics, setShowLyrics] = useState(false);
   const [lyricsData, setLyricsData] = useState(null);
   const deviceId = getDeviceId();
+  
 
   // Pre-fetch lyrics whenever the playing song changes
   useEffect(() => {
@@ -67,7 +69,13 @@ export default function CustomerVoting() {
     }
 
     function onQueueUpdated(data) {
-      setQueue((prev) => ({ ...data, myVotes: prev.myVotes || data.myVotes || {} }));
+      setQueue((prev) => ({
+        ...data,
+        myVotes: prev.myVotes || data.myVotes || {},
+        // Socket payload is queue-only; keep last known volume hint from GET
+        reportedPlayerVolume: data.reportedPlayerVolume ?? prev.reportedPlayerVolume,
+        requestSettings: data.requestSettings ?? prev.requestSettings,
+      }));
       setError(null);
       setLoading(false);
     }
@@ -169,6 +177,12 @@ export default function CustomerVoting() {
           venueCode={venueCode}
           deviceId={deviceId}
           onVote={fetchQueue}
+        />
+
+        <VolumeSuggestion
+          venueCode={venueCode}
+          deviceId={deviceId}
+          reportedPlayerVolume={queue.reportedPlayerVolume}
         />
       </div>
     </div>

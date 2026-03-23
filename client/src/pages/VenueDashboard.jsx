@@ -19,6 +19,7 @@ import QueueManager from '../components/venue/QueueManager';
 import VenueSettings from '../components/venue/Settings';
 import EarningsCard from '../components/venue/EarningsCard';
 import AnalyticsDashboard from '../components/venue/AnalyticsDashboard';
+import VolumeAlertsCard from '../components/venue/VolumeAlertsCard';
 
 export default function VenueDashboard() {
   const [venue, setVenue] = useState(null);
@@ -230,6 +231,8 @@ export default function VenueDashboard() {
             </div>
           </div>
         </div>
+
+        <VolumeAlertsCard venueCode={venue.code} variant="light" />
 
         {/* Analytics */}
         <div className="mb-6 p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">

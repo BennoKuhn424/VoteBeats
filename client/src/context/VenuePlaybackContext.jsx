@@ -310,6 +310,15 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     if (musicRef.current) musicRef.current.volume = volume / 100;
   }, [volume]);
 
+  // Report volume to server so customer feedback can be correlated with venue level
+  useEffect(() => {
+    if (!venueCode) return;
+    const t = setTimeout(() => {
+      api.reportPlayerVolume(venueCode, volume).catch(() => {});
+    }, 800);
+    return () => clearTimeout(t);
+  }, [venueCode, volume]);
+
   // ── playSong ─────────────────────────────────────────────────────────────
   const playSong = useCallback(async (song) => {
     const music = musicRef.current;
