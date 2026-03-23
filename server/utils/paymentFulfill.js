@@ -36,6 +36,14 @@ async function fulfillPaidRequest(checkoutId, amountCentsOverride) {
     return { nowPlaying: queue.nowPlaying, upcoming: [...(queue.upcoming || []), song] };
   });
 
+  // Same analytics as POST /request (paid flow bypasses that route)
+  db.recordAnalyticsEvent(venueCode, {
+    type: 'request',
+    songTitle: song.title || 'Unknown',
+    artist: song.artist || 'Unknown artist',
+    songId: song.id,
+  });
+
   const amountCentsToLog =
     amountCentsOverride ?? amountCents ?? venue?.settings?.requestPriceCents ?? 1000;
   db.addPayment(venueCode, amountCentsToLog, checkoutId);
