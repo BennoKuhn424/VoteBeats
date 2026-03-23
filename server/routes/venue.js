@@ -452,11 +452,16 @@ router.get('/:venueCode/analytics', authMiddleware, (req, res) => {
   const hourlyActivity = Array(24).fill(0);
   let upvotes = 0;
   let downvotes = 0;
+  const upvoteBySong = {};
+  const downvoteBySong = {};
 
   // 10% volume bins: index 0 = 0–9%, … 9 = 90–100%
   const volumeTooLoudByBin = Array(10).fill(0);
   const volumeTooSoftByBin = Array(10).fill(0);
   let volumeFeedbackUnknown = 0;
+
+  const songVoteKey = (e) =>
+    `${e.songTitle || 'Unknown title'} — ${e.artist || 'Unknown artist'}`;
 
   for (const e of events) {
     const hour = new Date(e.timestamp).getHours();
@@ -467,8 +472,15 @@ router.get('/:venueCode/analytics', authMiddleware, (req, res) => {
       songRequests[key] = (songRequests[key] || 0) + 1;
       artistRequests[e.artist] = (artistRequests[e.artist] || 0) + 1;
     } else if (e.type === 'vote') {
-      if (e.voteValue === 1) upvotes++;
-      else if (e.voteValue === -1) downvotes++;
+      if (e.voteValue === 1) {
+        upvotes++;
+        const k = songVoteKey(e);
+        upvoteBySong[k] = (upvoteBySong[k] || 0) + 1;
+      } else if (e.voteValue === -1) {
+        downvotes++;
+        const k = songVoteKey(e);
+        downvoteBySong[k] = (downvoteBySong[k] || 0) + 1;
+      }
     } else if (e.type === 'volumeFeedback') {
       const pct = e.volumePercent;
       if (typeof pct !== 'number' || pct < 0 || pct > 100) {
@@ -502,12 +514,24 @@ router.get('/:venueCode/analytics', authMiddleware, (req, res) => {
     binLabels: ['0–9%', '10–19%', '20–29%', '30–39%', '40–49%', '50–59%', '60–69%', '70–79%', '80–89%', '90–100%'],
   };
 
+  const votesUpBySong = Object.entries(upvoteBySong)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 100)
+    .map(([name, count]) => ({ name, count }));
+
+  const votesDownBySong = Object.entries(downvoteBySong)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 100)
+    .map(([name, count]) => ({ name, count }));
+
   res.json({
     days,
     totalRequests: events.filter((e) => e.type === 'request').length,
     totalVotes: upvotes + downvotes,
     upvotes,
     downvotes,
+    votesUpBySong,
+    votesDownBySong,
     topSongs,
     topArtists,
     hourlyActivity,
