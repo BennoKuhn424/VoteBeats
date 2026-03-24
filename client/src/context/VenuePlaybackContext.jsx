@@ -397,9 +397,11 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     try {
       const res = await api.autofillQueue(venueCode);
       if (res.data?.filled === false) {
-        // "Queue is not empty" = another process (e.g. server) already filled.
-        // Don't back off — reset so we don't block future autofills.
-        if (res.data?.reason === 'Queue is not empty') {
+        // "Queue is not empty" or "Queue was filled by another request" =
+        // another process (e.g. server autofill or a customer request) already
+        // filled the queue. Don't back off — reset so we don't block future autofills.
+        const reason = res.data?.reason || '';
+        if (reason === 'Queue is not empty' || reason === 'Queue was filled by another request') {
           autofillBackoffRef.current = 5000;
           return false;
         }

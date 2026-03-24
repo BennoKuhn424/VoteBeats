@@ -6,6 +6,7 @@ import VenueLogin from './pages/VenueLogin';
 import VenueLayout from './layouts/VenueLayout';
 import VenueDashboard from './pages/VenueDashboard';
 import VenuePlayer from './pages/VenuePlayer';
+import VenueBrowsePlaylists from './pages/VenueBrowsePlaylists';
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
       <Route path="/venue" element={<VenueLayout />}>
         <Route index element={<Navigate to="/venue/dashboard" replace />} />
         <Route path="dashboard" element={<VenueDashboard />} />
+        <Route path="playlists" element={<VenueBrowsePlaylists />} />
         <Route path="player/:venueCode" element={<VenuePlayer />} />
       </Route>
     </Routes>

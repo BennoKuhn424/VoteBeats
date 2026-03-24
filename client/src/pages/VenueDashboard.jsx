@@ -11,6 +11,7 @@ import {
   Monitor,
   QrCode,
   ListMusic,
+  Clock,
 } from 'lucide-react';
 import api from '../utils/api';
 import Button from '../components/shared/Button';
@@ -229,6 +230,34 @@ export default function VenueDashboard() {
                 Open Venue Player →
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Browse & schedule playlists (Figma-style) */}
+        <div className="mb-6 p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-orange-100 rounded-lg">
+                <ListMusic className="h-5 w-5 text-orange-600" />
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-zinc-600 uppercase tracking-wide mb-1">
+                  Playlists &amp; schedule
+                </h3>
+                <p className="text-sm text-zinc-500 max-w-xl">
+                  Set the active playlist and schedule different playlists by time of day. Autofill shuffles from the
+                  playlist that matches the current slot; customer requests are unchanged.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/venue/playlists')}
+              className="shrink-0 inline-flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors min-h-[44px]"
+            >
+              <Clock className="h-4 w-4" />
+              Browse &amp; schedule
+            </button>
           </div>
         </div>
 

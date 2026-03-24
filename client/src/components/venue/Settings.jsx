@@ -243,13 +243,14 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
           )}
 
           {/* Playlist Schedule (Dayparting) */}
-          {autoplayQueue && playlists.length > 1 && (
+          {autoplayQueue && playlists.length >= 1 && (
             <div>
               <label className={`block text-sm font-medium mb-1 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>
                 Playlist schedule
               </label>
               <p className={`text-xs mb-2 ${isLight ? 'text-zinc-400' : 'text-dark-500'}`}>
-                Auto-switch playlists by time of day. Leave empty to use the active playlist all day.
+                Auto-switch playlists by time (uses minutes + optional days). Leave empty to use the active playlist all
+                day. For a visual editor, open <strong>Browse &amp; schedule</strong> from the dashboard.
               </p>
               {playlistSchedule.map((slot, idx) => (
                 <div key={idx} className={`flex flex-wrap items-center gap-2 mb-2 p-2 rounded-lg ${isLight ? 'bg-zinc-50' : 'bg-dark-700'}`}>

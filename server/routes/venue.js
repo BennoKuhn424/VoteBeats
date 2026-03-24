@@ -63,13 +63,37 @@ router.put('/:venueCode/settings', authMiddleware, (req, res) => {
   if (typeof autoplayMode === 'string' && ['off', 'playlist', 'random'].includes(autoplayMode)) {
     venue.settings.autoplayMode = autoplayMode;
   }
-  // Playlist schedule: array of { playlistId, startHour, endHour, days? }
+  // Playlist schedule: { playlistId, startHour, endHour, startMinute?, endMinute?, days? }
+  // days: 0=Sun … 6=Sat. Autofill picks random songs from the matched playlist (shuffle-style).
   if (req.body.playlistSchedule !== undefined) {
     const schedule = req.body.playlistSchedule;
     if (Array.isArray(schedule)) {
-      venue.settings.playlistSchedule = schedule.filter(
-        (s) => s.playlistId && typeof s.startHour === 'number' && typeof s.endHour === 'number'
-      );
+      venue.settings.playlistSchedule = schedule
+        .map((s) => {
+          const startMinute = Number(s.startMinute);
+          const endMinute = Number(s.endMinute);
+          const days = Array.isArray(s.days)
+            ? [...new Set(s.days.map(Number).filter((d) => d >= 0 && d <= 6))]
+            : [];
+          return {
+            playlistId: String(s.playlistId),
+            startHour: Number(s.startHour),
+            endHour: Number(s.endHour),
+            startMinute: Number.isFinite(startMinute) ? Math.min(59, Math.max(0, startMinute)) : 0,
+            endMinute: Number.isFinite(endMinute) ? Math.min(59, Math.max(0, endMinute)) : 0,
+            ...(days.length > 0 ? { days } : {}),
+          };
+        })
+        .filter(
+          (s) =>
+            s.playlistId &&
+            Number.isFinite(s.startHour) &&
+            Number.isFinite(s.endHour) &&
+            s.startHour >= 0 &&
+            s.startHour <= 23 &&
+            s.endHour >= 0 &&
+            s.endHour <= 23
+        );
     } else {
       delete venue.settings.playlistSchedule;
     }

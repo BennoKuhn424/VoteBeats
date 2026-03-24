@@ -8,6 +8,7 @@ const { searchByGenre, pickFromPlaylist } = require('../utils/appleMusicAPI');
 const broadcast = require('../utils/broadcast');
 const { logEvent } = require('../utils/logEvent');
 const queueRepo = require('../repos/queueRepo');
+const { findScheduledPlaylist } = require('../utils/playlistSchedule');
 
 const router = express.Router();
 
@@ -46,22 +47,11 @@ async function serverAutofill(venueCode, venue) {
     const autoplayMode = venue?.settings?.autoplayMode || 'playlist';
     const playlists = venue?.playlists || [];
 
-    // Dayparting: check if a playlist is scheduled for the current hour
+    // Dayparting: scheduled playlist for current day + time (minutes + optional days)
     let activePl = null;
     const schedule = venue?.settings?.playlistSchedule;
     if (Array.isArray(schedule) && schedule.length > 0) {
-      const now = new Date();
-      const currentHour = now.getHours();
-      const currentDay = now.getDay(); // 0=Sun, 1=Mon, ...
-      const slot = schedule.find((s) => {
-        const hourMatch = s.startHour <= s.endHour
-          ? currentHour >= s.startHour && currentHour < s.endHour
-          : currentHour >= s.startHour || currentHour < s.endHour; // wraps midnight
-        if (!hourMatch) return false;
-        if (Array.isArray(s.days) && s.days.length > 0) return s.days.includes(currentDay);
-        return true; // no day restriction
-      });
-      if (slot) activePl = playlists.find((p) => p.id === slot.playlistId);
+      activePl = findScheduledPlaylist(schedule, playlists, new Date());
     }
     if (!activePl) {
       activePl = playlists.find((p) => p.id === venue?.activePlaylistId)
@@ -699,22 +689,10 @@ router.get('/:venueCode/autofill', async (req, res) => {
     const autoplayMode = venue.settings?.autoplayMode || 'playlist';
     const playlists = venue.playlists || [];
 
-    // Dayparting: check if a playlist is scheduled for the current hour
     let activePl = null;
     const schedule = venue.settings?.playlistSchedule;
     if (Array.isArray(schedule) && schedule.length > 0) {
-      const now = new Date();
-      const currentHour = now.getHours();
-      const currentDay = now.getDay();
-      const slot = schedule.find((s) => {
-        const hourMatch = s.startHour <= s.endHour
-          ? currentHour >= s.startHour && currentHour < s.endHour
-          : currentHour >= s.startHour || currentHour < s.endHour;
-        if (!hourMatch) return false;
-        if (Array.isArray(s.days) && s.days.length > 0) return s.days.includes(currentDay);
-        return true;
-      });
-      if (slot) activePl = playlists.find((p) => p.id === slot.playlistId);
+      activePl = findScheduledPlaylist(schedule, playlists, new Date());
     }
     if (!activePl) {
       activePl = playlists.find((p) => p.id === venue.activePlaylistId)
