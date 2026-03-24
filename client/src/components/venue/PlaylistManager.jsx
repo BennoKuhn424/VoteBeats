@@ -17,6 +17,7 @@ export default function PlaylistManager({
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const activePlaylistIdRef = useRef(null);
+  const browseFocusRef = useRef({ id: null, edit: false });
   useEffect(() => {
     activePlaylistIdRef.current = activePlaylistId;
   }, [activePlaylistId]);
@@ -53,18 +54,24 @@ export default function PlaylistManager({
       .finally(() => setLoading(false));
   }, [venueCode]);
 
-  // Pick selected playlist: deep-link from browse cards, else keep valid selection, else active.
-  // (activePlaylistId omitted from deps so venue refetch does not exit edit mode.)
+  // Pick selected playlist: deep-link from browse only when focus props change (not on every venue refetch).
   useEffect(() => {
     if (playlists.length === 0) {
       setSelectedId(null);
       return;
     }
-    if (initialPlaylistId && playlists.some((p) => p.id === initialPlaylistId)) {
+    const prevFocus = browseFocusRef.current;
+    const focusChanged =
+      prevFocus.id !== initialPlaylistId || prevFocus.edit !== preferEditMode;
+    browseFocusRef.current = { id: initialPlaylistId, edit: preferEditMode };
+
+    const deepLinkOk = initialPlaylistId && playlists.some((p) => p.id === initialPlaylistId);
+    if (deepLinkOk && focusChanged) {
       setSelectedId(initialPlaylistId);
       setIsEditing(!!preferEditMode);
       return;
     }
+
     setSelectedId((prev) => {
       if (prev != null && playlists.some((p) => p.id === prev)) return prev;
       return activePlaylistIdRef.current || playlists[0]?.id || null;
