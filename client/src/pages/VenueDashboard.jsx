@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import {
   Settings,
   LogOut,
@@ -14,6 +14,7 @@ import {
   Clock,
 } from 'lucide-react';
 import api from '../utils/api';
+import { VENUE_PLAYER_META_REFRESH } from '../utils/venuePlayerEvents';
 import Button from '../components/shared/Button';
 import QRCodeDisplay from '../components/venue/QRCodeDisplay';
 import QueueManager from '../components/venue/QueueManager';
@@ -34,6 +35,16 @@ export default function VenueDashboard() {
   const [copiedVotingUrl, setCopiedVotingUrl] = useState(false);
   const navigate = useNavigate();
 
+  const fetchVenue = useCallback(async (code) => {
+    try {
+      const response = await api.getVenue(code);
+      setVenue(response.data);
+    } catch (err) {
+      console.error('Error fetching venue:', err);
+      navigate('/venue/login');
+    }
+  }, [navigate]);
+
   useEffect(() => {
     const token = localStorage.getItem('speeldit_token');
     const venueCode = localStorage.getItem('speeldit_venue_code');
@@ -48,17 +59,22 @@ export default function VenueDashboard() {
 
     const interval = setInterval(() => fetchQueue(venueCode), 3000);
     return () => clearInterval(interval);
-  }, [navigate]);
+  }, [navigate, fetchVenue]);
 
-  async function fetchVenue(code) {
-    try {
-      const response = await api.getVenue(code);
-      setVenue(response.data);
-    } catch (err) {
-      console.error('Error fetching venue:', err);
-      navigate('/venue/login');
-    }
-  }
+  useEffect(() => {
+    const code = venue?.code;
+    if (!code) return;
+    const onVis = () => {
+      if (document.visibilityState === 'visible') fetchVenue(code);
+    };
+    const onMeta = () => fetchVenue(code);
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener(VENUE_PLAYER_META_REFRESH, onMeta);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener(VENUE_PLAYER_META_REFRESH, onMeta);
+    };
+  }, [venue?.code, fetchVenue]);
 
   async function fetchQueue(code) {
     try {
@@ -116,6 +132,19 @@ export default function VenueDashboard() {
       setTimeout(() => setCopiedVotingUrl(false), 2000);
     }
   };
+
+  const effectiveAutoplayMode = useMemo(() => {
+    if (!venue?.settings) return 'playlist';
+    if (venue.settings.autoplayQueue === false) return 'off';
+    return venue.settings.autoplayMode || 'playlist';
+  }, [venue?.settings]);
+
+  const activePlaylistName = useMemo(() => {
+    const pls = venue?.playlists || [];
+    if (!pls.length) return null;
+    const id = venue?.activePlaylistId || pls[0]?.id;
+    return pls.find((p) => p.id === id)?.name ?? null;
+  }, [venue?.playlists, venue?.activePlaylistId]);
 
   if (!venue) {
     return (
@@ -241,6 +270,23 @@ export default function VenueDashboard() {
                   Set the active playlist and schedule different playlists by time of day. Autofill shuffles from the
                   playlist that matches the current slot; customer requests are unchanged.
                 </p>
+                {effectiveAutoplayMode === 'playlist' && (
+                  <div className="mt-3 max-w-xl rounded-lg border border-orange-100 bg-orange-50/90 px-3 py-2.5 text-sm">
+                    <span className="text-zinc-600">Autoplay is on </span>
+                    <span className="font-semibold text-zinc-800">playlist</span>
+                    <span className="text-zinc-600"> mode — active library: </span>
+                    {activePlaylistName ? (
+                      <Link
+                        to="/venue/playlists"
+                        className="font-semibold text-brand-600 hover:text-brand-700 hover:underline"
+                      >
+                        {activePlaylistName}
+                      </Link>
+                    ) : (
+                      <span className="text-amber-800 font-medium">None set yet — open Browse &amp; schedule to choose one.</span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <button
