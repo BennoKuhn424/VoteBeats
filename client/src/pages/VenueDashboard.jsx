@@ -202,32 +202,25 @@ export default function VenueDashboard() {
                 <h3 className="text-sm font-medium text-zinc-600 uppercase tracking-wide mb-1">
                   Venue Player
                 </h3>
-                <p className="text-sm text-zinc-500 mb-3">For playback device</p>
+                <p className="text-sm text-zinc-500 mb-3">
+                  Open this link on your playback device — it loads your dashboard with the player bar at the top.
+                </p>
               </div>
             </div>
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <code className="flex-1 px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm text-brand-600 font-mono truncate">
-                  {playerUrl}
-                </code>
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(playerUrl, 'player')}
-                  className="p-2 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors shrink-0"
-                >
-                  {copiedPlayerUrl ? (
-                    <Check className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <Copy className="h-4 w-4 text-zinc-600" />
-                  )}
-                </button>
-              </div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm text-brand-600 font-mono truncate">
+                {playerUrl}
+              </code>
               <button
                 type="button"
-                onClick={() => navigate(`/venue/player/${venue.code}`)}
-                className="w-full sm:w-auto text-sm font-semibold px-4 py-2.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors min-h-[44px]"
+                onClick={() => copyToClipboard(playerUrl, 'player')}
+                className="p-2 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors shrink-0"
               >
-                Open Venue Player →
+                {copiedPlayerUrl ? (
+                  <Check className="h-4 w-4 text-green-600" />
+                ) : (
+                  <Copy className="h-4 w-4 text-zinc-600" />
+                )}
               </button>
             </div>
           </div>

@@ -297,16 +297,22 @@ export default function VenueBrowsePlaylists() {
         {selectedCategory === 'All' && !query && featured && (
           <div className="mb-8 sm:mb-10">
             <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Now playing pool</p>
-            <div className="relative rounded-xl overflow-hidden shadow-lg">
-              <div className="aspect-[21/9] sm:aspect-[21/7] bg-zinc-800">
+            <div className="relative rounded-xl overflow-hidden shadow-lg ring-1 ring-black/5">
+              {/* Fixed height + absolute img + object-cover keeps album art aspect ratio (no stretch). */}
+              <div className="relative h-40 sm:h-48 md:h-52 w-full bg-zinc-900">
                 {featuredCover ? (
-                  <img src={featuredCover} alt="" className="w-full h-full object-cover opacity-90" />
+                  <img
+                    src={featuredCover}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover object-center opacity-95 pointer-events-none select-none"
+                    draggable={false}
+                  />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-r from-brand-600 to-violet-700">
+                  <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-brand-600 to-violet-800">
                     <ListMusic className="w-20 h-20 text-white/40" />
                   </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/10" />
                 <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
                   <h2 className="text-white text-xl sm:text-2xl font-bold drop-shadow">{featured.name}</h2>
                   <p className="text-white/90 text-sm mt-1">
