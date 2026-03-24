@@ -124,94 +124,94 @@ export default function VenuePlayerBar({ venueCode }) {
 
   return (
     <div className="sticky top-0 z-40 shrink-0 bg-white border-b border-zinc-200 shadow-sm">
-      <div className="px-2 sm:px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+      <div className="px-3 sm:px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2.5">
         {/* Track */}
-        <div className="flex items-center gap-2 min-w-0 max-w-[200px] sm:max-w-[240px]">
-          <div className="w-10 h-10 rounded-lg shrink-0 overflow-hidden bg-zinc-100 flex items-center justify-center">
+        <div className="flex items-center gap-3 min-w-0 max-w-[220px] sm:max-w-[280px]">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl shrink-0 overflow-hidden bg-zinc-100 flex items-center justify-center">
             {nowPlaying?.albumArt ? (
               <img src={nowPlaying.albumArt} alt="" className="w-full h-full object-cover" />
             ) : (
-              <Music2 className="h-4 w-4 text-zinc-400" />
+              <Music2 className="h-5 w-5 sm:h-6 sm:w-6 text-zinc-400" />
             )}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-zinc-900 truncate leading-tight">
+            <p className="text-base font-semibold text-zinc-900 truncate leading-snug">
               {nowPlaying?.title || 'Nothing playing'}
             </p>
-            <p className="text-xs text-zinc-500 truncate leading-tight">
+            <p className="text-sm text-zinc-500 truncate leading-snug">
               {nowPlaying?.artist || '—'}
             </p>
           </div>
         </div>
 
         {/* Progress */}
-        <div className="flex-1 min-w-[140px] order-last sm:order-none w-full sm:w-auto basis-full sm:basis-auto">
-          <div className="w-full bg-zinc-200 rounded-full h-1 overflow-hidden">
+        <div className="flex-1 min-w-[160px] order-last sm:order-none w-full sm:w-auto basis-full sm:basis-auto">
+          <div className="w-full bg-zinc-200 rounded-full h-1.5 sm:h-2 overflow-hidden">
             <div
-              className="bg-brand-500 h-1 rounded-full transition-all duration-500"
+              className="bg-brand-500 h-1.5 sm:h-2 rounded-full transition-all duration-500"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <div className="flex justify-between text-[10px] text-zinc-400 mt-0.5 tabular-nums">
+          <div className="flex justify-between text-xs text-zinc-400 mt-1 tabular-nums">
             <span>{formatDuration(Math.floor(playbackTime))}</span>
             <span>{formatDuration(Math.floor(playbackDuration))}</span>
           </div>
         </div>
 
         {/* Status + transport */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2.5 shrink-0">
           {!musicReady && (
-            <div className="flex items-center gap-1.5 text-zinc-500 pr-1">
-              <Loader2 className="h-4 w-4 animate-spin text-brand-500" />
-              <span className="text-xs hidden md:inline">Apple Music…</span>
+            <div className="flex items-center gap-2 text-zinc-500 pr-1">
+              <Loader2 className="h-5 w-5 animate-spin text-brand-500" />
+              <span className="text-sm hidden md:inline">Apple Music…</span>
             </div>
           )}
           {musicReady && !isAuthorized && (
             <button
               type="button"
               onClick={authorize}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-brand-500 text-white text-xs font-semibold hover:bg-brand-600 whitespace-nowrap"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 whitespace-nowrap min-h-[44px]"
             >
-              <Music2 className="h-3 w-3 shrink-0" />
+              <Music2 className="h-4 w-4 shrink-0" />
               Connect
             </button>
           )}
           {isAuthorized && (
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={restart}
                 disabled={isTransitioning}
-                className="w-8 h-8 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 disabled:opacity-40"
+                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 disabled:opacity-40"
                 aria-label="Back to start"
               >
-                <SkipBack className="h-4 w-4" />
+                <SkipBack className="h-5 w-5" />
               </button>
               <button
                 type="button"
                 onClick={playPause}
                 disabled={isTransitioning}
-                className="w-10 h-10 flex items-center justify-center rounded-full text-white bg-brand-500 hover:bg-brand-600 shadow-sm disabled:opacity-60"
+                className="w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center rounded-full text-white bg-brand-500 hover:bg-brand-600 shadow-md disabled:opacity-60"
                 aria-label={isPlaying ? 'Pause' : 'Play'}
               >
                 {isTransitioning ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <Loader2 className="h-6 w-6 animate-spin" />
                 ) : isPlaying ? (
-                  <Pause className="h-5 w-5" />
+                  <Pause className="h-6 w-6 sm:h-7 sm:w-7" />
                 ) : (
-                  <Play className="h-5 w-5 ml-0.5" />
+                  <Play className="h-6 w-6 sm:h-7 sm:w-7 ml-0.5" />
                 )}
               </button>
               <button
                 type="button"
                 onClick={skip}
                 disabled={isTransitioning}
-                className="w-8 h-8 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 disabled:opacity-40"
+                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 disabled:opacity-40"
                 aria-label="Next"
               >
-                <SkipForward className="h-4 w-4" />
+                <SkipForward className="h-5 w-5" />
               </button>
-              <span className="text-[10px] font-medium text-brand-600 w-14 text-center hidden lg:inline select-none">
+              <span className="text-xs font-medium text-brand-600 w-16 text-center hidden md:inline select-none">
                 {isTransitioning ? '…' : isPlaying ? 'Playing' : waitingForGesture ? 'Tap play' : 'Paused'}
               </span>
             </div>
@@ -219,28 +219,28 @@ export default function VenuePlayerBar({ venueCode }) {
         </div>
 
         {isAuthorized && (
-          <div className="flex items-center gap-1.5 shrink-0 w-24 sm:w-28">
-            <Volume2 className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+          <div className="flex items-center gap-2 shrink-0 w-32 sm:w-40">
+            <Volume2 className="h-4 w-4 text-zinc-400 shrink-0" />
             <input
               type="range"
               min="0"
               max="100"
               value={volume}
               onChange={(e) => setVolume(Number(e.target.value))}
-              className="w-full accent-brand-500 cursor-pointer h-1"
+              className="w-full accent-brand-500 cursor-pointer h-2"
             />
           </div>
         )}
 
         {/* Autoplay + active playlist label */}
-        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-          <span className="text-[10px] text-zinc-500">Autoplay</span>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <span className="text-xs text-zinc-500 font-medium">Autoplay</span>
           {AUTOPLAY_OPTIONS.map(({ id, label }) => (
             <button
               key={id}
               type="button"
               onClick={() => changeMode(id)}
-              className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition-colors ${
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[36px] ${
                 autoplayMode === id
                   ? 'bg-brand-500 text-white'
                   : 'bg-zinc-100 text-zinc-500 hover:text-zinc-900'
@@ -252,7 +252,7 @@ export default function VenuePlayerBar({ venueCode }) {
           {autoplayMode === 'playlist' && activePlaylistName && (
             <Link
               to="/venue/playlists"
-              className="text-[10px] text-zinc-600 max-w-[160px] truncate hover:text-brand-600 hover:underline ml-0.5"
+              className="text-xs text-zinc-700 max-w-[200px] truncate hover:text-brand-600 hover:underline font-medium ml-0.5"
               title={activePlaylistName}
             >
               {activePlaylistName}
