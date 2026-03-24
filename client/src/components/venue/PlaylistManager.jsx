@@ -1,15 +1,25 @@
-import { useState, useEffect } from 'react';
-import { ListMusic, Search, Plus, Check, X, Loader2, Sparkles, Zap } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ListMusic, Search, Plus, Check, X, Loader2, Sparkles, Zap, Pencil } from 'lucide-react';
 import api from '../../utils/api';
 import { dispatchVenuePlayerMetaRefresh } from '../../utils/venuePlayerEvents';
 
-export default function PlaylistManager({ venueCode, variant = 'dark', initialPlaylistId }) {
+export default function PlaylistManager({
+  venueCode,
+  variant = 'dark',
+  initialPlaylistId = null,
+  preferEditMode = false,
+}) {
   const isLight = variant === 'light';
 
   const [playlists, setPlaylists] = useState([]);
   const [activePlaylistId, setActivePlaylistId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const activePlaylistIdRef = useRef(null);
+  useEffect(() => {
+    activePlaylistIdRef.current = activePlaylistId;
+  }, [activePlaylistId]);
 
   // Create new playlist
   const [showCreate, setShowCreate] = useState(false);
@@ -37,23 +47,33 @@ export default function PlaylistManager({ venueCode, variant = 'dark', initialPl
         const data = res.data;
         const pls = data.playlists || [];
         setPlaylists(pls);
-        const activePl = data.activePlaylistId || pls[0]?.id || null;
-        setActivePlaylistId(activePl);
-        setSelectedId(activePl);
+        setActivePlaylistId(data.activePlaylistId || pls[0]?.id || null);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [venueCode]);
 
-  // When parent tells us to open a specific playlist (e.g. card tap)
+  // Pick selected playlist: deep-link from browse cards, else keep valid selection, else active.
+  // (activePlaylistId omitted from deps so venue refetch does not exit edit mode.)
   useEffect(() => {
+    if (playlists.length === 0) {
+      setSelectedId(null);
+      return;
+    }
     if (initialPlaylistId && playlists.some((p) => p.id === initialPlaylistId)) {
       setSelectedId(initialPlaylistId);
+      setIsEditing(!!preferEditMode);
+      return;
     }
-  }, [initialPlaylistId, playlists]);
+    setSelectedId((prev) => {
+      if (prev != null && playlists.some((p) => p.id === prev)) return prev;
+      return activePlaylistIdRef.current || playlists[0]?.id || null;
+    });
+  }, [playlists, initialPlaylistId, preferEditMode]);
 
   function switchTab(id) {
     setSelectedId(id);
+    setIsEditing(false);
     setQuery('');
     setResults([]);
     setSearchError(null);
@@ -187,17 +207,17 @@ export default function PlaylistManager({ venueCode, variant = 'dark', initialPl
   const inputCls = isLight
     ? 'flex-1 px-3 py-2 bg-zinc-50 border border-zinc-300 rounded-lg text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm'
     : 'flex-1 px-3 py-2 bg-dark-700 border border-dark-500 rounded-lg text-white placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm';
-  const songRowCls = isLight
-    ? 'flex items-center gap-3 p-3 bg-zinc-50 rounded-xl group border border-zinc-100'
-    : 'flex items-center gap-3 p-3 bg-dark-700/50 rounded-xl group';
+  const songRowEditCls = isLight
+    ? 'flex items-center gap-3 px-3 py-2.5 bg-white group hover:bg-zinc-50/90'
+    : 'flex items-center gap-3 px-3 py-2.5 group hover:bg-dark-700/80';
+  const resultRowEditCls = isLight
+    ? 'flex items-center gap-3 px-3 py-2.5 bg-white group hover:bg-zinc-50/90'
+    : 'flex items-center gap-3 px-3 py-2.5 group hover:bg-dark-700/80';
   const songTitleCls = isLight ? 'font-medium text-sm text-zinc-900 line-clamp-1' : 'font-medium text-sm text-white line-clamp-1';
   const songArtistCls = isLight ? 'text-xs text-zinc-500 line-clamp-1' : 'text-xs text-dark-400 line-clamp-1';
   const removeBtnCls = isLight
     ? 'sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-8 h-8 flex items-center justify-center rounded-full bg-zinc-200 text-zinc-500 hover:bg-red-100 hover:text-red-500 shrink-0'
     : 'sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-8 h-8 flex items-center justify-center rounded-full bg-dark-600 text-dark-300 hover:bg-red-500/20 hover:text-red-400 shrink-0';
-  const resultRowCls = isLight
-    ? 'flex items-center gap-3 p-3 bg-zinc-50 rounded-xl border border-zinc-100'
-    : 'flex items-center gap-3 p-3 bg-dark-700/50 rounded-xl';
 
   if (loading) {
     return (
@@ -280,200 +300,260 @@ export default function PlaylistManager({ venueCode, variant = 'dark', initialPl
         )}
       </div>
 
-      {/* ── Selected playlist content ── */}
+      {/* ── Selected playlist: summary vs edit ── */}
       {selectedPlaylist && (
         <>
-          {/* Songs card */}
-          <div className={card}>
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2 min-w-0">
-                <h3 className={`${headingCls} truncate`}>{selectedPlaylist.name}</h3>
-                {selectedPlaylist.id === activePlaylistId ? (
-                  <span className="shrink-0 flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold bg-brand-100 text-brand-700">
-                    <Zap className="h-3 w-3" /> Active
-                  </span>
-                ) : (
+          {/* Summary (default): no song list / add / AI until Edit */}
+          {!isEditing && (
+            <div className={card}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 flex-1">
+                  <h3 className={`${headingCls} text-lg`}>{selectedPlaylist.name}</h3>
+                  <p className={`${subCls} mt-1`}>
+                    {(selectedPlaylist.songs?.length ?? 0) === 0
+                      ? 'Empty playlist'
+                      : `${selectedPlaylist.songs?.length ?? 0} song${(selectedPlaylist.songs?.length ?? 0) === 1 ? '' : 's'}`}
+                    {selectedPlaylist.id !== activePlaylistId && ' · Set as active so autofill uses this playlist'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {selectedPlaylist.id === activePlaylistId ? (
+                    <span className="inline-flex items-center gap-1 text-xs px-3 py-2 rounded-full font-semibold bg-emerald-100 text-emerald-800 min-h-[40px]">
+                      <Zap className="h-3.5 w-3.5" /> Active
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleActivate(selectedPlaylist.id)}
+                      className={`text-xs px-3 py-2 rounded-full font-semibold border transition-colors min-h-[40px] ${isLight ? 'border-zinc-300 text-zinc-600 hover:border-brand-500 hover:text-brand-600' : 'border-dark-500 text-dark-400 hover:border-brand-500 hover:text-brand-400'}`}
+                    >
+                      Set active
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => handleActivate(selectedPlaylist.id)}
-                    className={`shrink-0 text-xs px-3 py-1.5 rounded-full font-semibold border transition-colors min-h-[32px] ${isLight ? 'border-zinc-300 text-zinc-500 hover:border-brand-500 hover:text-brand-600' : 'border-dark-500 text-dark-400 hover:border-brand-500 hover:text-brand-400'}`}
+                    onClick={() => setIsEditing(true)}
+                    className="inline-flex items-center justify-center gap-1.5 text-xs px-3 py-2 rounded-full font-semibold min-h-[40px] bg-brand-500 text-white hover:bg-brand-600 transition-colors"
                   >
-                    Set Active
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit playlist
                   </button>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(selectedPlaylist.id)}
+                    className={`text-xs px-3 py-2 rounded-lg transition-colors min-h-[40px] ${isLight ? 'text-zinc-400 hover:text-red-600 hover:bg-red-50' : 'text-dark-400 hover:text-red-400 hover:bg-red-500/10'}`}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => handleDelete(selectedPlaylist.id)}
-                className={`shrink-0 text-xs px-3 py-2 rounded-lg transition-colors min-h-[36px] ${isLight ? 'text-zinc-400 hover:text-red-500 hover:bg-red-50' : 'text-dark-400 hover:text-red-400 hover:bg-red-500/10'}`}
-              >
-                Delete
-              </button>
+              <p className={`text-sm mt-4 pt-4 border-t ${isLight ? 'border-zinc-100 text-zinc-500' : 'border-dark-600 text-dark-400'}`}>
+                Tap <strong className={isLight ? 'text-zinc-700' : 'text-white'}>Edit playlist</strong> to add or remove songs, or use AI generation.
+              </p>
             </div>
-            <p className={`${subCls} mb-4`}>
-              {selectedPlaylist.songs?.length ?? 0} song{(selectedPlaylist.songs?.length ?? 0) !== 1 ? 's' : ''}
-              {selectedPlaylist.id !== activePlaylistId && ' · Set as Active so autofill uses this playlist'}
-            </p>
+          )}
 
-            {selectedPlaylist.songs?.length > 0 ? (
-              <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
-                {selectedPlaylist.songs.map((song, i) => (
-                  <div key={song.appleId} className={songRowCls}>
-                    <span className={`text-sm font-bold w-6 text-right shrink-0 ${isLight ? 'text-zinc-400' : 'text-dark-500'}`}>{i + 1}</span>
-                    {song.albumArt ? (
-                      <img src={song.albumArt} alt={song.title} className="w-9 h-9 rounded-lg object-cover shrink-0" />
-                    ) : (
-                      <div className={`w-9 h-9 rounded-lg shrink-0 flex items-center justify-center ${isLight ? 'bg-zinc-200' : 'bg-dark-600'}`}>
-                        <ListMusic className={`h-4 w-4 ${isLight ? 'text-zinc-400' : 'text-dark-400'}`} />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className={songTitleCls}>{song.title}</p>
-                      <p className={songArtistCls}>{song.artist}</p>
-                    </div>
-                    <button type="button" onClick={() => handleRemove(song.appleId)} className={removeBtnCls} title="Remove">
-                      <X className="h-3.5 w-3.5" />
+          {isEditing && (
+            <>
+              <div className={`rounded-xl border overflow-hidden ${isLight ? 'border-zinc-200 bg-zinc-50/80' : 'border-dark-600 bg-dark-800/50'}`}>
+                <div className={`flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between border-b ${isLight ? 'border-zinc-200 bg-white' : 'border-dark-600 bg-dark-800'}`}>
+                  <div className="min-w-0">
+                    <p className={`text-xs font-semibold uppercase tracking-wide ${isLight ? 'text-zinc-400' : 'text-dark-500'}`}>Editing playlist</p>
+                    <p className={`font-semibold truncate ${isLight ? 'text-zinc-900' : 'text-white'}`}>{selectedPlaylist.name}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(selectedPlaylist.id)}
+                      className={`text-xs px-3 py-2 rounded-lg min-h-[40px] ${isLight ? 'text-red-600 hover:bg-red-50' : 'text-red-400 hover:bg-red-500/10'}`}
+                    >
+                      Delete playlist
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditing(false);
+                        setShowGenerate(false);
+                        setQuery('');
+                        setResults([]);
+                        setSearchError(null);
+                        setGeneratePrompt('');
+                        setGenerateError(null);
+                      }}
+                      className={`text-sm font-semibold px-4 py-2 rounded-lg min-h-[40px] ${isLight ? 'bg-zinc-900 text-white hover:bg-zinc-800' : 'bg-white text-zinc-900 hover:bg-zinc-100'}`}
+                    >
+                      Done
                     </button>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="py-4 text-center">
-                <p className={subCls}>No songs yet — search below or generate with AI.</p>
-              </div>
-            )}
-          </div>
+                </div>
 
-          {/* ── Add Songs ── */}
-          <div className={card}>
-            <h3 className={`${headingCls} mb-3`}>Add Songs</h3>
-
-            <form onSubmit={handleSearch} className="flex gap-2 mb-3">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => { setQuery(e.target.value); if (searchError) setSearchError(null); }}
-                placeholder="Search for a song to add..."
-                className={inputCls}
-              />
-              <button
-                type="submit"
-                disabled={searching}
-                className="px-3 py-2 bg-brand-500 text-white rounded-lg font-semibold text-sm hover:bg-brand-600 transition-colors disabled:opacity-50 shrink-0 flex items-center gap-1.5"
-              >
-                {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                {!searching && 'Search'}
-              </button>
-            </form>
-
-            {searchError && (
-              <p className={`text-sm text-center py-2 ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>{searchError}</p>
-            )}
-
-            {results.length > 0 && (
-              <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
-                {results.map((item) => {
-                  const appleId = item.songId ?? item.appleId;
-                  const inPlaylist = (selectedPlaylist.songs || []).some((s) => s.appleId === appleId) || addedIds.has(appleId);
-                  return (
-                    <div key={appleId} className={resultRowCls}>
-                      <img src={item.artwork || item.albumArt || ''} alt={item.trackName || item.title} className="w-9 h-9 rounded-lg object-cover shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className={songTitleCls}>{item.trackName ?? item.title}</p>
-                        <p className={songArtistCls}>{item.artistName ?? item.artist}</p>
+                <div className="p-4 sm:p-5 space-y-5">
+                  {/* Songs */}
+                  <div>
+                    <h4 className={`${headingCls} text-sm mb-3`}>Songs in playlist</h4>
+                    {selectedPlaylist.songs?.length > 0 ? (
+                      <div className={`rounded-xl border max-h-[min(50vh,420px)] overflow-y-auto ${isLight ? 'border-zinc-200 bg-white' : 'border-dark-600'}`}>
+                        <ul className={`list-none m-0 p-0 divide-y ${isLight ? 'divide-zinc-100' : 'divide-dark-600'}`}>
+                          {selectedPlaylist.songs.map((song, i) => (
+                            <li key={song.appleId} className={songRowEditCls}>
+                              <span className={`text-xs font-semibold w-7 text-right tabular-nums shrink-0 ${isLight ? 'text-zinc-400' : 'text-dark-500'}`}>{i + 1}</span>
+                              {song.albumArt ? (
+                                <img src={song.albumArt} alt="" className="w-10 h-10 rounded-md object-cover shrink-0" />
+                              ) : (
+                                <div className={`w-10 h-10 rounded-md shrink-0 flex items-center justify-center ${isLight ? 'bg-zinc-100' : 'bg-dark-600'}`}>
+                                  <ListMusic className={`h-4 w-4 ${isLight ? 'text-zinc-400' : 'text-dark-400'}`} />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className={songTitleCls}>{song.title}</p>
+                                <p className={songArtistCls}>{song.artist}</p>
+                              </div>
+                              <button type="button" onClick={() => handleRemove(song.appleId)} className={removeBtnCls} title="Remove from playlist">
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
                       </div>
+                    ) : (
+                      <p className={`text-sm py-6 text-center rounded-xl border border-dashed ${isLight ? 'border-zinc-200 text-zinc-500 bg-white' : 'border-dark-600 text-dark-400'}`}>
+                        No songs yet — search below or generate with AI.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Add songs */}
+                  <div className={`rounded-xl border p-4 ${isLight ? 'border-zinc-200 bg-white' : 'border-dark-600'}`}>
+                    <h4 className={`${headingCls} text-sm mb-3`}>Add songs</h4>
+                    <form onSubmit={handleSearch} className="flex flex-col gap-2 sm:flex-row sm:gap-2 mb-3">
+                      <input
+                        type="text"
+                        value={query}
+                        onChange={(e) => { setQuery(e.target.value); if (searchError) setSearchError(null); }}
+                        placeholder="Search Apple Music…"
+                        className={inputCls}
+                      />
                       <button
-                        type="button"
-                        disabled={inPlaylist}
-                        onClick={() => handleAdd(item)}
-                        className={`shrink-0 flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[36px] ${
-                          inPlaylist
-                            ? isLight ? 'bg-zinc-100 text-zinc-400 cursor-default' : 'bg-dark-600 text-dark-400 cursor-default'
-                            : 'bg-brand-500 text-white hover:bg-brand-600'
-                        }`}
+                        type="submit"
+                        disabled={searching}
+                        className="px-4 py-2 bg-brand-500 text-white rounded-lg font-semibold text-sm hover:bg-brand-600 transition-colors disabled:opacity-50 shrink-0 flex items-center justify-center gap-1.5 min-h-[44px]"
                       >
-                        {inPlaylist ? <><Check className="h-3 w-3" /> Added</> : <><Plus className="h-3 w-3" /> Add</>}
+                        {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                        {!searching && 'Search'}
                       </button>
+                    </form>
+                    {searchError && (
+                      <p className={`text-sm py-2 ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>{searchError}</p>
+                    )}
+                    {results.length > 0 && (
+                      <div className={`rounded-lg border max-h-[min(40vh,360px)] overflow-y-auto ${isLight ? 'border-zinc-100' : 'border-dark-600'}`}>
+                        <ul className={`list-none m-0 p-0 divide-y ${isLight ? 'divide-zinc-100' : 'divide-dark-600'}`}>
+                          {results.map((item) => {
+                            const appleId = item.songId ?? item.appleId;
+                            const inPlaylist = (selectedPlaylist.songs || []).some((s) => s.appleId === appleId) || addedIds.has(appleId);
+                            return (
+                              <li key={appleId} className={resultRowEditCls}>
+                                <img src={item.artwork || item.albumArt || ''} alt="" className="w-10 h-10 rounded-md object-cover shrink-0 bg-zinc-100" />
+                                <div className="flex-1 min-w-0">
+                                  <p className={songTitleCls}>{item.trackName ?? item.title}</p>
+                                  <p className={songArtistCls}>{item.artistName ?? item.artist}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  disabled={inPlaylist}
+                                  onClick={() => handleAdd(item)}
+                                  className={`shrink-0 flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[40px] ${
+                                    inPlaylist
+                                      ? isLight ? 'bg-zinc-100 text-zinc-400 cursor-default' : 'bg-dark-600 text-dark-400 cursor-default'
+                                      : 'bg-brand-500 text-white hover:bg-brand-600'
+                                  }`}
+                                >
+                                  {inPlaylist ? <><Check className="h-3 w-3" /> In list</> : <><Plus className="h-3 w-3" /> Add</>}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* AI */}
+                  <div className={`rounded-xl border p-4 ${isLight ? 'border-zinc-200 bg-white' : 'border-dark-600'}`}>
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <h4 className={`${headingCls} text-sm flex items-center gap-2`}>
+                        <Sparkles className="h-4 w-4 text-brand-500" />
+                        Add songs with AI
+                      </h4>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${isLight ? 'bg-brand-100 text-brand-700' : 'bg-brand-500/20 text-brand-400'}`}>
+                        R{generateCount}
+                      </span>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* ── Generate AI Playlist ── */}
-          <div className={card}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className={headingCls}>Generate AI Playlist</h3>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isLight ? 'bg-brand-100 text-brand-700' : 'bg-brand-500/20 text-brand-400'}`}>
-                R{generateCount}
-              </span>
-            </div>
-
-            {!showGenerate ? (
-              <button
-                type="button"
-                onClick={() => setShowGenerate(true)}
-                className="flex items-center gap-2 w-full justify-center px-4 py-2.5 bg-brand-500 text-white rounded-lg font-semibold text-sm hover:bg-brand-600 transition-colors"
-              >
-                <Sparkles className="h-4 w-4" />
-                Generate songs for "{selectedPlaylist.name}"
-              </button>
-            ) : (
-              <form onSubmit={handleGenerateCheckout} className="space-y-4">
-                <p className={`text-sm ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>
-                  Describe the vibe and choose how many songs. Claude picks matching tracks and adds them to <strong>{selectedPlaylist.name}</strong>.
-                </p>
-
-                {/* Song count picker */}
-                <div>
-                  <p className={`text-xs font-semibold mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-300'}`}>How many songs?</p>
-                  <div className="flex flex-wrap gap-2">
-                    {[25, 50, 100, 150, 200, 300, 400].map((n) => (
+                    {!showGenerate ? (
                       <button
-                        key={n}
                         type="button"
-                        onClick={() => setGenerateCount(n)}
-                        className={`px-3 py-2 rounded-full text-xs font-semibold transition-colors ${
-                          generateCount === n
-                            ? 'bg-brand-500 text-white'
-                            : isLight ? 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200' : 'bg-dark-700 text-dark-300 hover:bg-dark-600'
-                        }`}
+                        onClick={() => setShowGenerate(true)}
+                        className="flex items-center gap-2 w-full justify-center px-4 py-3 bg-gradient-to-r from-brand-500 to-orange-500 text-white rounded-lg font-semibold text-sm hover:opacity-95 transition-opacity min-h-[48px]"
                       >
-                        {n} songs · R{n}
+                        <Sparkles className="h-4 w-4" />
+                        Generate into &ldquo;{selectedPlaylist.name}&rdquo;
                       </button>
-                    ))}
+                    ) : (
+                      <form onSubmit={handleGenerateCheckout} className="space-y-4">
+                        <p className={`text-sm ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>
+                          Describe the vibe. Matching tracks are added to <strong className={isLight ? 'text-zinc-800' : 'text-white'}>{selectedPlaylist.name}</strong> after payment.
+                        </p>
+                        <div>
+                          <p className={`text-xs font-semibold mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-300'}`}>How many songs?</p>
+                          <div className="flex flex-wrap gap-2">
+                            {[25, 50, 100, 150, 200, 300, 400].map((n) => (
+                              <button
+                                key={n}
+                                type="button"
+                                onClick={() => setGenerateCount(n)}
+                                className={`px-3 py-2 rounded-full text-xs font-semibold transition-colors ${
+                                  generateCount === n
+                                    ? 'bg-brand-500 text-white'
+                                    : isLight ? 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200' : 'bg-dark-700 text-dark-300 hover:bg-dark-600'
+                                }`}
+                              >
+                                {n} · R{n}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <textarea
+                          value={generatePrompt}
+                          onChange={(e) => { setGeneratePrompt(e.target.value); setGenerateError(null); }}
+                          placeholder='e.g. "Afrikaans hits", "2000s pop", "Friday night dancehall"…'
+                          rows={3}
+                          className={`w-full px-3 py-2.5 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 ${isLight ? 'bg-zinc-50 border border-zinc-300 text-zinc-900 placeholder-zinc-400' : 'bg-dark-700 border border-dark-500 text-white placeholder-dark-400'}`}
+                        />
+                        {generateError && <p className="text-red-500 text-xs">{generateError}</p>}
+                        <div className="flex flex-col-reverse sm:flex-row gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { setShowGenerate(false); setGeneratePrompt(''); setGenerateError(null); }}
+                            className={`px-4 py-2.5 rounded-lg text-sm font-medium min-h-[44px] ${isLight ? 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200' : 'bg-dark-700 text-dark-300 hover:bg-dark-600'}`}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={generatingCheckout || !generatePrompt.trim()}
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-500 text-white rounded-lg font-semibold text-sm hover:bg-brand-600 transition-colors disabled:opacity-50 min-h-[44px]"
+                          >
+                            {generatingCheckout ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                            {generatingCheckout ? 'Starting payment…' : `Pay R${generateCount} & generate`}
+                          </button>
+                        </div>
+                      </form>
+                    )}
                   </div>
                 </div>
-
-                <textarea
-                  value={generatePrompt}
-                  onChange={(e) => { setGeneratePrompt(e.target.value); setGenerateError(null); }}
-                  placeholder='e.g. "Afrikaans hits", "2000s pop", "upbeat dancehall for Friday night"…'
-                  rows={3}
-                  className={`w-full px-3 py-2.5 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 ${isLight ? 'bg-zinc-50 border border-zinc-300 text-zinc-900 placeholder-zinc-400' : 'bg-dark-700 border border-dark-500 text-white placeholder-dark-400'}`}
-                />
-                {generateError && <p className="text-red-500 text-xs">{generateError}</p>}
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={generatingCheckout || !generatePrompt.trim()}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-500 text-white rounded-lg font-semibold text-sm hover:bg-brand-600 transition-colors disabled:opacity-50"
-                  >
-                    {generatingCheckout ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    {generatingCheckout ? 'Starting payment…' : `Pay R${generateCount} & Generate`}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setShowGenerate(false); setGeneratePrompt(''); setGenerateError(null); }}
-                    className={`px-3 py-2.5 rounded-lg text-sm font-medium ${isLight ? 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200' : 'bg-dark-700 text-dark-300 hover:bg-dark-600'}`}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
