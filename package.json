@@ -7,7 +7,8 @@
     "start": "concurrently \"npm run dev --prefix client\" \"npm run dev --prefix server\"",
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "npm test --prefix server && npm test --prefix client"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

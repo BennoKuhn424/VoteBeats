@@ -12,8 +12,11 @@ Full-stack web app for music voting in bars/restaurants using QR codes. Customer
 
 ```
 speeldit/
-├── client/          # React frontend
-├── server/          # Express API + JSON data
+├── client/          # React frontend (Vite)
+├── server/
+│   ├── app.js       # Express app factory (rate limits, routes, logging) — imported by tests
+│   ├── server.js    # HTTP server, Socket.IO, queue auto-advance interval
+│   └── data/        # JSON persistence (dev / small deployments)
 └── README.md
 ```
 
@@ -27,15 +30,38 @@ npm install
 npm start
 ```
 
-Server runs at `http://localhost:3000`. Optional env:
+Server runs at `http://localhost:3000`.
 
-- `PORT` – default 3000
-- `JWT_SECRET` – for production
-- `APPLE_MUSIC_DEVELOPER_TOKEN` – for real Apple Music search (otherwise mock catalog is used)
-- `PUBLIC_URL` – frontend URL for redirects (e.g. `https://speeldit.com` or `http://localhost:5173`)
-- `YOCO_SECRET_KEY` – Yoco API secret for pay-to-play (get from [Yoco Developer Hub](https://developer.yoco.com/))
-- `VENUE_EARNINGS_PERCENT` – Venue share of pay-to-play revenue (default 80)
-- `ADMIN_SECRET` – Secret for admin API (see below)
+**Health checks (for uptime monitors / load balancers):**
+
+- `GET /health`
+- `GET /api/health`  
+  JSON: `{ ok, service, ts }`
+
+**Production behaviour:**
+
+- **`trust proxy`** – Set `NODE_ENV=production` and, if the API sits behind a reverse proxy (Render, Railway, nginx), set `TRUST_PROXY_HOPS` (default `1`) so client IP and rate limits are correct.
+- **Structured request logs** – Each finished request logs one JSON line to stdout: `method`, `path`, `status`, `ms` (health routes are skipped to reduce noise). Point your host’s log drain at this stream.
+- **Rate limits** – `express-rate-limit` on the API:
+  - `/api/auth/*`: `RATE_LIMIT_AUTH_MAX` attempts per 15 minutes per IP (default **40**).
+  - Other `/api/*` routes (except auth paths): `RATE_LIMIT_API_MAX` requests per minute per IP (default **500**). Raise this if many customer devices share one public IP (e.g. venue Wi‑Fi NAT).
+
+Optional env (full list):
+
+| Variable | Purpose |
+|----------|---------|
+| `PORT` | Listen port (default `3000`) |
+| `NODE_ENV` | Set to `production` for trust proxy + stricter defaults |
+| `JWT_SECRET` | **Required in production** – signing venue JWTs |
+| `TRUST_PROXY_HOPS` | Trust `X-Forwarded-For` hops (default `1`) |
+| `RATE_LIMIT_AUTH_MAX` | Auth route cap per 15 min / IP (default `40`) |
+| `RATE_LIMIT_API_MAX` | General API cap per minute / IP (default `500`) |
+| `APPLE_MUSIC_DEVELOPER_TOKEN` | Pre-generated Apple Music token (optional if using key file) |
+| `PUBLIC_URL` | Frontend URL for redirects (e.g. `https://yourapp.vercel.app`) |
+| `YOCO_SECRET_KEY` | Yoco secret for pay-to-play |
+| `VENUE_EARNINGS_PERCENT` | Venue revenue share % (default `80`) |
+| `ADMIN_SECRET` | Admin API key (header `X-Admin-Key`) |
+| `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_MUSIC_KEY_PATH` | MusicKit token generation (see below) |
 
 ### 2. Frontend
 
@@ -46,6 +72,28 @@ npm run dev
 ```
 
 App runs at `http://localhost:5173`. The Vite config proxies `/api` to the backend.
+
+**Frontend env:**
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_PUBLIC_URL` | Canonical public site URL (optional; falls back to `window.location.origin`) |
+| `VITE_API_URL` | **Production:** full API base including `/api`, e.g. `https://api.yoursite.com/api` |
+
+### Tests & CI
+
+```bash
+# Server (Jest)
+cd server && npm test
+
+# Client (Vitest + Testing Library)
+cd client && npm test
+
+# From repo root (both)
+npm test
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs server tests, client tests, and a client production build on push/PR to `main`/`master`.
 
 ### 3. Try it
 
