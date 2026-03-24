@@ -123,7 +123,7 @@ export default function VenueBrowsePlaylists() {
   const [generateStatus, setGenerateStatus] = useState(null);
   // When a playlist card is tapped, scroll to the PlaylistManager and select it
   const [openPlaylistId, setOpenPlaylistId] = useState(null);
-  const [openPlaylistAsEdit, setOpenPlaylistAsEdit] = useState(false);
+  const [editorBump, setEditorBump] = useState(0);
 
   const categories = ['All', 'Has songs', 'Empty'];
 
@@ -218,16 +218,18 @@ export default function VenueBrowsePlaylists() {
     }, 100);
   }
 
-  function handleOpenPlaylist(id) {
+  function openPlaylistInEditor(id) {
     setOpenPlaylistId(id);
-    setOpenPlaylistAsEdit(false);
+    setEditorBump((b) => b + 1);
     scrollToPlaylistManager();
   }
 
+  function handleOpenPlaylist(id) {
+    openPlaylistInEditor(id);
+  }
+
   function handleEditPlaylist(id) {
-    setOpenPlaylistId(id);
-    setOpenPlaylistAsEdit(true);
-    scrollToPlaylistManager();
+    openPlaylistInEditor(id);
   }
 
   const schedulePl = playlists.find((p) => p.id === schedulePlaylistId);
@@ -363,13 +365,13 @@ export default function VenueBrowsePlaylists() {
         {/* ── Playlist Manager: summary by default; Edit opens songs / search / AI ── */}
         <div id="playlist-manager" className="mt-10 max-w-3xl mx-auto">
           <p className="text-sm text-zinc-500 mb-3">
-            Tap a playlist card for a quick summary, or use the pencil to jump straight into editing songs.
+            Tap a card or a chip to edit songs. Set active and schedule use the buttons on each card.
           </p>
           <PlaylistManager
             venueCode={venueCode}
             variant="light"
             initialPlaylistId={openPlaylistId}
-            preferEditMode={openPlaylistAsEdit}
+            editorBump={editorBump}
           />
         </div>
       </main>

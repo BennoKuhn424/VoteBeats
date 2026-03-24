@@ -22,6 +22,7 @@ import VenueSettings from '../components/venue/Settings';
 import EarningsCard from '../components/venue/EarningsCard';
 import AnalyticsDashboard from '../components/venue/AnalyticsDashboard';
 import VolumeAlertsCard from '../components/venue/VolumeAlertsCard';
+import RandomAutoplayCard from '../components/venue/RandomAutoplayCard';
 
 export default function VenueDashboard() {
   const [venue, setVenue] = useState(null);
@@ -299,6 +300,12 @@ export default function VenueDashboard() {
             </button>
           </div>
         </div>
+
+        <RandomAutoplayCard
+          venueCode={venue.code}
+          effectiveAutoplayMode={effectiveAutoplayMode}
+          onSaved={() => fetchVenue(venue.code)}
+        />
 
         <VolumeAlertsCard venueCode={venue.code} variant="light" />
 
