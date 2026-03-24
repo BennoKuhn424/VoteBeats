@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ListMusic, Search, Plus, Check, X, Loader2, Sparkles, Zap } from 'lucide-react';
+import { ListMusic, Search, Plus, Check, X, Loader2, Sparkles } from 'lucide-react';
 import api from '../../utils/api';
 import { dispatchVenuePlayerMetaRefresh } from '../../utils/venuePlayerEvents';
 
@@ -8,6 +8,8 @@ export default function PlaylistManager({
   variant = 'dark',
   initialPlaylistId = null,
   editorBump = 0,
+  /** Increment after parent creates a playlist so we refetch and stay in sync */
+  playlistSync = 0,
 }) {
   const isLight = variant === 'light';
 
@@ -21,11 +23,6 @@ export default function PlaylistManager({
   useEffect(() => {
     activePlaylistIdRef.current = activePlaylistId;
   }, [activePlaylistId]);
-
-  // Create new playlist
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [creating, setCreating] = useState(false);
 
   // Search
   const [query, setQuery] = useState('');
@@ -52,7 +49,7 @@ export default function PlaylistManager({
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [venueCode]);
+  }, [venueCode, playlistSync]);
 
   // Selection: grid scroll uses editorBump + initialPlaylistId to open editor (same card tap bumps again).
   useEffect(() => {
@@ -87,25 +84,6 @@ export default function PlaylistManager({
   }
 
   const selectedPlaylist = playlists.find((p) => p.id === selectedId);
-
-  async function handleCreate(e) {
-    e.preventDefault();
-    if (!newName.trim()) return;
-    setCreating(true);
-    try {
-      const res = await api.createPlaylist(venueCode, newName.trim());
-      setPlaylists(res.data.playlists);
-      setActivePlaylistId(res.data.activePlaylistId);
-      switchTab(res.data.playlist.id);
-      setIsEditing(true);
-      setNewName('');
-      setShowCreate(false);
-      dispatchVenuePlayerMetaRefresh();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Could not create playlist');
-    }
-    setCreating(false);
-  }
 
   async function handleDelete(playlistId) {
     if (!window.confirm('Delete this playlist and all its songs?')) return;
@@ -222,85 +200,16 @@ export default function PlaylistManager({
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => setShowCreate((v) => !v)}
-          className="inline-flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors min-h-[44px] w-full sm:w-auto"
-        >
-          <Plus className="h-4 w-4 shrink-0" />
-          {showCreate ? 'Cancel' : 'Add new playlist'}
-        </button>
-      </div>
-
-      {showCreate && (
-        <div className={card}>
-          <h4 className={`${headingCls} text-sm mb-3`}>Name your playlist</h4>
-          <form onSubmit={handleCreate} className="flex flex-col sm:flex-row gap-2">
-            <input
-              autoFocus
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="e.g. Valentine's Day, New Year's Eve…"
-              className={inputCls}
-            />
-            <button
-              type="submit"
-              disabled={creating || !newName.trim()}
-              className="px-3 py-2 bg-brand-500 text-white rounded-lg text-sm font-semibold hover:bg-brand-600 disabled:opacity-50 shrink-0"
-            >
-              {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setShowCreate(false); setNewName(''); }}
-              className={`px-3 py-2 rounded-lg text-sm min-h-[44px] ${isLight ? 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200' : 'bg-dark-700 text-dark-300 hover:bg-dark-600'}`}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </form>
+      {playlists.length === 0 && !isEditing && (
+        <div className={`${card} flex flex-col items-center text-center`}>
+          <ListMusic className={`h-8 w-8 mb-2 ${isLight ? 'text-zinc-300' : 'text-dark-500'}`} />
+          <p className={subCls}>
+            No playlists yet. Use <strong className={isLight ? 'text-zinc-700' : 'text-white'}>Add new playlist</strong> at the top of this page.
+          </p>
         </div>
       )}
 
-      {/* ── Playlist chips (switch which playlist you’re editing) ── */}
-      <div className={card}>
-        <h3 className={`${headingCls} mb-3`}>Playlists</h3>
-        {playlists.length === 0 ? (
-          <div className="py-6 text-center">
-            <ListMusic className={`h-8 w-8 mx-auto mb-2 ${isLight ? 'text-zinc-300' : 'text-dark-500'}`} />
-            <p className={subCls}>No playlists yet. Use Add new playlist above.</p>
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {playlists.map((pl) => (
-              <button
-                key={pl.id}
-                type="button"
-                onClick={() => {
-                  switchTab(pl.id);
-                  setIsEditing(true);
-                }}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-colors ${
-                  selectedId === pl.id
-                    ? 'bg-brand-500 text-white'
-                    : isLight
-                      ? 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
-                      : 'bg-dark-700 text-dark-300 hover:bg-dark-600'
-                }`}
-              >
-                {pl.id === activePlaylistId && <Zap className="h-3 w-3" />}
-                {pl.name}
-                <span className={`text-xs ${selectedId === pl.id ? 'text-white/70' : isLight ? 'text-zinc-400' : 'text-dark-500'}`}>
-                  {pl.songs?.length ?? 0}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* ── Editor: only when editing (from grid card / pencil, chip switch keeps editor open) ── */}
+      {/* ── Editor: only when editing (from grid card / pencil) ── */}
       {selectedPlaylist && isEditing && (
         <div className={`rounded-xl border overflow-hidden ${isLight ? 'border-zinc-200 bg-zinc-50/80' : 'border-dark-600 bg-dark-800/50'}`}>
                 <div className={`flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between border-b ${isLight ? 'border-zinc-200 bg-white' : 'border-dark-600 bg-dark-800'}`}>

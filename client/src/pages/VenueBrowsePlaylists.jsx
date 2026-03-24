@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Search, Check, ListMusic, Clock, Loader2, Pencil } from 'lucide-react';
+import {
+  ArrowLeft, Search, Check, ListMusic, Clock, Loader2, Pencil, Plus, X,
+} from 'lucide-react';
 import api from '../utils/api';
 import PlaylistManager from '../components/venue/PlaylistManager';
 import PlaylistScheduleModal from '../components/venue/PlaylistScheduleModal';
@@ -124,6 +126,10 @@ export default function VenueBrowsePlaylists() {
   // When a playlist card is tapped, scroll to the PlaylistManager and select it
   const [openPlaylistId, setOpenPlaylistId] = useState(null);
   const [editorBump, setEditorBump] = useState(0);
+  const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [creatingPlaylist, setCreatingPlaylist] = useState(false);
+  const [playlistSync, setPlaylistSync] = useState(0);
 
   const categories = ['All', 'Has songs', 'Empty'];
 
@@ -232,6 +238,26 @@ export default function VenueBrowsePlaylists() {
     openPlaylistInEditor(id);
   }
 
+  async function handleCreatePlaylist(e) {
+    e.preventDefault();
+    if (!newPlaylistName.trim() || !venueCode) return;
+    setCreatingPlaylist(true);
+    try {
+      const res = await api.createPlaylist(venueCode, newPlaylistName.trim());
+      dispatchVenuePlayerMetaRefresh();
+      setNewPlaylistName('');
+      setShowCreatePlaylist(false);
+      setPlaylistSync((s) => s + 1);
+      loadVenue();
+      setOpenPlaylistId(res.data.playlist.id);
+      setEditorBump((b) => b + 1);
+      scrollToPlaylistManager();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not create playlist');
+    }
+    setCreatingPlaylist(false);
+  }
+
   const schedulePl = playlists.find((p) => p.id === schedulePlaylistId);
 
   if (loadError) {
@@ -311,6 +337,48 @@ export default function VenueBrowsePlaylists() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setShowCreatePlaylist((v) => !v)}
+              className="inline-flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors min-h-[44px] w-full sm:w-auto shrink-0"
+            >
+              <Plus className="h-4 w-4 shrink-0" />
+              {showCreatePlaylist ? 'Cancel' : 'Add new playlist'}
+            </button>
+          </div>
+          {showCreatePlaylist && (
+            <div className="mt-4 p-5 bg-white rounded-xl border border-zinc-200 shadow-sm">
+              <h4 className="font-semibold text-zinc-900 text-sm mb-3">Name your playlist</h4>
+              <form onSubmit={handleCreatePlaylist} className="flex flex-col sm:flex-row gap-2">
+                <input
+                  autoFocus
+                  type="text"
+                  value={newPlaylistName}
+                  onChange={(e) => setNewPlaylistName(e.target.value)}
+                  placeholder="e.g. Valentine's Day, New Year's Eve…"
+                  className="flex-1 px-3 py-2 bg-zinc-50 border border-zinc-300 rounded-lg text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm"
+                />
+                <button
+                  type="submit"
+                  disabled={creatingPlaylist || !newPlaylistName.trim()}
+                  className="px-3 py-2 bg-brand-500 text-white rounded-lg text-sm font-semibold hover:bg-brand-600 disabled:opacity-50 shrink-0"
+                >
+                  {creatingPlaylist ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowCreatePlaylist(false); setNewPlaylistName(''); }}
+                  className="px-3 py-2 rounded-lg text-sm min-h-[44px] bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+
+        <div className="mb-6 sm:mb-8">
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
             {categories.map((c) => (
               <CategoryPill
@@ -365,13 +433,14 @@ export default function VenueBrowsePlaylists() {
         {/* ── Playlist Manager: summary by default; Edit opens songs / search / AI ── */}
         <div id="playlist-manager" className="mt-10 max-w-3xl mx-auto">
           <p className="text-sm text-zinc-500 mb-3">
-            Tap a card or a chip to edit songs. Set active and schedule use the buttons on each card.
+            Tap a card to edit songs. Set active and schedule use the buttons on each card.
           </p>
           <PlaylistManager
             venueCode={venueCode}
             variant="light"
             initialPlaylistId={openPlaylistId}
             editorBump={editorBump}
+            playlistSync={playlistSync}
           />
         </div>
       </main>
