@@ -7,8 +7,6 @@ import {
   Check,
   MapPin,
   Hash,
-  DollarSign,
-  Monitor,
   QrCode,
   ListMusic,
   Clock,
@@ -32,7 +30,6 @@ export default function VenueDashboard() {
     requestSettings: { autoplayQueue: true },
   });
   const [showSettings, setShowSettings] = useState(false);
-  const [copiedPlayerUrl, setCopiedPlayerUrl] = useState(false);
   const [copiedVotingUrl, setCopiedVotingUrl] = useState(false);
   const navigate = useNavigate();
 
@@ -120,18 +117,12 @@ export default function VenueDashboard() {
   const baseUrl =
     import.meta.env.VITE_PUBLIC_URL ||
     (typeof window !== 'undefined' ? window.location.origin : '');
-  const playerUrl = `${baseUrl.replace(/\/$/, '')}/venue/player/${venue?.code || ''}`;
   const votingUrl = `${baseUrl.replace(/\/$/, '')}/v/${venue?.code || ''}`;
 
-  const copyToClipboard = (text, type) => {
+  const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    if (type === 'player') {
-      setCopiedPlayerUrl(true);
-      setTimeout(() => setCopiedPlayerUrl(false), 2000);
-    } else {
-      setCopiedVotingUrl(true);
-      setTimeout(() => setCopiedVotingUrl(false), 2000);
-    }
+    setCopiedVotingUrl(true);
+    setTimeout(() => setCopiedVotingUrl(false), 2000);
   };
 
   const effectiveAutoplayMode = useMemo(() => {
@@ -210,50 +201,14 @@ export default function VenueDashboard() {
           </div>
         </div>
 
-        {/* Grid Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Pay-to-Play Earnings */}
-          <div className="p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">
-            <EarningsCard
-              venueCode={venue.code}
-              showPlaceholder={!venue.settings?.requirePaymentForRequest}
-              variant="light"
-              embedded
-            />
-          </div>
-
-          {/* Venue Player */}
-          <div className="p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Monitor className="h-5 w-5 text-blue-600" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-sm font-medium text-zinc-600 uppercase tracking-wide mb-1">
-                  Venue Player
-                </h3>
-                <p className="text-sm text-zinc-500 mb-3">
-                  Open this link on your playback device — it loads your dashboard with the player bar at the top.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm text-brand-600 font-mono truncate">
-                {playerUrl}
-              </code>
-              <button
-                type="button"
-                onClick={() => copyToClipboard(playerUrl, 'player')}
-                className="p-2 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors shrink-0"
-              >
-                {copiedPlayerUrl ? (
-                  <Check className="h-4 w-4 text-green-600" />
-                ) : (
-                  <Copy className="h-4 w-4 text-zinc-600" />
-                )}
-              </button>
-            </div>
-          </div>
+        {/* Pay-to-Play Earnings */}
+        <div className="mb-6 p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">
+          <EarningsCard
+            venueCode={venue.code}
+            showPlaceholder={!venue.settings?.requirePaymentForRequest}
+            variant="light"
+            embedded
+          />
         </div>
 
         {/* Browse & schedule playlists (Figma-style) */}
@@ -338,7 +293,7 @@ export default function VenueDashboard() {
               </code>
               <button
                 type="button"
-                onClick={() => copyToClipboard(votingUrl, 'voting')}
+                onClick={() => copyToClipboard(votingUrl)}
                 className="p-2 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors shrink-0"
               >
                 {copiedVotingUrl ? (
