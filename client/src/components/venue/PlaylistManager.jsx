@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { ListMusic, Search, Plus, Check, X, Loader2, Sparkles, Zap } from 'lucide-react';
 import api from '../../utils/api';
+import { dispatchVenuePlayerMetaRefresh } from '../../utils/venuePlayerEvents';
 
-export default function PlaylistManager({ venueCode, variant = 'dark' }) {
+export default function PlaylistManager({ venueCode, variant = 'dark', initialPlaylistId }) {
   const isLight = variant === 'light';
 
   const [playlists, setPlaylists] = useState([]);
@@ -44,6 +45,13 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
       .finally(() => setLoading(false));
   }, [venueCode]);
 
+  // When parent tells us to open a specific playlist (e.g. card tap)
+  useEffect(() => {
+    if (initialPlaylistId && playlists.some((p) => p.id === initialPlaylistId)) {
+      setSelectedId(initialPlaylistId);
+    }
+  }, [initialPlaylistId, playlists]);
+
   function switchTab(id) {
     setSelectedId(id);
     setQuery('');
@@ -69,6 +77,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
       switchTab(res.data.playlist.id);
       setNewName('');
       setShowCreate(false);
+      dispatchVenuePlayerMetaRefresh();
     } catch (err) {
       alert(err.response?.data?.error || 'Could not create playlist');
     }
@@ -82,6 +91,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
       setPlaylists(res.data.playlists);
       setActivePlaylistId(res.data.activePlaylistId);
       switchTab(res.data.playlists[0]?.id || null);
+      dispatchVenuePlayerMetaRefresh();
     } catch (err) {
       alert(err.response?.data?.error || 'Could not delete playlist');
     }
@@ -91,6 +101,7 @@ export default function PlaylistManager({ venueCode, variant = 'dark' }) {
     try {
       const res = await api.activatePlaylist(venueCode, playlistId);
       setActivePlaylistId(res.data.activePlaylistId);
+      dispatchVenuePlayerMetaRefresh();
     } catch (err) {
       alert(err.response?.data?.error || 'Could not set as active');
     }

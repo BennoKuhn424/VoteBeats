@@ -1,27 +1,50 @@
 import { useEffect } from 'react';
-import { Outlet, useParams, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation, matchPath } from 'react-router-dom';
 import { VenuePlaybackProvider } from '../context/VenuePlaybackContext';
+import VenuePlayerBar from '../components/venue/VenuePlayerBar';
 
 /**
- * Layout for venue dashboard and player. Keeps VenuePlaybackProvider mounted
- * so music continues playing and queue keeps advancing when navigating between pages.
+ * Layout for venue dashboard, playlists, and related routes. Keeps
+ * VenuePlaybackProvider mounted so playback continues across navigation, and
+ * shows a persistent top player bar (Rockbot-style).
  */
 export default function VenueLayout() {
-  const { venueCode: paramVenueCode } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
-  const venueCode = paramVenueCode || localStorage.getItem('speeldit_venue_code') || null;
   const token = localStorage.getItem('speeldit_token');
 
-  // Move redirect into an effect so it never fires during render (React 18 safe)
+  const playerMatch = matchPath({ path: '/venue/player/:venueCode', end: true }, location.pathname);
+  const codeFromPlayerUrl = playerMatch?.params?.venueCode;
+
   useEffect(() => {
-    if (!token) navigate('/venue/login');
-  }, [token, navigate]);
+    if (codeFromPlayerUrl) {
+      localStorage.setItem('speeldit_venue_code', codeFromPlayerUrl);
+    }
+  }, [codeFromPlayerUrl]);
+
+  const venueCode = codeFromPlayerUrl || localStorage.getItem('speeldit_venue_code') || null;
+
+  useEffect(() => {
+    if (!token) {
+      navigate('/venue/login');
+      return;
+    }
+    if (!venueCode) {
+      navigate('/venue/login', { replace: true });
+    }
+  }, [token, venueCode, navigate]);
 
   if (!token) return null;
+  if (!venueCode) return null;
 
   return (
     <VenuePlaybackProvider venueCode={venueCode}>
-      <Outlet />
+      <div className="min-h-screen flex flex-col bg-zinc-50">
+        <VenuePlayerBar venueCode={venueCode} />
+        <div className="flex-1 min-h-0 overflow-auto">
+          <Outlet />
+        </div>
+      </div>
     </VenuePlaybackProvider>
   );
 }

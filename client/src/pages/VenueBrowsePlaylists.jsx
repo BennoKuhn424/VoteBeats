@@ -2,7 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, Check, ListMusic, Clock, Loader2 } from 'lucide-react';
 import api from '../utils/api';
+import PlaylistManager from '../components/venue/PlaylistManager';
 import PlaylistScheduleModal from '../components/venue/PlaylistScheduleModal';
+import { dispatchVenuePlayerMetaRefresh } from '../utils/venuePlayerEvents';
 
 function CategoryPill({ label, isActive, onClick }) {
   return (
@@ -18,12 +20,13 @@ function CategoryPill({ label, isActive, onClick }) {
   );
 }
 
-function PlaylistCard({ playlist, songCount, coverUrl, isActive, isScheduled, isLoading, onSelect, onSchedule }) {
+function PlaylistCard({ playlist, songCount, coverUrl, isActive, isScheduled, isLoading, onSelect, onSchedule, onOpen }) {
   return (
     <div
-      className={`group relative bg-white rounded-xl border shadow-sm overflow-hidden transition-all duration-300 hover:scale-[1.01] hover:shadow-lg ${
+      className={`group relative bg-white rounded-xl border shadow-sm overflow-hidden transition-all duration-300 hover:scale-[1.01] hover:shadow-lg cursor-pointer ${
         isActive ? 'border-brand-500 ring-2 ring-brand-500 ring-offset-2' : 'border-zinc-200'
       }`}
+      onClick={() => onOpen(playlist.id)}
     >
       <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-zinc-200 to-zinc-400">
         {coverUrl ? (
@@ -54,7 +57,7 @@ function PlaylistCard({ playlist, songCount, coverUrl, isActive, isScheduled, is
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => onSelect(playlist.id)}
+            onClick={(e) => { e.stopPropagation(); onSelect(playlist.id); }}
             disabled={isActive || isLoading}
             className={`flex-1 py-2 px-3 rounded-lg font-medium transition-all min-h-[44px] text-sm ${
               isActive
@@ -101,6 +104,9 @@ export default function VenueBrowsePlaylists() {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [schedulePlaylistId, setSchedulePlaylistId] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [generateStatus, setGenerateStatus] = useState(null);
+  // When a playlist card is tapped, scroll to the PlaylistManager and select it
+  const [openPlaylistId, setOpenPlaylistId] = useState(null);
 
   const categories = ['All', 'Has songs', 'Empty'];
 
@@ -117,6 +123,33 @@ export default function VenueBrowsePlaylists() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadVenue(); }, [venueCode]);
+
+  // ── Detect ?generatePlaylist=1 after Yoco redirect ────────────────────────
+  useEffect(() => {
+    if (!venueCode) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('generatePlaylist') !== '1') return;
+
+    window.history.replaceState({}, '', window.location.pathname);
+    const checkoutId = localStorage.getItem(`speeldit_generate_${venueCode}`);
+    if (!checkoutId) return;
+    const savedPrompt = localStorage.getItem(`speeldit_generate_prompt_${venueCode}`) || '';
+    const savedPlaylistId = localStorage.getItem(`speeldit_generate_playlist_${venueCode}`) || 'pl_default';
+    const rawCount = Number(localStorage.getItem(`speeldit_generate_count_${venueCode}`));
+    const savedCount = (!isNaN(rawCount) && rawCount > 0 && rawCount <= 500) ? rawCount : 100;
+    localStorage.removeItem(`speeldit_generate_${venueCode}`);
+    localStorage.removeItem(`speeldit_generate_prompt_${venueCode}`);
+    localStorage.removeItem(`speeldit_generate_playlist_${venueCode}`);
+    localStorage.removeItem(`speeldit_generate_count_${venueCode}`);
+
+    setGenerateStatus('generating');
+
+    let mounted = true;
+    api.generatePlaylist(venueCode, savedPlaylistId, checkoutId, savedPrompt, savedCount)
+      .then((res) => { if (mounted) { setGenerateStatus({ added: res.data.added?.length ?? 0 }); loadVenue(); } })
+      .catch((err) => { if (mounted) setGenerateStatus({ error: err.response?.data?.error || 'Generation failed' }); });
+    return () => { mounted = false; };
+  }, [venueCode]);
 
   const playlists = venue?.playlists || [];
   const activePlaylistId = venue?.activePlaylistId || playlists[0]?.id;
@@ -141,6 +174,7 @@ export default function VenueBrowsePlaylists() {
     try {
       await api.activatePlaylist(venueCode, id);
       loadVenue();
+      dispatchVenuePlayerMetaRefresh();
     } catch (e) {
       alert(e.response?.data?.error || 'Could not activate');
     }
@@ -160,6 +194,13 @@ export default function VenueBrowsePlaylists() {
     } catch (e) {
       alert(e.response?.data?.error || 'Could not save schedule');
     }
+  }
+
+  function handleOpenPlaylist(id) {
+    setOpenPlaylistId(id);
+    setTimeout(() => {
+      document.getElementById('playlist-manager')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   }
 
   const schedulePl = playlists.find((p) => p.id === schedulePlaylistId);
@@ -194,7 +235,7 @@ export default function VenueBrowsePlaylists() {
               >
                 <ArrowLeft className="w-5 h-5 text-zinc-700" />
               </button>
-              <h1 className="text-zinc-900 font-bold text-lg truncate">Browse playlists</h1>
+              <h1 className="text-zinc-900 font-bold text-lg truncate">Playlists</h1>
             </div>
             <div className="flex items-center gap-2">
               <div className="hidden sm:flex items-center border border-zinc-200 rounded-lg px-2 bg-zinc-50">
@@ -221,6 +262,23 @@ export default function VenueBrowsePlaylists() {
           </div>
         </div>
       </header>
+
+      {generateStatus && (
+        <div className={`border-b border-zinc-200 ${generateStatus === 'generating' ? 'bg-blue-50' : generateStatus.error ? 'bg-red-50' : 'bg-green-50'}`}>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-between gap-3">
+            <p className={`text-sm font-medium ${generateStatus === 'generating' ? 'text-blue-700' : generateStatus.error ? 'text-red-700' : 'text-green-700'}`}>
+              {generateStatus === 'generating'
+                ? 'Generating your AI playlist… this takes ~30 seconds'
+                : generateStatus.error
+                  ? `Generation failed: ${generateStatus.error}`
+                  : `Added ${generateStatus.added} songs to your playlist!`}
+            </p>
+            {generateStatus !== 'generating' && (
+              <button type="button" onClick={() => setGenerateStatus(null)} className="text-xs text-zinc-400 hover:text-zinc-600 shrink-0">Dismiss</button>
+            )}
+          </div>
+        </div>
+      )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="mb-6 sm:mb-8">
@@ -252,8 +310,7 @@ export default function VenueBrowsePlaylists() {
                 <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
                   <h2 className="text-white text-xl sm:text-2xl font-bold drop-shadow">{featured.name}</h2>
                   <p className="text-white/90 text-sm mt-1">
-                    Active playlist · {featured.songs?.length || 0} songs · Autofill shuffles from the schedule when a slot
-                    matches.
+                    Active playlist · {featured.songs?.length || 0} songs
                   </p>
                 </div>
               </div>
@@ -279,10 +336,16 @@ export default function VenueBrowsePlaylists() {
                   setSchedulePlaylistId(id);
                   setScheduleOpen(true);
                 }}
+                onOpen={handleOpenPlaylist}
               />
             ))}
           </div>
         )}
+
+        {/* ── Playlist Manager: create, edit songs, search, AI generate ── */}
+        <div id="playlist-manager" className="mt-10 max-w-3xl mx-auto">
+          <PlaylistManager venueCode={venueCode} variant="light" initialPlaylistId={openPlaylistId} />
+        </div>
       </main>
 
       <PlaylistScheduleModal

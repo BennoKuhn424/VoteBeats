@@ -258,8 +258,8 @@ router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddlewar
 
   const venueCode = req.params.venueCode;
   const base = (req.headers.origin || process.env.PUBLIC_URL || 'http://localhost:5173').replace(/\/$/, '');
-  const successUrl = `${base}/venue/player/${venueCode}?generatePlaylist=1`;
-  const cancelUrl = `${base}/venue/player/${venueCode}`;
+  const successUrl = `${base}/venue/playlists?generatePlaylist=1`;
+  const cancelUrl = `${base}/venue/playlists`;
 
   try {
     const response = await fetch('https://payments.yoco.com/api/checkouts', {
