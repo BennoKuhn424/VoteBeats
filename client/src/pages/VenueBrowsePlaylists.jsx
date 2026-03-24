@@ -166,7 +166,6 @@ export default function VenueBrowsePlaylists() {
   }, [playlists, selectedCategory, query]);
 
   const featured = playlists.find((p) => p.id === activePlaylistId) || playlists[0];
-  const featuredCover = featured?.songs?.[0]?.albumArt;
 
   async function handleActivate(id) {
     if (!venueCode) return;
@@ -297,28 +296,12 @@ export default function VenueBrowsePlaylists() {
         {selectedCategory === 'All' && !query && featured && (
           <div className="mb-8 sm:mb-10">
             <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Now playing pool</p>
-            <div className="relative rounded-xl overflow-hidden shadow-lg ring-1 ring-black/5">
-              {/* Fixed height + absolute img + object-cover keeps album art aspect ratio (no stretch). */}
-              <div className="relative h-40 sm:h-48 md:h-52 w-full bg-zinc-900">
-                {featuredCover ? (
-                  <img
-                    src={featuredCover}
-                    alt=""
-                    className="absolute inset-0 h-full w-full object-cover object-center opacity-95 pointer-events-none select-none"
-                    draggable={false}
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-brand-600 to-violet-800">
-                    <ListMusic className="w-20 h-20 text-white/40" />
-                  </div>
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/10" />
-                <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
-                  <h2 className="text-white text-xl sm:text-2xl font-bold drop-shadow">{featured.name}</h2>
-                  <p className="text-white/90 text-sm mt-1">
-                    Active playlist · {featured.songs?.length || 0} songs
-                  </p>
-                </div>
+            <div className="rounded-xl overflow-hidden shadow-lg ring-1 ring-zinc-200 bg-black">
+              <div className="min-h-[140px] sm:min-h-[168px] w-full flex flex-col justify-end p-4 sm:p-6">
+                <h2 className="text-white text-xl sm:text-2xl font-bold">{featured.name}</h2>
+                <p className="text-white/80 text-sm mt-1">
+                  Active playlist · {featured.songs?.length || 0} songs
+                </p>
               </div>
             </div>
           </div>
