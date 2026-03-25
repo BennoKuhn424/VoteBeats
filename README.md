@@ -13,10 +13,13 @@ Full-stack web app for music voting in bars/restaurants using QR codes. Customer
 ```
 speeldit/
 ├── client/          # React frontend (Vite)
+├── e2e/             # Playwright end-to-end specs
 ├── server/
 │   ├── app.js       # Express app factory (rate limits, routes, logging) — imported by tests
+│   ├── instrument.js # Optional Sentry init (only if SENTRY_DSN)
 │   ├── server.js    # HTTP server, Socket.IO, queue auto-advance interval
 │   └── data/        # JSON persistence (dev / small deployments)
+├── playwright.config.js
 └── README.md
 ```
 
@@ -62,6 +65,9 @@ Optional env (full list):
 | `VENUE_EARNINGS_PERCENT` | Venue revenue share % (default `80`) |
 | `ADMIN_SECRET` | Admin API key (header `X-Admin-Key`) |
 | `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_MUSIC_KEY_PATH` | MusicKit token generation (see below) |
+| `SENTRY_DSN` | Optional – [Sentry](https://sentry.io) DSN for API error reporting |
+| `SENTRY_ENVIRONMENT` | Optional – label in Sentry (defaults to `NODE_ENV`) |
+| `SENTRY_TRACES_SAMPLE_RATE` | Optional – `0`–`1` performance trace sampling (default `0` = off) |
 
 ### 2. Frontend
 
@@ -79,6 +85,9 @@ App runs at `http://localhost:5173`. The Vite config proxies `/api` to the backe
 |----------|---------|
 | `VITE_PUBLIC_URL` | Canonical public site URL (optional; falls back to `window.location.origin`) |
 | `VITE_API_URL` | **Production:** full API base including `/api`, e.g. `https://api.yoursite.com/api` |
+| `VITE_SENTRY_DSN` | Optional – browser Sentry DSN (omit in dev to disable) |
+| `VITE_SENTRY_ENVIRONMENT` | Optional – Sentry environment label (defaults to Vite `MODE`) |
+| `VITE_SENTRY_TRACES_SAMPLE_RATE` | Optional – `0`–`1`; if `0`, tracing integration is disabled |
 
 ### Tests & CI
 
@@ -89,11 +98,18 @@ cd server && npm test
 # Client (Vitest + Testing Library)
 cd client && npm test
 
-# From repo root (both)
+# From repo root (unit tests: server + client)
 npm test
+
+# End-to-end (Playwright – starts API + Vite, needs Chromium once: npx playwright install chromium)
+npm run test:e2e
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs server tests, client tests, and a client production build on push/PR to `main`/`master`.
+GitHub Actions runs **server tests**, **client tests**, **client build**, and **Playwright E2E** (Chromium + system deps) on push/PR to `main`/`master`.
+
+**Sentry (optional):** With `SENTRY_DSN` / `VITE_SENTRY_DSN` set, the API registers `setupExpressErrorHandler` and the SPA initializes `@sentry/react` with an error boundary. Without DSNs, Sentry code paths are skipped.
+
+**Still out of scope for the repo:** replacing JSON files with a hosted database, full React Query data layer, and deeper E2E (register → login → playlist) — add those as separate milestones if you need them.
 
 ### 3. Try it
 

@@ -11,6 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@sentry/react": "^10.45.0",
     "axios": "^1.6.2",
     "axios-retry": "^4.5.0",
     "date-fns": "^2.30.0",
@@ -31,6 +32,6 @@
     "postcss": "^8.4.32",
     "tailwindcss": "^3.3.6",
     "vite": "^5.0.8",
-    "vitest": "^4.1.1"
+    "vitest": "^2.1.9"
   }
 }

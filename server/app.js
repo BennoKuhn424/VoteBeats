@@ -47,4 +47,9 @@ app.use('/api/music', require('./routes/music'));
 app.use('/api/venue', require('./routes/venue'));
 app.use('/api/admin', require('./routes/admin'));
 
+if (process.env.SENTRY_DSN) {
+  const Sentry = require('@sentry/node');
+  Sentry.setupExpressErrorHandler(app);
+}
+
 module.exports = { app, queueRouter };

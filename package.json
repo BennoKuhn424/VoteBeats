@@ -8,9 +8,12 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "npm test --prefix server && npm test --prefix client"
+    "test": "npm test --prefix server && npm test --prefix client",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "concurrently": "^9.1.0",
     "typescript": "~5.9.3",
     "vite": "^7.2.4"

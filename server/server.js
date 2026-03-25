@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('./instrument');
 const http = require('http');
 const { Server } = require('socket.io');
 const { advanceToNextSong } = require('./utils/queueAdvance');
