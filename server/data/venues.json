@@ -1,23 +1,4 @@
 {
-  "H928K4": {
-    "code": "H928K4",
-    "name": "LessGo",
-    "location": "Centurion",
-    "owner": {
-      "email": "bennokuhn1@icloud.com",
-      "passwordHash": "$2a$10$pX16N5XobBG6uDWhVtoCZ.Dsf2IVLwFIGVkvX4IAWTQidtwdDgs8a"
-    },
-    "settings": {
-      "allowExplicit": false,
-      "maxSongsPerUser": 3,
-      "genreFilters": [],
-      "blockedArtists": [],
-      "requirePaymentForRequest": true,
-      "requestPriceCents": 500,
-      "autoplayQueue": true
-    },
-    "createdAt": "2026-02-06T21:45:17.885Z"
-  },
   "H86FRW": {
     "code": "H86FRW",
     "name": "Padstal",
