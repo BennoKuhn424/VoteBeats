@@ -122,6 +122,8 @@ The **platform owner** (you) signs in on the same **Venue login** page (`/venue/
 | `OWNER_EMAIL` | Your login email (single platform owner) |
 | `OWNER_PASSWORD_HASH` | Bcrypt hash of your password — **not** plain text |
 
+If `OWNER_EMAIL` is set on the API but **`OWNER_PASSWORD_HASH` is missing**, login with that email returns **503** (not a venue login). If both are set, that email **never** logs in as a venue—only the owner dashboard—so an old venue row with the same email cannot shadow owner login.
+
 Generate the hash locally:
 
 ```bash

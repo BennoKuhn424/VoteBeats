@@ -83,9 +83,16 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password required' });
     }
 
+    // Platform owner: if this email is OWNER_EMAIL, never fall through to venue login
+    // (avoids stale venues on disk with the same email shadowing owner dashboard).
     const ownerEmail = (process.env.OWNER_EMAIL || '').trim().toLowerCase();
     const ownerHash = process.env.OWNER_PASSWORD_HASH;
-    if (ownerEmail && ownerHash && email.trim().toLowerCase() === ownerEmail) {
+    if (ownerEmail && email.trim().toLowerCase() === ownerEmail) {
+      if (!ownerHash) {
+        return res.status(503).json({
+          error: 'Owner login is not configured (set OWNER_PASSWORD_HASH on the API server).',
+        });
+      }
       const match = await bcrypt.compare(password, ownerHash);
       if (match) {
         const token = jwt.sign({ role: 'owner' }, JWT_SECRET, { expiresIn: '7d' });
