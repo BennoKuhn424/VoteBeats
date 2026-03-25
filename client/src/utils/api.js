@@ -16,12 +16,39 @@ const api = axios.create({
   },
 });
 
-// JWT injection
+// JWT injection — never send an old session token on login/register (confuses auth + 401 handling)
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('speeldit_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const path = `${config.baseURL || ''}${config.url || ''}`;
+  const isAuthPublic =
+    path.includes('/auth/login') ||
+    path.includes('/auth/register') ||
+    (config.url || '').includes('auth/login') ||
+    (config.url || '').includes('auth/register');
+  if (!isAuthPublic) {
+    const token = localStorage.getItem('speeldit_token');
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
+
+// Expired or invalid venue session: clear storage and return to login (skip auth form errors)
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    if (error.response?.status !== 401) return Promise.reject(error);
+    const u = String(error.config?.url || '');
+    if (u.includes('auth/login') || u.includes('auth/register')) {
+      return Promise.reject(error);
+    }
+    if (!localStorage.getItem('speeldit_token')) return Promise.reject(error);
+    localStorage.removeItem('speeldit_token');
+    localStorage.removeItem('speeldit_venue_code');
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/venue/login')) {
+      window.location.assign('/venue/login');
+    }
+    return Promise.reject(error);
+  },
+);
 
 // Retry on genuine network errors and 5xx — never on 4xx (user errors)
 axiosRetry(api, {
