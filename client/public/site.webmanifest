@@ -1,0 +1,17 @@
+{
+  "name": "Speeldit",
+  "short_name": "Speeldit",
+  "description": "Be the vibe. Vote on the music at your venue — scan the QR or enter your code.",
+  "icons": [
+    {
+      "src": "/speeldit-logo-transparent.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#7012D4",
+  "background_color": "#0f172a"
+}

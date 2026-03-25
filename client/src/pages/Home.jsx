@@ -22,7 +22,7 @@ export default function Home() {
         <div className="text-center mb-12">
           <Logo size="2xl" className="mx-auto mb-4" />
           <p className="text-carbon-600 text-lg">
-            Control the vibe. Scan the QR at your table or enter the code below.
+            Be the vibe. Scan the QR at your table or enter the code below.
           </p>
         </div>
 
