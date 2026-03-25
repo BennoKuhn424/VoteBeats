@@ -43,6 +43,7 @@ api.interceptors.response.use(
     if (!localStorage.getItem('speeldit_token')) return Promise.reject(error);
     localStorage.removeItem('speeldit_token');
     localStorage.removeItem('speeldit_venue_code');
+    localStorage.removeItem('speeldit_role');
     if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/venue/login')) {
       window.location.assign('/venue/login');
     }
@@ -130,4 +131,6 @@ export default {
     api.get(`/venue/${venueCode}/earnings`, { params: { year, month } }),
   getAnalytics: (venueCode, days) =>
     api.get(`/venue/${venueCode}/analytics`, { params: { days } }),
+
+  getOwnerOverview: () => api.get('/owner/overview'),
 };

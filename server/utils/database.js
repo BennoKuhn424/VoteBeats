@@ -175,4 +175,105 @@ module.exports = {
     });
     return byVenue;
   },
+
+  /** Platform owner dashboard — aggregates across all venues */
+  getOwnerOverview: () => {
+    const venues = readJSON('venues.json');
+    const venueList = Object.entries(venues).map(([code, v]) => ({
+      code,
+      name: v.name || code,
+      location: v.location || '',
+      createdAt: v.createdAt || null,
+    }));
+
+    const payments = readJSON('payments.json');
+    const list = Array.isArray(payments.list) ? payments.list : [];
+    const allTimeGrossCents = list.reduce((s, p) => s + (p.amountCents || 0), 0);
+
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth() + 1;
+    const start = new Date(y, m - 1, 1).getTime();
+    const end = new Date(y, m, 0, 23, 59, 59, 999).getTime();
+    const thisMonth = list.filter((p) => p.createdAt >= start && p.createdAt <= end);
+    const monthGrossCents = thisMonth.reduce((s, p) => s + (p.amountCents || 0), 0);
+
+    const venueSharePercent = parseInt(process.env.VENUE_EARNINGS_PERCENT, 10);
+    const vsp = Number.isFinite(venueSharePercent) && venueSharePercent >= 0 && venueSharePercent <= 100
+      ? venueSharePercent
+      : 80;
+    const platformSharePercent = 100 - vsp;
+
+    const allTimePlatformCents = Math.round(allTimeGrossCents * (platformSharePercent / 100));
+    const allTimeVenueCents = Math.round(allTimeGrossCents * (vsp / 100));
+    const monthPlatformCents = Math.round(monthGrossCents * (platformSharePercent / 100));
+    const monthVenueCents = Math.round(monthGrossCents * (vsp / 100));
+
+    const byVenue = {};
+    thisMonth.forEach((p) => {
+      if (!byVenue[p.venueCode]) byVenue[p.venueCode] = { grossCents: 0, count: 0 };
+      byVenue[p.venueCode].grossCents += p.amountCents || 0;
+      byVenue[p.venueCode].count += 1;
+    });
+    const venueMonthRows = Object.entries(byVenue)
+      .map(([code, data]) => {
+        const v = venues[code];
+        return {
+          venueCode: code,
+          venueName: v?.name || code,
+          grossCents: data.grossCents,
+          grossRand: (data.grossCents / 100).toFixed(2),
+          platformShareRand: ((data.grossCents * platformSharePercent) / 100 / 100).toFixed(2),
+          paymentsCount: data.count,
+        };
+      })
+      .sort((a, b) => b.grossCents - a.grossCents);
+
+    const recentPayments = [...list]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 20)
+      .map((p) => ({
+        venueCode: p.venueCode,
+        amountCents: p.amountCents,
+        amountRand: ((p.amountCents || 0) / 100).toFixed(2),
+        createdAt: p.createdAt,
+      }));
+
+    let analyticsEvents24h = 0;
+    try {
+      const analytics = readJSON('analytics.json');
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      for (const events of Object.values(analytics)) {
+        if (!Array.isArray(events)) continue;
+        analyticsEvents24h += events.filter((e) => e.timestamp >= cutoff).length;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+
+    return {
+      venueCount: venueList.length,
+      venues: venueList,
+      allTimeGrossCents,
+      allTimeGrossRand: (allTimeGrossCents / 100).toFixed(2),
+      allTimePlatformCents,
+      allTimePlatformRand: (allTimePlatformCents / 100).toFixed(2),
+      allTimeVenueCents,
+      allTimeVenueRand: (allTimeVenueCents / 100).toFixed(2),
+      monthGrossCents,
+      monthGrossRand: (monthGrossCents / 100).toFixed(2),
+      monthPlatformCents,
+      monthPlatformRand: (monthPlatformCents / 100).toFixed(2),
+      monthVenueCents,
+      monthVenueRand: (monthVenueCents / 100).toFixed(2),
+      venueSharePercent: vsp,
+      platformSharePercent,
+      paymentCountAllTime: list.length,
+      paymentCountMonth: thisMonth.length,
+      venueMonthRows,
+      recentPayments,
+      analyticsEvents24h,
+      monthLabel: `${y}-${String(m).padStart(2, '0')}`,
+    };
+  },
 };

@@ -30,8 +30,15 @@ export default function VenueLogin() {
       } else {
         const res = await api.login(email, password);
         localStorage.setItem('speeldit_token', res.data.token);
-        localStorage.setItem('speeldit_venue_code', res.data.venue?.code ?? res.data.venueCode);
-        navigate('/venue/dashboard');
+        if (res.data.role === 'owner') {
+          localStorage.setItem('speeldit_role', 'owner');
+          localStorage.removeItem('speeldit_venue_code');
+          navigate('/owner');
+        } else {
+          localStorage.removeItem('speeldit_role');
+          localStorage.setItem('speeldit_venue_code', res.data.venue?.code ?? res.data.venueCode);
+          navigate('/venue/dashboard');
+        }
       }
     } catch (err) {
       const msg = err.response?.data?.error || 'Something went wrong';

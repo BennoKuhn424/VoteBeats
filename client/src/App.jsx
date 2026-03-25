@@ -7,11 +7,13 @@ import VenueLayout from './layouts/VenueLayout';
 import VenueDashboard from './pages/VenueDashboard';
 import VenuePlayer from './pages/VenuePlayer';
 import VenueBrowsePlaylists from './pages/VenueBrowsePlaylists';
+import OwnerDashboard from './pages/OwnerDashboard';
 
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
+      <Route path="/owner" element={<OwnerDashboard />} />
       <Route path="/v/:venueCode" element={<CustomerVoting />} />
       <Route path="/v/:venueCode/request-success" element={<RequestSuccess />} />
       <Route path="/venue/login" element={<VenueLogin />} />

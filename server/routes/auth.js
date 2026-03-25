@@ -57,6 +57,10 @@ router.post('/register', async (req, res) => {
 
     db.saveVenue(code, venue);
 
+    if (process.env.OWNER_EMAIL && email.trim().toLowerCase() === process.env.OWNER_EMAIL.trim().toLowerCase()) {
+      return res.status(400).json({ error: 'This email is reserved for platform owner' });
+    }
+
     const token = jwt.sign({ venueCode: code }, JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({
@@ -77,6 +81,17 @@ router.post('/login', async (req, res) => {
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password required' });
+    }
+
+    const ownerEmail = (process.env.OWNER_EMAIL || '').trim().toLowerCase();
+    const ownerHash = process.env.OWNER_PASSWORD_HASH;
+    if (ownerEmail && ownerHash && email.trim().toLowerCase() === ownerEmail) {
+      const match = await bcrypt.compare(password, ownerHash);
+      if (match) {
+        const token = jwt.sign({ role: 'owner' }, JWT_SECRET, { expiresIn: '7d' });
+        return res.json({ token, role: 'owner' });
+      }
+      return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     const venues = db.getAllVenues();

@@ -29,12 +29,17 @@ export default function VenueLayout() {
       navigate('/venue/login');
       return;
     }
+    if (localStorage.getItem('speeldit_role') === 'owner') {
+      navigate('/owner', { replace: true });
+      return;
+    }
     if (!venueCode) {
       navigate('/venue/login', { replace: true });
     }
   }, [token, venueCode, navigate]);
 
   if (!token) return null;
+  if (localStorage.getItem('speeldit_role') === 'owner') return null;
   if (!venueCode) return null;
 
   return (

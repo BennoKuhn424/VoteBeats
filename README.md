@@ -111,6 +111,28 @@ GitHub Actions runs **server tests**, **client tests**, **client build**, and **
 
 **Still out of scope for the repo:** replacing JSON files with a hosted database, full React Query data layer, and deeper E2E (register → login → playlist) — add those as separate milestones if you need them.
 
+### Platform owner dashboard
+
+The **platform owner** (you) signs in on the same **Venue login** page (`/venue/login`). If credentials match server env, you are sent to **`/owner`** with a full-screen dashboard: total and monthly revenue, **your platform cut** vs **venue share** (from `VENUE_EARNINGS_PERCENT`), per-venue monthly breakdown, all registered venues, recent payments, analytics event volume (24h), and **live Socket.IO connection count** (approximate “active” clients).
+
+**Required server environment (never commit real passwords to git):**
+
+| Variable | Purpose |
+|----------|---------|
+| `OWNER_EMAIL` | Your login email (single platform owner) |
+| `OWNER_PASSWORD_HASH` | Bcrypt hash of your password — **not** plain text |
+
+Generate the hash locally:
+
+```bash
+cd server
+npm run hash-owner-password -- "your-password-here"
+```
+
+Paste the printed hash into `OWNER_PASSWORD_HASH` on your host (e.g. Render). Restart the API.
+
+Registration is blocked for the same email as `OWNER_EMAIL` so it stays reserved for you.
+
 ### 3. Try it
 
 1. Open http://localhost:5173
@@ -128,6 +150,7 @@ GitHub Actions runs **server tests**, **client tests**, **client build**, and **
 - **Music:** `GET /api/music/search?q=...&venueCode=...` (legacy)
 - **Venue:** `GET /api/venue/:venueCode`, `PUT /api/venue/:venueCode/settings`, `GET /api/venue/:venueCode/earnings` (auth required)
 - **Admin:** `GET /api/admin/venue-earnings?year=2025&month=2` (requires `X-Admin-Key: <ADMIN_SECRET>` header)
+- **Owner:** `GET /api/owner/overview` (requires `Authorization: Bearer <token>` from owner login — JWT with `role: 'owner'`)
 
 ## Data (server/data/)
 

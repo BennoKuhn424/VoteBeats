@@ -46,6 +46,7 @@ app.use('/api/lyrics', require('./routes/lyrics'));
 app.use('/api/music', require('./routes/music'));
 app.use('/api/venue', require('./routes/venue'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/owner', require('./routes/owner'));
 
 if (process.env.SENTRY_DSN) {
   const Sentry = require('@sentry/node');

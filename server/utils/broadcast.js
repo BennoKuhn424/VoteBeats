@@ -21,4 +21,14 @@ function broadcastVolumeFeedback(venueCode, payload) {
   }
 }
 
-module.exports = { init, broadcastQueue, broadcastVolumeFeedback };
+/** Live Socket.IO connections (customers + venue dashboards; approximate “active users”). */
+function getConnectedCount() {
+  if (!_io) return 0;
+  try {
+    return _io.engine?.clientsCount ?? 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+module.exports = { init, broadcastQueue, broadcastVolumeFeedback, getConnectedCount };
