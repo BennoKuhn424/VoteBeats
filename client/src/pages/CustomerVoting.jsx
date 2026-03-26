@@ -7,6 +7,7 @@ import { useVisibilityAwarePolling } from '../hooks/useVisibilityAwarePolling';
 import NowPlaying from '../components/customer/NowPlaying';
 import UpcomingQueue from '../components/customer/UpcomingQueue';
 import SearchBar from '../components/shared/SearchBar';
+import Logo from '../components/shared/Logo';
 import LyricsView from '../components/customer/LyricsView';
 import VolumeSuggestion from '../components/customer/VolumeSuggestion';
 
@@ -125,8 +126,9 @@ export default function CustomerVoting() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-dark-950 text-white flex justify-center items-center pb-safe">
-        <div className="text-center">
+      <div className="min-h-screen bg-dark-950 text-white flex justify-center items-center pb-safe px-5">
+        <div className="text-center max-w-xs">
+          <Logo size="2xl" className="mx-auto mb-6 opacity-90" />
           <div className="w-10 h-10 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-dark-400">Connecting to venue…</p>
         </div>
@@ -137,7 +139,11 @@ export default function CustomerVoting() {
   return (
     <div className="min-h-screen bg-dark-950 text-white pb-safe">
       <div className="container mx-auto px-5 py-6 max-w-lg">
-        <h1 className="text-2xl font-extrabold mb-4 text-center tracking-tight">You Pick the Vibe 🎶</h1>
+        <header className="text-center mb-6">
+          <Logo size="2xl" className="mx-auto mb-4" />
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">Be the vibe</h1>
+          <p className="text-dark-400 text-sm mt-2">Vote and request what plays next</p>
+        </header>
 
         {error && (
           <p className="mb-4 text-xs text-center text-amber-400 bg-dark-900 border border-amber-500/40 rounded-lg px-3 py-2">

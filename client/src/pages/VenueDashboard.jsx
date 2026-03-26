@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useVisibilityAwarePolling } from '../hooks/useVisibilityAwarePolling';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Settings,
@@ -43,6 +44,22 @@ export default function VenueDashboard() {
     }
   }, [navigate]);
 
+  const fetchQueue = useCallback(async (code) => {
+    try {
+      const response = await api.getQueue(code);
+      setQueue(response.data);
+    } catch (err) {
+      console.error('Error fetching queue:', err);
+    }
+  }, []);
+
+  const pollQueue = useCallback(() => {
+    const code = localStorage.getItem('speeldit_venue_code');
+    if (code) fetchQueue(code);
+  }, [fetchQueue]);
+
+  useVisibilityAwarePolling(pollQueue, 3000);
+
   useEffect(() => {
     const token = localStorage.getItem('speeldit_token');
     const venueCode = localStorage.getItem('speeldit_venue_code');
@@ -54,10 +71,7 @@ export default function VenueDashboard() {
 
     fetchVenue(venueCode);
     fetchQueue(venueCode);
-
-    const interval = setInterval(() => fetchQueue(venueCode), 3000);
-    return () => clearInterval(interval);
-  }, [navigate, fetchVenue]);
+  }, [navigate, fetchVenue, fetchQueue]);
 
   useEffect(() => {
     const code = venue?.code;
@@ -73,15 +87,6 @@ export default function VenueDashboard() {
       window.removeEventListener(VENUE_PLAYER_META_REFRESH, onMeta);
     };
   }, [venue?.code, fetchVenue]);
-
-  async function fetchQueue(code) {
-    try {
-      const response = await api.getQueue(code);
-      setQueue(response.data);
-    } catch (err) {
-      console.error('Error fetching queue:', err);
-    }
-  }
 
   async function handleSkip() {
     if (!venue) return;

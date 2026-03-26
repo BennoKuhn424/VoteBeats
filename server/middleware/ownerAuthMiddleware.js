@@ -19,7 +19,7 @@ function ownerAuthMiddleware(req, res, next) {
     if (decoded.role !== 'owner') {
       return res.status(403).json({ error: 'Owner access required' });
     }
-    req.owner = { role: 'owner' };
+    req.owner = { ...decoded, role: 'owner' };
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired token' });

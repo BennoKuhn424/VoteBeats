@@ -19,8 +19,8 @@ function requestLogger(req, res, next) {
         ms: Date.now() - start,
       });
       console.log(line);
-    } catch (_) {
-      /* ignore */
+    } catch (err) {
+      console.error('Request logger error:', err);
     }
   });
   next();

@@ -34,34 +34,47 @@ export default function RequestSuccess() {
 
     let attempts = 0;
     const maxAttempts = 15;
+    let cancelled = false;
+    const inFlight = { current: false };
 
     const check = async () => {
+      if (inFlight.current) return false;
+      inFlight.current = true;
       try {
-        const res = await api.getRequestStatus(venueCode, checkoutId);
-        if (res.data?.fulfilled) {
-          setStatus('success');
+        try {
+          const res = await api.getRequestStatus(venueCode, checkoutId);
+          if (res.data?.fulfilled) {
+            if (!cancelled) setStatus('success');
+            return true;
+          }
+        } catch {
+          // Ignore
+        }
+        attempts++;
+        if (attempts >= maxAttempts) {
+          if (!cancelled) setStatus('timeout');
           return true;
         }
-      } catch {
-        // Ignore
+        return false;
+      } finally {
+        inFlight.current = false;
       }
-      attempts++;
-      if (attempts >= maxAttempts) {
-        setStatus('timeout');
-        return true;
-      }
-      return false;
     };
 
-    const interval = setInterval(async () => {
-      if (await check()) clearInterval(interval);
+    const interval = setInterval(() => {
+      check().then((done) => {
+        if (done) clearInterval(interval);
+      });
     }, 500);
 
     check().then((done) => {
       if (done) clearInterval(interval);
     });
 
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [checkoutId, venueCode]);
 
   return (

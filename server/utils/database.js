@@ -8,23 +8,52 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 console.log('[DB] Data directory:', DATA_DIR, process.env.DATA_DIR ? '(persistent)' : '(ephemeral - set DATA_DIR for Render disk)');
 
 // In-memory write-through cache — avoids a readFileSync on every hot-path read.
-// Cache entries are populated on first read and kept in sync on every write.
+// Cache entries are populated on first read and kept in sync on every successful write.
 const cache = {};
 
 function readJSON(filename) {
   if (cache[filename] !== undefined) return cache[filename];
   const filepath = path.join(DATA_DIR, filename);
-  const data = fs.existsSync(filepath)
-    ? JSON.parse(fs.readFileSync(filepath, 'utf8'))
-    : {};
+  let data;
+  if (fs.existsSync(filepath)) {
+    try {
+      const raw = fs.readFileSync(filepath, 'utf8');
+      data = JSON.parse(raw);
+    } catch (err) {
+      console.error(`[DB] Corrupt or unreadable ${filename}, using empty object:`, err.message);
+      data = {};
+    }
+  } else {
+    data = {};
+  }
   cache[filename] = data;
   return data;
 }
 
+/**
+ * Persist JSON atomically: write to a temp file, then rename (same filesystem).
+ * Cache is updated only after a successful write so a failed disk write cannot
+ * leave memory and disk inconsistent.
+ */
 function writeJSON(filename, data) {
-  cache[filename] = data;
   const filepath = path.join(DATA_DIR, filename);
-  fs.writeFileSync(filepath, JSON.stringify(data, null, 2));
+  const json = JSON.stringify(data, null, 2);
+  const tmp = path.join(
+    DATA_DIR,
+    `.${filename}.${process.pid}.${Date.now()}.tmp`
+  );
+  try {
+    fs.writeFileSync(tmp, json, 'utf8');
+    fs.renameSync(tmp, filepath);
+    cache[filename] = data;
+  } catch (err) {
+    try {
+      if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+    } catch (_) {
+      /* ignore */
+    }
+    throw err;
+  }
 }
 
 module.exports = {
@@ -101,6 +130,21 @@ module.exports = {
       delete pending[checkoutId];
       writeJSON('pendingPayments.json', pending);
     }
+  },
+  /** Remove pending checkout rows older than maxAgeMs (abandoned checkouts). */
+  purgeStalePendingPayments: (maxAgeMs) => {
+    const pending = readJSON('pendingPayments.json');
+    const now = Date.now();
+    let removed = 0;
+    for (const [id, row] of Object.entries(pending)) {
+      const created = row?.createdAt || 0;
+      if (now - created > maxAgeMs) {
+        delete pending[id];
+        removed += 1;
+      }
+    }
+    if (removed > 0) writeJSON('pendingPayments.json', pending);
+    return removed;
   },
 
   // Payments log (for earnings tracking)

@@ -38,6 +38,35 @@ function recordAutofillPlay(venueCode, appleId) {
   if (pool.length > 50) pool.shift();
 }
 
+/** Fisher–Yates — uniform permutation; `sort(() => Math.random() - 0.5)` is biased. */
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** Hour (0–23) for explicit-content window; uses venue.settings.timezone when set (IANA). */
+function getVenueLocalHour(venue) {
+  const tz = venue?.settings?.timezone;
+  if (tz && typeof tz === 'string') {
+    try {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: tz,
+        hour: 'numeric',
+        hour12: false,
+      }).formatToParts(new Date());
+      const h = parts.find((p) => p.type === 'hour');
+      if (h) return parseInt(h.value, 10);
+    } catch (_) {
+      /* invalid IANA */
+    }
+  }
+  return new Date().getHours();
+}
+
 // Maps venue genre labels (from Settings.jsx) to what Apple Music actually stores
 // in genre metadata. Apple Music's tags often differ from common genre names —
 // e.g. "Indie" songs are tagged "Alternative", "Hip-Hop" songs are "Hip-Hop/Rap", etc.
@@ -533,7 +562,7 @@ function filterByVenueSettings(songs, venue) {
   // If explicitAfterHour is set, it overrides allowExplicit during the scheduled hours.
   const explicitAfterHour = venue.settings.explicitAfterHour;
   if (typeof explicitAfterHour === 'number' && explicitAfterHour >= 0 && explicitAfterHour <= 23) {
-    const currentHour = new Date().getHours();
+    const currentHour = getVenueLocalHour(venue);
     const explicitAllowedNow = currentHour >= explicitAfterHour;
     if (!explicitAllowedNow) {
       filtered = filtered.filter((s) => !s.isExplicit);
@@ -643,12 +672,12 @@ async function searchByGenre(genres, venueCode) {
   } else if (regularGenres.length > 0) {
     searchTerms = [...new Set(regularGenres.flatMap(expandGenre))];
   } else {
-    searchTerms = [...BROAD_SEARCH_TERMS].sort(() => Math.random() - 0.5).slice(0, 5);
+    searchTerms = shuffleArray(BROAD_SEARCH_TERMS).slice(0, 5);
   }
 
   if (token) {
     // Shuffle so repeated calls rotate through all selected genres.
-    const shuffled = [...searchTerms].sort(() => Math.random() - 0.5);
+    const shuffled = shuffleArray(searchTerms);
     for (const term of shuffled) {
       try {
         // Use a large random offset so every autofill call reaches a different

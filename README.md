@@ -18,6 +18,8 @@ speeldit/
 │   ├── app.js       # Express app factory (rate limits, routes, logging) — imported by tests
 │   ├── instrument.js # Optional Sentry init (only if SENTRY_DSN)
 │   ├── server.js    # HTTP server, Socket.IO, queue auto-advance interval
+│   ├── routes/      # queue.js mounts queueVote, queuePayment, queueAutofill helpers
+│   ├── utils/yoco.js # Shared Yoco checkout verify + webhook HMAC
 │   └── data/        # JSON persistence (dev / small deployments)
 ├── playwright.config.js
 └── README.md
@@ -45,6 +47,16 @@ Server runs at `http://localhost:3000`.
 
 - **`trust proxy`** – Set `NODE_ENV=production` and, if the API sits behind a reverse proxy (Render, Railway, nginx), set `TRUST_PROXY_HOPS` (default `1`) so client IP and rate limits are correct.
 - **Structured request logs** – Each finished request logs one JSON line to stdout: `method`, `path`, `status`, `ms` (health routes are skipped to reduce noise). Point your host’s log drain at this stream.
+- **CORS policy** – In production (`NODE_ENV=production`), the server **requires** an explicit origin allowlist. Set `CORS_ORIGINS` (comma-separated) and/or `PUBLIC_URL` so the server knows which frontends may call the API and connect via Socket.IO. Values are trimmed and trailing slashes are stripped; whitespace-only values are treated as empty. If neither variable resolves to at least one real origin, the server **refuses to start** with a clear error. In development, `localhost:5173` is allowed automatically.
+
+  To verify your production config locally:
+  ```bash
+  NODE_ENV=production CORS_ORIGINS= PUBLIC_URL= node -e "require('./app')"
+  # → throws FATAL: No CORS origins configured for production …
+  ```
+
+- **Security headers** – [`helmet`](https://helmetjs.github.io/) is applied to all responses, adding `X-Content-Type-Options`, `Strict-Transport-Security`, `X-Frame-Options`, and other hardening headers. Cross-origin resource/embedder policies are relaxed so the SPA + Socket.IO clients on a different origin keep working.
+- **Graceful shutdown** – The process handles `SIGTERM` and `SIGINT`: it stops accepting new connections, closes Socket.IO so clients disconnect cleanly, then exits. A 12-second timeout forces exit if shutdown stalls. This matters on PaaS hosts (Render, Railway, Kubernetes) that send `SIGTERM` before killing the container — without a handler the process would be hard-killed mid-request.
 - **Rate limits** – `express-rate-limit` on the API:
   - `/api/auth/*`: `RATE_LIMIT_AUTH_MAX` attempts per 15 minutes per IP (default **40**).
   - Other `/api/*` routes (except auth paths): `RATE_LIMIT_API_MAX` requests per minute per IP (default **500**). Raise this if many customer devices share one public IP (e.g. venue Wi‑Fi NAT).
@@ -55,13 +67,15 @@ Optional env (full list):
 |----------|---------|
 | `PORT` | Listen port (default `3000`) |
 | `NODE_ENV` | Set to `production` for trust proxy + stricter defaults |
+| `CORS_ORIGINS` | Comma-separated allowed origins for CORS (e.g. `https://yourapp.vercel.app`). **Required in production** (along with or instead of `PUBLIC_URL`). Values are trimmed; whitespace-only is rejected. |
 | `JWT_SECRET` | **Required in production** – signing venue JWTs |
 | `TRUST_PROXY_HOPS` | Trust `X-Forwarded-For` hops (default `1`) |
 | `RATE_LIMIT_AUTH_MAX` | Auth route cap per 15 min / IP (default `40`) |
 | `RATE_LIMIT_API_MAX` | General API cap per minute / IP (default `500`) |
 | `APPLE_MUSIC_DEVELOPER_TOKEN` | Pre-generated Apple Music token (optional if using key file) |
 | `PUBLIC_URL` | Frontend URL for redirects (e.g. `https://yourapp.vercel.app`) |
-| `YOCO_SECRET_KEY` | Yoco secret for pay-to-play |
+| `YOCO_SECRET_KEY` | Yoco API secret for pay-to-play (Bearer token to verify checkouts) |
+| `YOCO_WEBHOOK_SECRET` | Optional `whsec_…` signing secret from Yoco — when set, incoming webhooks must pass HMAC verification (recommended in production) |
 | `VENUE_EARNINGS_PERCENT` | Venue revenue share % (default `80`) |
 | `ADMIN_SECRET` | Admin API key (header `X-Admin-Key`) |
 | `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_MUSIC_KEY_PATH` | MusicKit token generation (see below) |

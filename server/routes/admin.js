@@ -1,12 +1,18 @@
+const crypto = require('crypto');
 const express = require('express');
 const db = require('../utils/database');
 
 const router = express.Router();
 
 function adminAuth(req, res, next) {
-  const key = req.headers['x-admin-key'] || req.query.adminKey;
+  const key = req.headers['x-admin-key'];
   const secret = process.env.ADMIN_SECRET;
-  if (!secret || key !== secret) {
+  if (!secret || key == null || key === '') {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  const a = Buffer.from(String(key), 'utf8');
+  const b = Buffer.from(String(secret), 'utf8');
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
     return res.status(403).json({ error: 'Unauthorized' });
   }
   next();

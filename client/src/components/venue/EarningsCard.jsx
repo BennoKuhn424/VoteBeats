@@ -25,7 +25,6 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
   }
 
   const isLight = variant === 'light';
-  const Wrapper = embedded ? 'div' : 'div';
   const cardClass = embedded
     ? ''
     : isLight
@@ -34,7 +33,7 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
 
   if (loading) {
     return (
-      <Wrapper className={cardClass}>
+      <div className={cardClass}>
         {isLight && (
           <div className="flex items-start gap-3 mb-4">
             <div className="p-2 bg-orange-100 rounded-lg">
@@ -52,13 +51,13 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
             <div className="h-8 bg-dark-600 rounded w-1/3" />
           </>
         )}
-      </Wrapper>
+      </div>
     );
   }
 
   if (showPlaceholder) {
     return (
-      <Wrapper className={cardClass}>
+      <div className={cardClass}>
         {isLight && (
           <div className="flex items-start gap-3 mb-4">
             <div className="p-2 bg-orange-100 rounded-lg">
@@ -84,7 +83,7 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
             </p>
           </>
         )}
-      </Wrapper>
+      </div>
     );
   }
 
@@ -95,7 +94,7 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
 
   if (isLight) {
     return (
-      <Wrapper className={cardClass}>
+      <div className={cardClass}>
         <div className="flex items-start gap-3 mb-4">
           <div className="p-2 bg-orange-100 rounded-lg">
             <DollarSign className="h-5 w-5 text-brand-600" />
@@ -115,12 +114,12 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
             </p>
           )}
         </div>
-      </Wrapper>
+      </div>
     );
   }
 
   return (
-    <Wrapper className={cardClass}>
+    <div className={cardClass}>
       <h3 className="text-sm font-medium text-dark-400 uppercase tracking-wide mb-2">
         Pay-to-play earnings
       </h3>
@@ -133,6 +132,6 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
           Gross: R{grossRand.toFixed(2)} (80% venue share)
         </p>
       )}
-    </Wrapper>
+    </div>
   );
 }

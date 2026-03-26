@@ -30,8 +30,16 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Email, password and venue name required' });
     }
 
+    // Block reserved owner email before any writes
+    if (process.env.OWNER_EMAIL && email.trim().toLowerCase() === process.env.OWNER_EMAIL.trim().toLowerCase()) {
+      return res.status(400).json({ error: 'Email not available' });
+    }
+
+    const emailNorm = email.trim().toLowerCase();
     const venues = db.getAllVenues();
-    const existing = Object.values(venues).find((v) => v.owner?.email === email);
+    const existing = Object.values(venues).find(
+      (v) => v.owner?.email?.toLowerCase() === emailNorm
+    );
     if (existing) {
       return res.status(400).json({ error: 'Email already registered' });
     }
@@ -43,7 +51,7 @@ router.post('/register', async (req, res) => {
       code,
       name: venueName,
       location: location || '',
-      owner: { email, passwordHash },
+      owner: { email: emailNorm, passwordHash },
       settings: {
         allowExplicit: false,
         maxSongsPerUser: 3,
@@ -56,10 +64,6 @@ router.post('/register', async (req, res) => {
     };
 
     db.saveVenue(code, venue);
-
-    if (process.env.OWNER_EMAIL && email.trim().toLowerCase() === process.env.OWNER_EMAIL.trim().toLowerCase()) {
-      return res.status(400).json({ error: 'This email is reserved for platform owner' });
-    }
 
     const token = jwt.sign({ venueCode: code }, JWT_SECRET, { expiresIn: '7d' });
 
