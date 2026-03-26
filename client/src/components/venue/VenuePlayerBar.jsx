@@ -34,6 +34,7 @@ export default function VenuePlayerBar({ venueCode }) {
     autofillNotice,
     dismissAutofillNotice,
     retryInit,
+    playbackLoading,
     playPause,
     skip,
     restart,
@@ -47,6 +48,7 @@ export default function VenuePlayerBar({ venueCode }) {
   const isTransitioning = playerState === PLAYER_STATES.TRANSITIONING;
   const waitingForGesture = playerState === PLAYER_STATES.WAITING;
   const musicReady = playerState !== PLAYER_STATES.NOT_READY;
+  const busyPlayback = isTransitioning || playbackLoading;
 
   const nowPlaying = queue.nowPlaying;
   const rawProgress = playbackDuration > 0 ? (playbackTime / playbackDuration) * 100 : 0;
@@ -163,7 +165,7 @@ export default function VenuePlayerBar({ venueCode }) {
           {!musicReady && (
             <div className="flex items-center gap-2 text-zinc-500 pr-1">
               <Loader2 className="h-5 w-5 animate-spin text-brand-500" />
-              <span className="text-sm hidden md:inline">Apple Music…</span>
+              <span className="text-sm hidden md:inline">Connecting to Apple Music…</span>
             </div>
           )}
           {musicReady && !isAuthorized && (
@@ -181,7 +183,7 @@ export default function VenuePlayerBar({ venueCode }) {
               <button
                 type="button"
                 onClick={restart}
-                disabled={isTransitioning}
+                disabled={busyPlayback}
                 className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 disabled:opacity-40"
                 aria-label="Back to start"
               >
@@ -190,11 +192,11 @@ export default function VenuePlayerBar({ venueCode }) {
               <button
                 type="button"
                 onClick={playPause}
-                disabled={isTransitioning}
+                disabled={busyPlayback}
                 className="w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center rounded-full text-white bg-brand-500 hover:bg-brand-600 shadow-md disabled:opacity-60"
                 aria-label={isPlaying ? 'Pause' : 'Play'}
               >
-                {isTransitioning ? (
+                {busyPlayback ? (
                   <Loader2 className="h-6 w-6 animate-spin" />
                 ) : isPlaying ? (
                   <Pause className="h-6 w-6 sm:h-7 sm:w-7" />
@@ -205,14 +207,14 @@ export default function VenuePlayerBar({ venueCode }) {
               <button
                 type="button"
                 onClick={skip}
-                disabled={isTransitioning}
+                disabled={busyPlayback}
                 className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 disabled:opacity-40"
                 aria-label="Next"
               >
                 <SkipForward className="h-5 w-5" />
               </button>
-              <span className="text-xs font-medium text-brand-600 w-16 text-center hidden md:inline select-none">
-                {isTransitioning ? '…' : isPlaying ? 'Playing' : waitingForGesture ? 'Tap play' : 'Paused'}
+              <span className="text-xs font-medium text-brand-600 w-20 text-center hidden md:inline select-none">
+                {busyPlayback ? 'Loading…' : isPlaying ? 'Playing' : waitingForGesture ? 'Tap play' : 'Paused'}
               </span>
             </div>
           )}

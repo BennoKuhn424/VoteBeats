@@ -12,6 +12,13 @@ function withTimeout(promise, ms) {
   ]).finally(() => clearTimeout(timer));
 }
 
+// MusicKit can be slow on cellular / cold cache. These must stay below the transition
+// watchdog and play-lock safety so we never reset UI mid-flight.
+const PLAY_SET_QUEUE_MS = 28_000;
+const PLAY_START_MS = 18_000;
+const TRANSITION_WATCHDOG_MS = PLAY_SET_QUEUE_MS + PLAY_START_MS + 8_000; // buffer for stop() + delays
+const PLAY_LOCK_SAFETY_MS = TRANSITION_WATCHDOG_MS + 2_000;
+
 // Lower number = higher priority. Soft notices never overwrite hard errors.
 const ERROR_PRIORITY = {
   'Could not connect to Apple Music — tap Retry': 1,
@@ -64,6 +71,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     const parsed = Number(localStorage.getItem('speeldit_volume'));
     return (!isNaN(parsed) && parsed >= 0) ? Math.min(parsed, 100) : 70;
   });
+  /** True while playSong holds the lock — shows loading even when beginTransition() was skipped (e.g. first tap). */
+  const [playbackLoading, setPlaybackLoading] = useState(false);
 
   // ── Refs (internal — not exposed in context value) ───────────────────────
   const musicRef = useRef(null);
@@ -119,17 +128,17 @@ export function VenuePlaybackProvider({ venueCode, children }) {
 
   // ── Transition helpers (internal — not in context value) ──────────────────
   // beginTransition / endTransition keep playerStateRef (synchronous guard)
-  // and playerState (UI) consistent, with a 10-second watchdog.
+  // and playerState (UI) consistent, with a watchdog that outlasts playSong().
   const beginTransition = useCallback(() => {
     updatePlayerState(PLAYER_STATES.TRANSITIONING);
     clearTimeout(transitionWatchdogRef.current);
     transitionWatchdogRef.current = setTimeout(() => {
       if (playerStateRef.current === PLAYER_STATES.TRANSITIONING) {
-        console.warn('[PLAYER_WATCHDOG] transition stuck >10 s — forcing reset');
+        console.warn(`[PLAYER_WATCHDOG] transition stuck >${TRANSITION_WATCHDOG_MS / 1000}s — forcing reset`);
         updatePlayerState(PLAYER_STATES.IDLE);
         setErrorWithPriority('Something went wrong — tap Play to retry');
       }
-    }, 10000);
+    }, TRANSITION_WATCHDOG_MS);
   }, [updatePlayerState, setErrorWithPriority]);
 
   const endTransition = useCallback(() => {
@@ -327,14 +336,15 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     // Serialise: only one playSong at a time.
     if (playLockRef.current) return;
     playLockRef.current = true;
-    // Safety net: force-release the lock after 20s no matter what.
-    // Prevents a hung MusicKit call from permanently killing the player.
+    setPlaybackLoading(true);
+    // Safety net: force-release the lock if MusicKit never settles (should be rare).
     const lockSafety = setTimeout(() => {
       if (playLockRef.current) {
-        console.warn('[PLAY_LOCK_TIMEOUT] forcing lock release after 20s');
+        console.warn(`[PLAY_LOCK_TIMEOUT] forcing lock release after ${PLAY_LOCK_SAFETY_MS / 1000}s`);
         playLockRef.current = false;
+        setPlaybackLoading(false);
       }
-    }, 20000);
+    }, PLAY_LOCK_SAFETY_MS);
     try {
       if (!music.isAuthorized) {
         await music.authorize();
@@ -351,8 +361,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       const upcoming = queueRef.current?.upcoming ?? [];
       const others = upcoming.filter((s) => s.appleId && s.id !== song.id);
       const ids = [song.appleId, ...others.slice(0, 2)].filter(Boolean);
-      await withTimeout(music.setQueue({ songs: ids }), 15000);
-      await withTimeout(music.play(), 10000);
+      await withTimeout(music.setQueue({ songs: ids }), PLAY_SET_QUEUE_MS);
+      await withTimeout(music.play(), PLAY_START_MS);
       setPlayerError(null);
       playFailCountRef.current = 0;
       api.reportPlaying(venueCode, song.id, 0).catch(() => {});
@@ -377,6 +387,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     } finally {
       clearTimeout(lockSafety);
       playLockRef.current = false;
+      setPlaybackLoading(false);
       const pending = pendingQueueRef.current;
       if (pending) {
         pendingQueueRef.current = null;
@@ -577,6 +588,18 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       }
       const serverNowPlaying = queueRef.current?.nowPlaying;
       const mk = music.playbackState;
+
+      // While we are loading a track or the queue is updating, Apple Music and the
+      // server can briefly disagree — do not treat that as a fault.
+      if (
+        playerStateRef.current === PLAYER_STATES.TRANSITIONING ||
+        playLockRef.current ||
+        mk === 1
+      ) {
+        stuckSinceRef.current = null;
+        divergenceSinceRef.current = null;
+        return;
+      }
 
       if (mk === 2) {
         stuckSinceRef.current = null;
@@ -790,6 +813,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     // Player state (single source of truth — replaces isPlaying, isTransitioning,
     // waitingForGesture, musicReady)
     playerState,
+    /** True while a track is being loaded/started (covers paths without TRANSITIONING). */
+    playbackLoading,
     // Queue
     queue,
     fetchQueue,
