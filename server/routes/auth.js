@@ -59,6 +59,8 @@ router.post('/register', async (req, res) => {
         blockedArtists: [],
         requirePaymentForRequest: false,
         requestPriceCents: 1000,
+        autoplayQueue: false,
+        autoplayMode: 'off',
       },
       createdAt: new Date().toISOString(),
     };

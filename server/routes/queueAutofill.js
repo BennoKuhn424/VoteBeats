@@ -31,11 +31,18 @@ async function serverAutofill(venueCode, venue) {
     const playlist = activePl?.songs || venue?.playlist || [];
 
     let song = null;
-    if (autoplayMode !== 'random' && playlist.length > 0) {
-      song = pickFromPlaylist(playlist, venueCode);
-    }
-    if (!song) {
+    if (autoplayMode === 'playlist') {
+      // Playlist mode: only play from an existing playlist — never fall through to random
+      if (playlist.length > 0) {
+        song = pickFromPlaylist(playlist, venueCode);
+      }
+      if (!song) return; // no playlist or empty playlist → do nothing
+    } else if (autoplayMode === 'random') {
       song = await searchByGenre(genres, venueCode);
+    } else {
+      // autoplayMode is 'off' or unknown — should not reach here (caller checks),
+      // but guard anyway
+      return;
     }
     if (!song) return;
 
@@ -107,10 +114,12 @@ function attachAutofillRoutes(router) {
       const playlist = activePl?.songs || venue.playlist || [];
 
       let song = null;
-      if (autoplayMode !== 'random' && playlist.length > 0) {
-        song = pickFromPlaylist(playlist, venueCode);
-      }
-      if (!song) {
+      if (autoplayMode === 'playlist') {
+        if (playlist.length > 0) {
+          song = pickFromPlaylist(playlist, venueCode);
+        }
+        if (!song) return res.json({ filled: false, reason: 'No playlist songs available' });
+      } else if (autoplayMode === 'random') {
         song = await searchByGenre(genres, venueCode);
       }
       if (!song) {
