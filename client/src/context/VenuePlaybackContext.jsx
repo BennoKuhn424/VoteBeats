@@ -2,22 +2,15 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback } f
 import api from '../utils/api';
 import socket from '../utils/socket';
 import { useVisibilityAwarePolling } from '../hooks/useVisibilityAwarePolling';
-
-// Race a promise against a timeout — prevents MusicKit calls from hanging forever
-function withTimeout(promise, ms) {
-  let timer;
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms); }),
-  ]).finally(() => clearTimeout(timer));
-}
-
-// MusicKit can be slow on cellular / cold cache. These must stay below the transition
-// watchdog and play-lock safety so we never reset UI mid-flight.
-const PLAY_SET_QUEUE_MS = 28_000;
-const PLAY_START_MS = 18_000;
-const TRANSITION_WATCHDOG_MS = PLAY_SET_QUEUE_MS + PLAY_START_MS + 8_000; // buffer for stop() + delays
-const PLAY_LOCK_SAFETY_MS = TRANSITION_WATCHDOG_MS + 2_000;
+import {
+  withTimeout,
+  buildPreloadAppleIds,
+  runSetQueueThenPlay,
+  TRANSITION_WATCHDOG_MS,
+  PLAY_LOCK_SAFETY_MS,
+  STOP_TIMEOUT_MS,
+  POST_STOP_DELAY_MS,
+} from '../utils/venuePlaybackPlay';
 
 // Lower number = higher priority. Soft notices never overwrite hard errors.
 const ERROR_PRIORITY = {
@@ -352,17 +345,14 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       }
       const mk = music.playbackState;
       if (mk === 1 || mk === 2 || mk === 3) {
-        try { await withTimeout(music.stop(), 5000); } catch {}
+        try { await withTimeout(music.stop(), STOP_TIMEOUT_MS); } catch {}
       }
-      await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, POST_STOP_DELAY_MS));
 
       // Pre-load a few upcoming songs for lock-screen auto-advance.
       // Keep it small (3) — more songs = slower setQueue = higher failure risk.
-      const upcoming = queueRef.current?.upcoming ?? [];
-      const others = upcoming.filter((s) => s.appleId && s.id !== song.id);
-      const ids = [song.appleId, ...others.slice(0, 2)].filter(Boolean);
-      await withTimeout(music.setQueue({ songs: ids }), PLAY_SET_QUEUE_MS);
-      await withTimeout(music.play(), PLAY_START_MS);
+      const ids = buildPreloadAppleIds(song, queueRef.current?.upcoming ?? []);
+      await runSetQueueThenPlay(music, ids);
       setPlayerError(null);
       playFailCountRef.current = 0;
       api.reportPlaying(venueCode, song.id, 0).catch(() => {});
