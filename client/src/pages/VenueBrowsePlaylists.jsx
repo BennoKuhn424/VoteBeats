@@ -60,12 +60,12 @@ function PlaylistCard({ playlist, songCount, coverUrl, isActive, isScheduled, is
       <div className="p-3">
         <h3 className="text-zinc-900 mb-1 line-clamp-1 text-sm font-semibold">{playlist.name}</h3>
         <p className="text-zinc-400 mb-3 text-xs">{songCount} songs</p>
-        <div className="grid grid-cols-[1fr_auto_auto] gap-1.5">
+        <div className="flex flex-col gap-1.5">
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onSelect(playlist.id); }}
             disabled={isActive || isLoading}
-            className={`min-w-0 py-2 px-2 rounded-lg font-medium transition-all min-h-[44px] text-xs sm:text-sm ${
+            className={`w-full py-2 px-3 rounded-lg font-medium transition-all min-h-[40px] text-xs sm:text-sm ${
               isActive
                 ? 'bg-green-600 text-white cursor-default'
                 : 'bg-brand-500 hover:bg-brand-600 text-white active:scale-95 disabled:opacity-50'
@@ -80,32 +80,36 @@ function PlaylistCard({ playlist, songCount, coverUrl, isActive, isScheduled, is
               'Set active'
             )}
           </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(playlist.id);
-            }}
-            className="p-2 border border-zinc-300 rounded-lg hover:border-brand-500 hover:bg-orange-50 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center text-zinc-600 hover:text-brand-600"
-            aria-label="Edit playlist"
-            title="Edit songs"
-          >
-            <Pencil className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSchedule(playlist.id);
-            }}
-            className={`p-2 border rounded-lg hover:border-brand-500 hover:bg-orange-50 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center ${
-              isScheduled ? 'border-brand-500 bg-orange-50' : 'border-zinc-300'
-            }`}
-            aria-label="Schedule playlist"
-            title="Schedule by time of day"
-          >
-            <Clock className="w-4 h-4 text-zinc-600" />
-          </button>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(playlist.id);
+              }}
+              className="p-2 border border-zinc-300 rounded-lg hover:border-brand-500 hover:bg-orange-50 transition-all min-h-[36px] flex items-center justify-center gap-1.5 text-zinc-600 hover:text-brand-600 text-xs"
+              aria-label="Edit playlist"
+              title="Edit songs"
+            >
+              <Pencil className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Edit</span>
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSchedule(playlist.id);
+              }}
+              className={`p-2 border rounded-lg hover:border-brand-500 hover:bg-orange-50 transition-all min-h-[36px] flex items-center justify-center gap-1.5 text-xs ${
+                isScheduled ? 'border-brand-500 bg-orange-50 text-brand-600' : 'border-zinc-300 text-zinc-600'
+              }`}
+              aria-label="Schedule playlist"
+              title="Schedule by time of day"
+            >
+              <Clock className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Schedule</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
