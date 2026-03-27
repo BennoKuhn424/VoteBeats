@@ -1,7 +1,48 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Shuffle, Loader2, Pencil } from 'lucide-react';
+import { Shuffle, Loader2, Pencil, ChevronDown } from 'lucide-react';
 import api from '../../utils/api';
 import { AUTOPLAY_GENRE_SECTIONS } from '../../data/autoplayGenreSections';
+
+function GenreSection({ label, selectedCount, items, autoplayGenres, onToggle }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mb-2 border border-zinc-200 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2.5 bg-zinc-50 hover:bg-zinc-100 transition-colors"
+      >
+        <span className="text-xs font-semibold uppercase tracking-wide text-zinc-600">
+          {label}
+          {selectedCount > 0 && (
+            <span className="ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-violet-600 text-white text-[10px] font-bold leading-none normal-case">
+              {selectedCount}
+            </span>
+          )}
+        </span>
+        <ChevronDown className={`w-4 h-4 text-zinc-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="max-h-44 overflow-y-auto p-2 grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+          {items.map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => onToggle(g)}
+              className={`px-2 py-1.5 rounded-lg text-xs font-medium border transition-colors text-center truncate ${
+                autoplayGenres.includes(g)
+                  ? 'bg-violet-600 text-white border-violet-600'
+                  : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+              }`}
+            >
+              {g}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * Dashboard card: explicit rules + genre/language mix for Random autoplay.
@@ -198,46 +239,36 @@ export default function RandomAutoplayCard({
             <label className="block text-sm font-medium text-zinc-600 mb-1">Genres &amp; languages</label>
             <p className="text-xs text-zinc-400 mb-3">
               Random autoplay picks from these tags. Leave empty for a wide variety. Does not limit what customers can request
-              (use Settings → request genre filter for that).
+              (use Settings &rarr; request genre filter for that).
             </p>
             {autoplayGenres.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
+              <div className="flex flex-wrap gap-1.5 mb-3">
                 {autoplayGenres.map((g) => (
                   <button
                     key={g}
                     type="button"
                     onClick={() => toggleGenre(g)}
-                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-violet-600 text-white text-sm font-medium hover:bg-violet-700"
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-violet-600 text-white text-xs font-medium hover:bg-violet-700"
                   >
                     {g}
-                    <span className="text-white/80 text-xs">✕</span>
+                    <span className="text-white/80 text-[10px]">✕</span>
                   </button>
                 ))}
               </div>
             )}
-            {AUTOPLAY_GENRE_SECTIONS.map((section) => (
-              <div key={section.label} className="mb-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">
-                  {section.label}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {section.items.map((g) => (
-                    <button
-                      key={g}
-                      type="button"
-                      onClick={() => toggleGenre(g)}
-                      className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                        autoplayGenres.includes(g)
-                          ? 'bg-violet-600 text-white border-violet-600'
-                          : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
-                      }`}
-                    >
-                      {g}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
+            {AUTOPLAY_GENRE_SECTIONS.map((section) => {
+              const selectedCount = section.items.filter((g) => autoplayGenres.includes(g)).length;
+              return (
+                <GenreSection
+                  key={section.label}
+                  label={section.label}
+                  selectedCount={selectedCount}
+                  items={section.items}
+                  autoplayGenres={autoplayGenres}
+                  onToggle={toggleGenre}
+                />
+              );
+            })}
           </div>
         </form>
       )}
