@@ -14,11 +14,13 @@ import {
 
 // Lower number = higher priority. Soft notices never overwrite hard errors.
 const ERROR_PRIORITY = {
-  'Could not connect to Apple Music — tap Retry': 1,
-  'Player needs attention — tap to reconnect Apple Music': 2,
-  'Player disconnected — tap to reset': 3,
-  'Something went wrong — tap Play to retry': 4,
-  'Playback failed — retrying…': 5,
+  'No internet connection — check your wifi and tap Retry': 1,
+  'Slow or no internet — check your wifi and tap Retry': 1,
+  'Could not connect to Apple Music — tap Retry': 2,
+  'Player needs attention — tap to reconnect Apple Music': 3,
+  'Player disconnected — tap to reset': 4,
+  'Something went wrong — tap Play to retry': 5,
+  'Playback failed — retrying…': 6,
 };
 
 const VenuePlaybackContext = createContext(null);
@@ -285,7 +287,12 @@ export function VenuePlaybackProvider({ venueCode, children }) {
         music.addEventListener('nowPlayingItemDidChange', itemListener);
       } catch (err) {
         console.error('[APPLE_INIT_FAIL] MusicKit init error:', err);
-        setPlayerError('Could not connect to Apple Music — tap Retry');
+        const isNetwork = !navigator.onLine || err?.message?.includes('not defined') || err?.name === 'TypeError';
+        setPlayerError(
+          isNetwork
+            ? 'No internet connection — check your wifi and tap Retry'
+            : 'Could not connect to Apple Music — tap Retry',
+        );
       }
     }
     init();
@@ -362,8 +369,12 @@ export function VenuePlaybackProvider({ venueCode, children }) {
       } else {
         console.error('[PLAY_ERROR]', err?.message || err);
         currentSongIdRef.current = null;
+        const isNetwork = !navigator.onLine || /timeout/i.test(err?.message || '');
         playFailCountRef.current += 1;
-        if (playFailCountRef.current >= 3) {
+        if (isNetwork) {
+          setErrorWithPriority('Slow or no internet — check your wifi and tap Retry');
+          playFailCountRef.current = 0;
+        } else if (playFailCountRef.current >= 3) {
           console.warn('[PLAY_FAIL_ATTN] playSong failed 3+ times');
           setErrorWithPriority('Player needs attention — tap to reconnect Apple Music');
           playFailCountRef.current = 0;
