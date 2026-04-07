@@ -12,24 +12,30 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
+// vi.mock factories are hoisted to the top of the file by Vitest, so any
+// variables they reference must also be hoisted via vi.hoisted().
 
-// Mock socket singleton — gives tests full control over connection events.
-const mockSocketHandlers = {};
-const mockSocket = {
-  connected: false,
-  connect: vi.fn(() => { mockSocket.connected = true; }),
-  disconnect: vi.fn(() => { mockSocket.connected = false; }),
-  emit: vi.fn(),
-  on: vi.fn((event, fn) => { mockSocketHandlers[event] = fn; }),
-  off: vi.fn((event) => { delete mockSocketHandlers[event]; }),
-};
+const { mockSocket, mockSocketHandlers, mockGetQueue, mockRequestSong, mockGetLyrics } =
+  vi.hoisted(() => {
+    const mockSocketHandlers = {};
+    const mockSocket = {
+      connected: false,
+      connect: vi.fn(() => { mockSocket.connected = true; }),
+      disconnect: vi.fn(() => { mockSocket.connected = false; }),
+      emit: vi.fn(),
+      on: vi.fn((event, fn) => { mockSocketHandlers[event] = fn; }),
+      off: vi.fn((event) => { delete mockSocketHandlers[event]; }),
+    };
+    return {
+      mockSocket,
+      mockSocketHandlers,
+      mockGetQueue: vi.fn(),
+      mockRequestSong: vi.fn(),
+      mockGetLyrics: vi.fn(),
+    };
+  });
 
 vi.mock('../utils/socket', () => ({ default: mockSocket }));
-
-// Mock api module
-const mockGetQueue = vi.fn();
-const mockRequestSong = vi.fn();
-const mockGetLyrics = vi.fn();
 
 vi.mock('../utils/api', () => ({
   default: {

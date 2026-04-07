@@ -4,7 +4,7 @@
  * api is mocked so no real HTTP requests are made.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -28,8 +28,15 @@ const SONG_ITEM = {
   duration: 210,
 };
 
+let consoleErrorSpy;
 beforeEach(() => {
   vi.clearAllMocks();
+  // Suppress console.error from the component (expected in error-path tests)
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+});
+
+afterEach(() => {
+  consoleErrorSpy.mockRestore();
 });
 
 // ── Render ────────────────────────────────────────────────────────────────────
