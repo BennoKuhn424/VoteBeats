@@ -9,15 +9,21 @@ function init(io) {
  * Called after any state-changing operation (request, vote, skip, pause, resume, advance).
  */
 function broadcastQueue(venueCode, queue) {
-  if (_io && venueCode && queue) {
+  if (!_io || !venueCode || !queue) return;
+  try {
     _io.to(`venue:${venueCode}`).emit('queue:updated', queue);
+  } catch (err) {
+    console.error('[broadcast] queue:updated emit failed:', err);
   }
 }
 
 /** Customer volume suggestion — venue dashboard listens for live alerts */
 function broadcastVolumeFeedback(venueCode, payload) {
-  if (_io && venueCode && payload) {
+  if (!_io || !venueCode || !payload) return;
+  try {
     _io.to(`venue:${venueCode}`).emit('volume:feedback', payload);
+  } catch (err) {
+    console.error('[broadcast] volume:feedback emit failed:', err);
   }
 }
 

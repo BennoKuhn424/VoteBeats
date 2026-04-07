@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../utils/api';
 import socket from '../utils/socket';
@@ -18,8 +18,20 @@ export default function CustomerVoting() {
   const [error, setError] = useState(null);
   const [showLyrics, setShowLyrics] = useState(false);
   const [lyricsData, setLyricsData] = useState(null);
+  const [isConnected, setIsConnected] = useState(socket.connected);
+  // Only show the socket-based "Connection lost" banner after the first
+  // successful connection — avoids a false alarm during the initial handshake.
+  const hasConnectedOnceRef = useRef(socket.connected);
   const deviceId = getDeviceId();
-  
+
+  // Counts consecutive HTTP poll failures. We wait for ≥2 before showing the
+  // error banner so a single transient blip (brief server wake-up, flaky cell
+  // signal) doesn't flash "Connection lost" at the user.
+  const httpFailCountRef = useRef(0);
+
+  // Holds the latest fetchQueue function. Socket handlers read this ref so the
+  // socket effect never needs to re-register just because fetchQueue changed.
+  const fetchQueueRef = useRef(null);
 
   // Pre-fetch lyrics whenever the playing song changes
   useEffect(() => {
@@ -41,11 +53,14 @@ export default function CustomerVoting() {
       const response = await api.getQueue(venueCode, deviceId);
       setQueue(response.data);
       setError(null);
+      httpFailCountRef.current = 0;
     } catch (err) {
+      httpFailCountRef.current += 1;
       if (err.response?.status === 404) {
         setError('Venue not found');
-      } else {
-        // Soft error — keep existing queue data visible
+      } else if (httpFailCountRef.current >= 2) {
+        // Only surface the banner after 2 consecutive failures so a single
+        // transient blip (Render cold-start, weak signal) doesn't alarm users.
         setError('Connection lost. Reconnecting…');
       }
     } finally {
@@ -53,27 +68,38 @@ export default function CustomerVoting() {
     }
   }, [venueCode, deviceId]);
 
+  // Keep the ref current so socket handlers always invoke the latest version
+  // of fetchQueue without needing to be re-registered when it changes.
+  useEffect(() => {
+    fetchQueueRef.current = fetchQueue;
+  }, [fetchQueue]);
+
   // ── Socket.IO — primary real-time updates ────────────────────────────────
   useEffect(() => {
     if (!venueCode) return;
 
-    function joinRoom() {
+    function onConnect() {
+      setIsConnected(true);
+      hasConnectedOnceRef.current = true;
+      // Clear any stale connection error and reset the failure counter so the
+      // next poll starts fresh rather than immediately re-showing the banner.
+      setError(null);
+      httpFailCountRef.current = 0;
       socket.emit('join', venueCode);
+      // Brief delay lets the server process the room join before we fetch,
+      // ensuring the response belongs to this venue's room.
+      setTimeout(() => fetchQueueRef.current?.(), 300);
     }
 
-    socket.connect();
-    joinRoom();
-
-    function onConnect() {
-      joinRoom();
-      setTimeout(fetchQueue, 300);
+    function onDisconnect() {
+      setIsConnected(false);
     }
 
     function onQueueUpdated(data) {
       setQueue((prev) => ({
         ...data,
         myVotes: prev.myVotes || data.myVotes || {},
-        // Socket payload is queue-only; keep last known volume hint from GET
+        // Socket payload is queue-only; preserve last known values from GET
         reportedPlayerVolume: data.reportedPlayerVolume ?? prev.reportedPlayerVolume,
         requestSettings: data.requestSettings ?? prev.requestSettings,
       }));
@@ -82,17 +108,32 @@ export default function CustomerVoting() {
     }
 
     socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
     socket.on('queue:updated', onQueueUpdated);
 
-    // Initial fetch
-    fetchQueue();
+    // If the socket is already open (e.g., customer navigates back to the
+    // page) the 'connect' event will never fire again, so join the room and
+    // fetch immediately rather than waiting indefinitely.
+    if (socket.connected) {
+      onConnect();
+    } else {
+      socket.connect();
+    }
+
+    // Kick off an HTTP fetch right away — this resolves the loading state and
+    // populates the queue even before the WebSocket handshake completes.
+    fetchQueueRef.current?.();
 
     return () => {
       socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
       socket.off('queue:updated', onQueueUpdated);
       socket.disconnect();
     };
-  }, [venueCode, fetchQueue]);
+  // fetchQueue is intentionally omitted — we access it via fetchQueueRef so
+  // the socket is never torn down just because the callback reference changed.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [venueCode]);
 
   // ── Fallback poll — visibility-aware, pauses when phone screen off ───────
   useVisibilityAwarePolling(fetchQueue, 15000);
@@ -145,9 +186,9 @@ export default function CustomerVoting() {
           <p className="text-dark-400 text-sm mt-2">Vote and request what plays next</p>
         </header>
 
-        {error && (
+        {(error || (hasConnectedOnceRef.current && !isConnected)) && (
           <p className="mb-4 text-xs text-center text-amber-400 bg-dark-900 border border-amber-500/40 rounded-lg px-3 py-2">
-            {error}
+            {error || 'Connection lost. Reconnecting…'}
           </p>
         )}
 
