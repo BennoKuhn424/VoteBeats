@@ -21,8 +21,9 @@ broadcast.init(io);
 
 io.on('connection', (socket) => {
   socket.on('join', (venueCode) => {
-    if (typeof venueCode === 'string' && venueCode) {
-      socket.join(`venue:${venueCode}`);
+    // Validate: must be a non-empty string, max 20 chars (venue codes are 6 chars)
+    if (typeof venueCode === 'string' && venueCode.trim() && venueCode.length <= 20) {
+      socket.join(`venue:${venueCode.trim()}`);
     }
   });
 });

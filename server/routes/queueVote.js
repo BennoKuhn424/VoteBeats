@@ -2,31 +2,34 @@ const db = require('../utils/database');
 const queueRepo = require('../repos/queueRepo');
 const broadcast = require('../utils/broadcast');
 const { logEvent } = require('../utils/logEvent');
+const E = require('../utils/errorCodes');
 
-// ── Downvote throttle: max 5 downvotes per device per 60s ────────────────────
+// ── Vote throttle: max 5 votes per direction per device per 60s ──────────────
 const downvoteTimestamps = {}; // { deviceId: [ts, ts, …] }
-const DOWNVOTE_WINDOW_MS = 60_000;
-const DOWNVOTE_MAX = 5;
-const DOWNVOTE_MAP_MAX_KEYS = 10_000;
+const upvoteTimestamps = {};   // { deviceId: [ts, ts, …] }
+const VOTE_WINDOW_MS = 60_000;
+const VOTE_MAX = 5;
+const VOTE_MAP_MAX_KEYS = 10_000;
 let lastThrottlePrune = Date.now();
 
-function isDownvoteThrottled(deviceId) {
+function isVoteThrottled(map, deviceId) {
   const now = Date.now();
 
-  const keys = Object.keys(downvoteTimestamps);
-  if (now - lastThrottlePrune > 600_000 || keys.length > DOWNVOTE_MAP_MAX_KEYS) {
+  // Prune stale entries every 10 minutes or when the map grows too large
+  const keys = Object.keys(map);
+  if (now - lastThrottlePrune > 600_000 || keys.length > VOTE_MAP_MAX_KEYS) {
     lastThrottlePrune = now;
     for (const id of keys) {
-      const stamps = downvoteTimestamps[id];
-      if (!stamps.length || stamps[stamps.length - 1] < now - DOWNVOTE_WINDOW_MS) {
-        delete downvoteTimestamps[id];
+      const stamps = map[id];
+      if (!stamps.length || stamps[stamps.length - 1] < now - VOTE_WINDOW_MS) {
+        delete map[id];
       }
     }
   }
 
-  const stamps = (downvoteTimestamps[deviceId] || []).filter((t) => now - t < DOWNVOTE_WINDOW_MS);
-  downvoteTimestamps[deviceId] = stamps;
-  if (stamps.length >= DOWNVOTE_MAX) return true;
+  const stamps = (map[deviceId] || []).filter((t) => now - t < VOTE_WINDOW_MS);
+  map[deviceId] = stamps;
+  if (stamps.length >= VOTE_MAX) return true;
   stamps.push(now);
   return false;
 }
@@ -42,15 +45,19 @@ function attachVoteRoutes(router) {
     const { songId, voteValue, deviceId } = req.body;
 
     if (!songId || !deviceId || typeof deviceId !== 'string') {
-      return res.status(400).json({ error: 'songId and deviceId are required' });
+      return res.status(400).json({ error: 'songId and deviceId are required', code: E.VOTE_MISSING_FIELDS });
     }
 
     if (voteValue !== 1 && voteValue !== -1) {
-      return res.status(400).json({ error: 'Invalid vote value' });
+      return res.status(400).json({ error: 'Invalid vote value', code: E.VOTE_INVALID_VALUE });
     }
 
-    if (voteValue === -1 && isDownvoteThrottled(deviceId)) {
-      return res.status(429).json({ error: 'Too many downvotes — slow down' });
+    if (voteValue === -1 && isVoteThrottled(downvoteTimestamps, deviceId)) {
+      return res.status(429).json({ error: 'Too many downvotes — slow down', code: E.VOTE_RATE_LIMITED_DOWN });
+    }
+
+    if (voteValue === 1 && isVoteThrottled(upvoteTimestamps, deviceId)) {
+      return res.status(429).json({ error: 'Too many upvotes — slow down', code: E.VOTE_RATE_LIMITED_UP });
     }
 
     let result = null;
@@ -75,7 +82,7 @@ function attachVoteRoutes(router) {
 
       if (!targetSong) {
         db.removeVote(venueCode, songId, deviceId);
-        result = { error: true, status: 404, body: { error: 'Song is no longer in the queue' } };
+        result = { error: true, status: 404, body: { error: 'Song is no longer in the queue', code: E.VOTE_SONG_NOT_FOUND } };
         return null;
       }
 

@@ -1,6 +1,10 @@
 /**
- * One-line JSON logs for load balancers / log aggregators (Render, Railway, etc.).
- * Skips noisy health checks.
+ * Express middleware — emits one structured JSON log line per request on finish.
+ * Skips `/health` and `/api/health` to avoid log noise from uptime monitors.
+ * Log format: { t, method, path, status, ms }
+ * @param {import('express').Request}  req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
  */
 function requestLogger(req, res, next) {
   const pathOnly = (req.originalUrl || '').split('?')[0];

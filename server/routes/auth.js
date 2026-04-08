@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../utils/database');
+const E = require('../utils/errorCodes');
 
 const router = express.Router();
 if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
@@ -27,12 +28,16 @@ router.post('/register', async (req, res) => {
     const { email, password, venueName, location } = req.body;
 
     if (!email || !password || !venueName) {
-      return res.status(400).json({ error: 'Email, password and venue name required' });
+      return res.status(400).json({ error: 'Email, password and venue name required', code: E.AUTH_MISSING_FIELDS });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters', code: E.AUTH_PASSWORD_TOO_SHORT });
     }
 
     // Block reserved owner email before any writes
     if (process.env.OWNER_EMAIL && email.trim().toLowerCase() === process.env.OWNER_EMAIL.trim().toLowerCase()) {
-      return res.status(400).json({ error: 'Email not available' });
+      return res.status(400).json({ error: 'Email not available', code: E.AUTH_EMAIL_UNAVAILABLE });
     }
 
     const emailNorm = email.trim().toLowerCase();
@@ -41,7 +46,7 @@ router.post('/register', async (req, res) => {
       (v) => v.owner?.email?.toLowerCase() === emailNorm
     );
     if (existing) {
-      return res.status(400).json({ error: 'Email already registered' });
+      return res.status(400).json({ error: 'Email already registered', code: E.AUTH_EMAIL_TAKEN });
     }
 
     const code = generateVenueCode();
@@ -76,7 +81,7 @@ router.post('/register', async (req, res) => {
     });
   } catch (err) {
     console.error('Register error:', err);
-    res.status(500).json({ error: 'Registration failed' });
+    res.status(500).json({ error: 'Registration failed', code: E.AUTH_REGISTER_FAILED });
   }
 });
 
@@ -86,7 +91,7 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password required' });
+      return res.status(400).json({ error: 'Email and password required', code: E.AUTH_MISSING_FIELDS });
     }
 
     // Platform owner: if this email is OWNER_EMAIL, never fall through to venue login
@@ -97,6 +102,7 @@ router.post('/login', async (req, res) => {
       if (!ownerHash) {
         return res.status(503).json({
           error: 'Owner login is not configured (set OWNER_PASSWORD_HASH on the API server).',
+          code: E.AUTH_OWNER_NOT_CONFIGURED,
         });
       }
       const match = await bcrypt.compare(password, ownerHash);
@@ -104,7 +110,7 @@ router.post('/login', async (req, res) => {
         const token = jwt.sign({ role: 'owner' }, JWT_SECRET, { expiresIn: '7d' });
         return res.json({ token, role: 'owner' });
       }
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid email or password', code: E.AUTH_INVALID_CREDENTIALS });
     }
 
     const venues = db.getAllVenues();
@@ -112,12 +118,12 @@ router.post('/login', async (req, res) => {
       (v) => v.owner?.email?.toLowerCase() === email.toLowerCase()
     );
     if (!venue) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid email or password', code: E.AUTH_INVALID_CREDENTIALS });
     }
 
     const match = await bcrypt.compare(password, venue.owner.passwordHash);
     if (!match) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid email or password', code: E.AUTH_INVALID_CREDENTIALS });
     }
 
     const token = jwt.sign({ venueCode: venue.code }, JWT_SECRET, { expiresIn: '7d' });
@@ -134,7 +140,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (err) {
     console.error('Login error:', err);
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: 'Login failed', code: E.AUTH_LOGIN_FAILED });
   }
 });
 

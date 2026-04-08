@@ -95,8 +95,8 @@ export default {
   searchSongs: (query, venueCode) =>
     api.get(`/music/search`, { params: { q: query, venueCode } }),
 
-  getLyrics: (title, artist, duration) =>
-    api.get('/lyrics', { params: { title, artist, duration: duration || undefined } }),
+  getLyrics: (title, artist, duration, config) =>
+    api.get('/lyrics', { params: { title, artist, duration: duration || undefined }, ...config }),
 
   getDeveloperToken: () => api.get('/token'),
 

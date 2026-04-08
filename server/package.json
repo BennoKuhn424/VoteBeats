@@ -11,14 +11,14 @@
     "hash-owner-password": "node scripts/hash-owner-password.js"
   },
   "dependencies": {
-    "@sentry/node": "^10.45.0",
+    "@sentry/node": "^10.47.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^17.2.4",
     "express": "^4.18.2",
-    "express-rate-limit": "^8.3.1",
+    "express-rate-limit": "^8.3.2",
     "helmet": "^8.1.0",
-    "jsonwebtoken": "^9.0.2",
+    "jsonwebtoken": "^9.0.3",
     "socket.io": "^4.8.3",
     "uuid": "^9.0.0"
   },

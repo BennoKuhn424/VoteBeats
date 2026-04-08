@@ -6,6 +6,14 @@ if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
 }
 const JWT_SECRET = process.env.JWT_SECRET || 'speeldit-dev-secret-change-in-production';
 
+/**
+ * Express middleware — verifies the venue owner's JWT and attaches the venue
+ * object to `req.venue`. Responds 401 if the token is missing, invalid, or
+ * the venue no longer exists.
+ * @param {import('express').Request}  req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
 

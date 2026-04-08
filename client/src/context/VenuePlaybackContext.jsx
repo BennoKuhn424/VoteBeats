@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import api from '../utils/api';
 import socket from '../utils/socket';
+import { isValidQueuePayload } from '../utils/socketValidation';
 import { useVisibilityAwarePolling } from '../hooks/useVisibilityAwarePolling';
 import {
   withTimeout,
@@ -319,6 +320,36 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     if (musicRef.current) musicRef.current.volume = volume / 100;
   }, [volume]);
 
+  // ── Pause on tab hide, resume on tab show ────────────────────────────────
+  // Prevents battery drain and audio playing in the background when the venue
+  // operator switches away from the tab. Only acts when actually playing —
+  // does not interfere with transitioning, paused-by-user, or idle states.
+  useEffect(() => {
+    let pausedByVisibility = false;
+
+    function handleVisibilityChange() {
+      const music = musicRef.current;
+      if (!music) return;
+
+      if (document.hidden) {
+        // Only pause if we are actively playing — don't touch paused/idle states
+        if (playerStateRef.current === PLAYER_STATES.PLAYING) {
+          music.pause();
+          pausedByVisibility = true;
+        }
+      } else {
+        // Only resume if we were the ones who paused it
+        if (pausedByVisibility) {
+          pausedByVisibility = false;
+          music.play().catch(() => {});
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
   // Report volume to server so customer feedback can be correlated with venue level
   useEffect(() => {
     if (!venueCode) return;
@@ -438,6 +469,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
 
   // ── handleQueueUpdate ────────────────────────────────────────────────────
   const handleQueueUpdate = useCallback(async (newQueue) => {
+    if (!isValidQueuePayload(newQueue)) return;
     // Always update queue state so the UI stays current, even during playSong
     setQueue(newQueue);
     const nowPlaying = newQueue.nowPlaying;

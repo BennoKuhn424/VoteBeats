@@ -69,14 +69,20 @@ router.put('/:venueCode/settings', authMiddleware, (req, res) => {
     if (n >= 1 && n <= 100) venue.settings.maxSongsPerUser = n;
   }
   if (Array.isArray(genreFilters)) {
-    if (!genreFilters.every((x) => typeof x === 'string')) {
-      return res.status(400).json({ error: 'genreFilters must be an array of strings' });
+    if (genreFilters.length > 50) {
+      return res.status(400).json({ error: 'genreFilters cannot exceed 50 entries' });
+    }
+    if (!genreFilters.every((x) => typeof x === 'string' && x.length <= 100)) {
+      return res.status(400).json({ error: 'genreFilters must be an array of strings (max 100 chars each)' });
     }
     venue.settings.genreFilters = genreFilters;
   }
   if (Array.isArray(blockedArtists)) {
-    if (!blockedArtists.every((x) => typeof x === 'string')) {
-      return res.status(400).json({ error: 'blockedArtists must be an array of strings' });
+    if (blockedArtists.length > 200) {
+      return res.status(400).json({ error: 'blockedArtists cannot exceed 200 entries' });
+    }
+    if (!blockedArtists.every((x) => typeof x === 'string' && x.length <= 100)) {
+      return res.status(400).json({ error: 'blockedArtists must be an array of strings (max 100 chars each)' });
     }
     venue.settings.blockedArtists = blockedArtists;
   }
@@ -265,6 +271,7 @@ router.post('/:venueCode/ban-artist', authMiddleware, async (req, res) => {
   const updated = await venueRepo.update(req.params.venueCode, (venue) => {
     if (!venue.settings) venue.settings = {};
     if (!Array.isArray(venue.settings.blockedArtists)) venue.settings.blockedArtists = [];
+    if (venue.settings.blockedArtists.length >= 200) return venue; // cap reached — silently no-op
     const normalized = artist.trim().toLowerCase();
     if (!venue.settings.blockedArtists.some((a) => a.toLowerCase() === normalized)) {
       venue.settings.blockedArtists.push(artist.trim());

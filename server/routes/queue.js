@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../utils/database');
+const E = require('../utils/errorCodes');
 const { v4: uuidv4 } = require('uuid');
 const authMiddleware = require('../middleware/authMiddleware');
 const { advanceToNextSong } = require('../utils/queueAdvance');
@@ -30,10 +31,10 @@ const VOLUME_REPORT_MAX_AGE_MS = 30 * 60 * 1000;
 // POST /api/queue/:venueCode/report-volume — venue player reports slider level (0–100)
 router.post('/:venueCode/report-volume', (req, res) => {
   const { venueCode } = req.params;
-  if (!db.getVenue(venueCode)) return res.status(404).json({ error: 'Venue not found' });
+  if (!db.getVenue(venueCode)) return res.status(404).json({ error: 'Venue not found', code: E.QUEUE_VENUE_NOT_FOUND });
   const raw = req.body?.volumePercent;
   const n = typeof raw === 'number' ? raw : parseFloat(raw);
-  if (Number.isNaN(n)) return res.status(400).json({ error: 'volumePercent required' });
+  if (Number.isNaN(n)) return res.status(400).json({ error: 'volumePercent required', code: E.QUEUE_INVALID_VOLUME });
   db.setPlayerVolumeReport(venueCode, n);
   res.json({ ok: true });
 });
@@ -42,19 +43,19 @@ router.post('/:venueCode/report-volume', (req, res) => {
 router.post('/:venueCode/volume-feedback', (req, res) => {
   const { venueCode } = req.params;
   const { direction, deviceId } = req.body || {};
-  if (!db.getVenue(venueCode)) return res.status(404).json({ error: 'Venue not found' });
+  if (!db.getVenue(venueCode)) return res.status(404).json({ error: 'Venue not found', code: E.QUEUE_VENUE_NOT_FOUND });
   if (!deviceId || typeof deviceId !== 'string') {
-    return res.status(400).json({ error: 'deviceId required' });
+    return res.status(400).json({ error: 'deviceId required', code: E.QUEUE_DEVICE_REQUIRED });
   }
   if (direction !== 'too_loud' && direction !== 'too_soft') {
-    return res.status(400).json({ error: 'direction must be too_loud or too_soft' });
+    return res.status(400).json({ error: 'direction must be too_loud or too_soft', code: E.QUEUE_INVALID_DIRECTION });
   }
 
   const key = `${venueCode}:${deviceId}`;
   const now = Date.now();
   const last = volumeFeedbackLastByDevice.get(key) || 0;
   if (now - last < VOLUME_FEEDBACK_COOLDOWN_MS) {
-    return res.status(429).json({ error: 'Please wait a minute before sending another suggestion' });
+    return res.status(429).json({ error: 'Please wait a minute before sending another suggestion', code: E.QUEUE_RATE_LIMITED });
   }
   if (volumeFeedbackLastByDevice.size > VOLUME_FEEDBACK_MAX_ENTRIES) {
     const iter = volumeFeedbackLastByDevice.keys();
@@ -145,7 +146,7 @@ router.get('/:venueCode', async (req, res) => {
     res.json({ ...queue, myVotes, requestSettings, reportedPlayerVolume });
   } catch (err) {
     console.error('Queue read error on GET /:venueCode:', err);
-    res.status(500).json({ error: 'Could not read queue' });
+    res.status(500).json({ error: 'Could not read queue', code: E.QUEUE_READ_FAILED });
   }
 });
 
@@ -155,26 +156,27 @@ router.post('/:venueCode/request', async (req, res) => {
   const { song, deviceId } = req.body;
 
   if (!song || !song.appleId || !song.title) {
-    return res.status(400).json({ error: 'Song with appleId and title is required' });
+    return res.status(400).json({ error: 'Song with appleId and title is required', code: E.QUEUE_SONG_MISSING_FIELDS });
   }
   if (!deviceId || typeof deviceId !== 'string') {
-    return res.status(400).json({ error: 'deviceId is required' });
+    return res.status(400).json({ error: 'deviceId is required', code: E.QUEUE_DEVICE_REQUIRED });
   }
   if (deviceId.length > 256) {
-    return res.status(400).json({ error: 'Invalid deviceId' });
+    return res.status(400).json({ error: 'Invalid deviceId', code: E.QUEUE_DEVICE_ID_INVALID });
   }
   if (String(song.title).length > 500 || String(song.artist || '').length > 500) {
-    return res.status(400).json({ error: 'Song title or artist name too long' });
+    return res.status(400).json({ error: 'Song title or artist name too long', code: E.QUEUE_SONG_TOO_LONG });
   }
 
   const venue = db.getVenue(venueCode);
   if (!venue) {
-    return res.status(404).json({ error: 'Venue not found' });
+    return res.status(404).json({ error: 'Venue not found', code: E.QUEUE_VENUE_NOT_FOUND });
   }
 
   if (venue.settings?.requirePaymentForRequest) {
     return res.status(402).json({
       error: 'Payment required to request a song',
+      code: E.QUEUE_PAYMENT_REQUIRED,
       requiresPayment: true,
       requestPriceCents: venue.settings.requestPriceCents ?? 1000,
     });
@@ -201,11 +203,11 @@ router.post('/:venueCode/request', async (req, res) => {
         (s) => (s.id && s.id === songId) || (s.appleId && s.appleId === song.appleId)
       );
       if (alreadyInQueue) {
-        rejection = { status: 400, body: { error: 'This song is already in the queue' } };
+        rejection = { status: 400, body: { error: 'This song is already in the queue', code: E.QUEUE_SONG_DUPLICATE } };
         return null;
       }
       if (upcoming.filter((s) => s.requestedBy === deviceId).length >= maxPerUser) {
-        rejection = { status: 400, body: { error: `Max ${maxPerUser} songs per user` } };
+        rejection = { status: 400, body: { error: `Max ${maxPerUser} songs per user`, code: E.QUEUE_USER_LIMIT_REACHED } };
         return null;
       }
       if (!queue.nowPlaying) {
@@ -227,7 +229,7 @@ router.post('/:venueCode/request', async (req, res) => {
     res.json({ success: true, song: newSong });
   } catch (err) {
     console.error('Queue write error on /request:', err);
-    res.status(500).json({ error: 'Could not add song to queue — please try again' });
+    res.status(500).json({ error: 'Could not add song to queue — please try again', code: E.QUEUE_REQUEST_FAILED });
   }
 });
 
@@ -262,7 +264,7 @@ router.post('/:venueCode/playing', async (req, res) => {
     res.json({ success: true, matched });
   } catch (err) {
     console.error('Queue write error on /playing:', err);
-    res.status(500).json({ error: 'Could not update playback position' });
+    res.status(500).json({ error: 'Could not update playback position', code: E.QUEUE_PLAYING_FAILED });
   }
 });
 
@@ -297,7 +299,7 @@ router.post('/:venueCode/pause', async (req, res) => {
     res.json({ success: true, matched });
   } catch (err) {
     console.error('Queue write error on /pause:', err);
-    res.status(500).json({ error: 'Could not pause playback' });
+    res.status(500).json({ error: 'Could not pause playback', code: E.QUEUE_PAUSE_FAILED });
   }
 });
 
@@ -308,7 +310,7 @@ router.post('/:venueCode/advance', async (req, res) => {
     const { songId } = req.body;
 
     if (!songId) {
-      return res.status(400).json({ error: 'songId required for advance' });
+      return res.status(400).json({ error: 'songId required for advance', code: E.QUEUE_ADVANCE_MISSING_SONG });
     }
 
     const currentSongId = queueRepo.get(venueCode).nowPlaying?.id ?? null;
@@ -332,7 +334,7 @@ router.post('/:venueCode/advance', async (req, res) => {
     res.json({ success: true, nowPlaying: queue.nowPlaying || null });
   } catch (err) {
     console.error('Queue write error on /advance:', err);
-    res.status(500).json({ error: 'Could not advance queue' });
+    res.status(500).json({ error: 'Could not advance queue', code: E.QUEUE_ADVANCE_FAILED });
   }
 });
 
@@ -340,18 +342,18 @@ router.post('/:venueCode/advance', async (req, res) => {
 router.post('/:venueCode/skip', authMiddleware, async (req, res) => {
   try {
     if (req.venue.code !== req.params.venueCode) {
-      return res.status(403).json({ error: 'Unauthorized' });
+      return res.status(403).json({ error: 'Unauthorized', code: E.QUEUE_SKIP_UNAUTHORIZED });
     }
     const { venueCode } = req.params;
     const { songId } = req.body;
 
     if (!songId) {
-      return res.status(400).json({ error: 'songId required for skip' });
+      return res.status(400).json({ error: 'songId required for skip', code: E.QUEUE_SKIP_MISSING_SONG });
     }
 
     const currentSongId = queueRepo.get(venueCode).nowPlaying?.id;
     if (currentSongId && currentSongId !== songId) {
-      return res.status(409).json({ error: 'Skip rejected — song already changed', currentSongId });
+      return res.status(409).json({ error: 'Skip rejected — song already changed', code: E.QUEUE_SKIP_CONFLICT, currentSongId });
     }
 
     let queue = await advanceToNextSong(venueCode, songId);
@@ -370,7 +372,7 @@ router.post('/:venueCode/skip', authMiddleware, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Queue write error on /skip:', err);
-    res.status(500).json({ error: 'Could not skip song' });
+    res.status(500).json({ error: 'Could not skip song', code: E.QUEUE_SKIP_FAILED });
   }
 });
 
@@ -380,7 +382,7 @@ router.delete('/:venueCode/song/:songId', authMiddleware, async (req, res) => {
     const { venueCode, songId } = req.params;
 
     if (req.venue.code !== venueCode) {
-      return res.status(403).json({ error: 'Unauthorized' });
+      return res.status(403).json({ error: 'Unauthorized', code: E.QUEUE_REMOVE_UNAUTHORIZED });
     }
 
     const updated = await queueRepo.update(venueCode, (queue) => ({
@@ -391,7 +393,7 @@ router.delete('/:venueCode/song/:songId', authMiddleware, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Queue write error on DELETE /song:', err);
-    res.status(500).json({ error: 'Could not remove song from queue' });
+    res.status(500).json({ error: 'Could not remove song from queue', code: E.QUEUE_REMOVE_FAILED });
   }
 });
 

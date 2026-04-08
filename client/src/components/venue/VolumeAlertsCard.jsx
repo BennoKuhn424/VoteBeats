@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Volume2, X, Megaphone } from 'lucide-react';
 import socket from '../../utils/socket';
+import { isValidVolumeFeedbackPayload } from '../../utils/socketValidation';
 
 /**
  * Live volume suggestions from customers (Socket.IO). Complements analytics charts.
@@ -24,7 +25,7 @@ export default function VolumeAlertsCard({ venueCode, variant = 'light' }) {
     }
 
     function onVolumeFeedback(payload) {
-      if (!payload?.direction) return;
+      if (!isValidVolumeFeedbackPayload(payload)) return;
       const id = `${payload.at || Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       setAlerts((prev) => [{ id, ...payload }, ...prev].slice(0, 20));
     }

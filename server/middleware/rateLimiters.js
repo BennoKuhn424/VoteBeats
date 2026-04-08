@@ -27,4 +27,16 @@ const apiLimiter = rateLimit({
   },
 });
 
-module.exports = { authLimiter, apiLimiter };
+/**
+ * Tight limit for owner-only admin endpoints (overview, etc.).
+ * These endpoints return sensitive aggregate data — 20 req/min per IP is plenty.
+ */
+const ownerLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests to admin endpoints. Please slow down.' },
+});
+
+module.exports = { authLimiter, apiLimiter, ownerLimiter };

@@ -16,11 +16,54 @@ function readJSON(filename) {
   const filepath = path.join(DATA_DIR, filename);
   let data;
   if (fs.existsSync(filepath)) {
+    let raw;
     try {
-      const raw = fs.readFileSync(filepath, 'utf8');
-      data = JSON.parse(raw);
+      raw = fs.readFileSync(filepath, 'utf8');
     } catch (err) {
-      console.error(`[DB] Corrupt or unreadable ${filename}, using empty object:`, err.message);
+      // Disk read failure — log loudly and return empty so server stays up
+      console.error(JSON.stringify({
+        t: new Date().toISOString(),
+        level: 'CRITICAL',
+        msg: 'db-read-failed',
+        file: filename,
+        error: err.message,
+      }));
+      data = {};
+      cache[filename] = data;
+      return data;
+    }
+
+    try {
+      data = JSON.parse(raw);
+      if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+        throw new Error(`Expected a JSON object but got ${Array.isArray(data) ? 'array' : typeof data}`);
+      }
+    } catch (err) {
+      // Save a timestamped backup of the corrupt file before overwriting so
+      // data can be manually recovered — never silently discard it.
+      const backupName = `${filename}.corrupt.${Date.now()}`;
+      const backupPath = path.join(DATA_DIR, backupName);
+      try {
+        fs.writeFileSync(backupPath, raw, 'utf8');
+      } catch (backupErr) {
+        console.error(JSON.stringify({
+          t: new Date().toISOString(),
+          level: 'CRITICAL',
+          msg: 'db-backup-failed',
+          file: filename,
+          backupFile: backupName,
+          error: backupErr.message,
+        }));
+      }
+      console.error(JSON.stringify({
+        t: new Date().toISOString(),
+        level: 'CRITICAL',
+        msg: 'db-corrupt-file',
+        file: filename,
+        backupFile: backupName,
+        error: err.message,
+        action: 'Starting with empty object — check backup file to recover data',
+      }));
       data = {};
     }
   } else {

@@ -588,6 +588,14 @@ function filterByVenueSettings(songs, venue) {
   return filtered;
 }
 
+/**
+ * Search Apple Music catalog for songs matching a query string.
+ * Applies venue-level filters (explicit content, blocked artists, genre).
+ * Falls back to a mock catalog when no Apple developer token is configured.
+ * @param {string} query - Free-text search term
+ * @param {string|null} [venueCode] - Optional venue code for filter context
+ * @returns {Promise<object[]>} Array of song objects { appleId, title, artist, albumArt, duration, genre, isExplicit }
+ */
 async function searchAppleMusic(query, venueCode) {
   const db = require('./database');
   const venue = venueCode ? db.getVenue(venueCode) : null;
@@ -637,8 +645,15 @@ function mockSearch(query, venue) {
   return filterByVenueSettings(matched.length ? matched : MOCK_CATALOG.slice(0, 5), venue);
 }
 
-// genres: string[] — full autoplayGenre array from venue settings.
-// Splits genres into language vs regular, then applies the AND/OR rules.
+/**
+ * Search Apple Music by genre for autofill. Splits genres into language genres
+ * (e.g. 'afrikaans') and regular genres, applying AND/OR rules:
+ *  - language genres are mandatory (song must match at least one)
+ *  - regular genres are optional (song must match at least one if any are selected)
+ * @param {string[]} genres - Full autoplayGenre array from venue.settings
+ * @param {string} venueCode
+ * @returns {Promise<object[]>} Filtered song objects
+ */
 async function searchByGenre(genres, venueCode) {
   const db = require('./database');
   const venue = venueCode ? db.getVenue(venueCode) : null;
@@ -744,6 +759,14 @@ async function searchByGenre(genres, venueCode) {
 // - Small playlists (<10 songs): only block the last (size-1) played songs so songs
 //   cycle through the whole list before repeating.
 // - Large playlists (>=10 songs): use the full 50-song recent pool to avoid repeats.
+/**
+ * Pick a fresh song from a playlist for autofill, avoiding recent repeats.
+ * Small playlists (<10 songs): cycles through all songs before repeating.
+ * Large playlists (>=10 songs): uses the full 50-song recent pool to avoid repeats.
+ * @param {object[]} playlist - Array of song objects with `.appleId`
+ * @param {string} venueCode - Used to read/write the per-venue recent pool
+ * @returns {object|null} A song object, or null if playlist is empty
+ */
 function pickFromPlaylist(playlist, venueCode) {
   if (!playlist || playlist.length === 0) return null;
 

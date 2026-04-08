@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../../utils/api';
 
 export default function SearchBar({ venueCode, onRequestSong, requestSettings }) {
@@ -8,20 +8,24 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState(null);
+  const debounceRef = useRef(null);
 
-  async function handleSearch(e) {
-    e.preventDefault();
-    if (!query.trim()) return;
+  async function runSearch(searchQuery) {
+    if (!searchQuery.trim()) {
+      setResults([]);
+      setSearchError(null);
+      return;
+    }
 
     setLoading(true);
     setSearchError(null);
     try {
       let data = [];
       try {
-        const response = await api.search(query, venueCode);
+        const response = await api.search(searchQuery, venueCode);
         data = response.data?.results || [];
       } catch {
-        const fallback = await api.searchSongs(query, venueCode);
+        const fallback = await api.searchSongs(searchQuery, venueCode);
         data = Array.isArray(fallback.data) ? fallback.data : [];
       }
       setResults(data);
@@ -32,6 +36,25 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
       setSearchError('Search failed. Check your connection.');
     }
     setLoading(false);
+  }
+
+  // Debounce: wait 300ms after user stops typing before firing API call
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    if (!query.trim()) {
+      setResults([]);
+      setSearchError(null);
+      setLoading(false);
+      return;
+    }
+    debounceRef.current = setTimeout(() => runSearch(query), 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [query]);
+
+  async function handleSearch(e) {
+    e.preventDefault();
+    clearTimeout(debounceRef.current);
+    runSearch(query);
   }
 
   function handleRequest(item) {

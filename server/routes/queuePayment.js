@@ -3,6 +3,7 @@ const queueRepo = require('../repos/queueRepo');
 const broadcast = require('../utils/broadcast');
 const { fulfillPaidRequest } = require('../utils/paymentFulfill');
 const { verifyCheckoutWithYoco } = require('../utils/yoco');
+const E = require('../utils/errorCodes');
 
 /**
  * POST /api/queue/:venueCode/create-payment
@@ -14,23 +15,23 @@ function attachPaymentRoutes(router) {
     const { song, deviceId, clientOrigin } = req.body;
 
     if (!song?.appleId || !song?.title || !deviceId || typeof deviceId !== 'string') {
-      return res.status(400).json({ error: 'song (appleId, title) and deviceId are required' });
+      return res.status(400).json({ error: 'song (appleId, title) and deviceId are required', code: E.PAYMENT_MISSING_FIELDS });
     }
 
     const venue = db.getVenue(venueCode);
-    if (!venue) return res.status(404).json({ error: 'Venue not found' });
+    if (!venue) return res.status(404).json({ error: 'Venue not found', code: E.PAYMENT_VENUE_NOT_FOUND });
     if (!venue.settings?.requirePaymentForRequest) {
-      return res.status(400).json({ error: 'This venue does not require payment for requests' });
+      return res.status(400).json({ error: 'This venue does not require payment for requests', code: E.PAYMENT_NOT_REQUIRED });
     }
 
     const priceCents = venue.settings.requestPriceCents ?? 1000;
     if (priceCents < 500 || priceCents > 5000) {
-      return res.status(400).json({ error: 'Invalid request price' });
+      return res.status(400).json({ error: 'Invalid request price', code: E.PAYMENT_INVALID_PRICE });
     }
 
     const yocoSecret = process.env.YOCO_SECRET_KEY;
     if (!yocoSecret) {
-      return res.status(503).json({ error: 'Payment integration not configured' });
+      return res.status(503).json({ error: 'Payment integration not configured', code: E.PAYMENT_NOT_CONFIGURED });
     }
 
     const allowedOrigins = [req.headers.origin, process.env.PUBLIC_URL].filter(Boolean);
@@ -67,14 +68,14 @@ function attachPaymentRoutes(router) {
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        return res.status(response.status).json({ error: errData.message || 'Payment creation failed' });
+        return res.status(response.status).json({ error: errData.message || 'Payment creation failed', code: E.PAYMENT_PROVIDER_FAILED });
       }
       const data = await response.json();
 
       const checkoutId = data.id;
       const redirectUrl = data.redirectUrl;
       if (!checkoutId || !redirectUrl) {
-        return res.status(500).json({ error: 'Invalid response from payment provider' });
+        return res.status(500).json({ error: 'Invalid response from payment provider', code: E.PAYMENT_INVALID_RESPONSE });
       }
 
       db.setPendingPayment(checkoutId, {
@@ -94,19 +95,19 @@ function attachPaymentRoutes(router) {
       res.json({ redirectUrl, checkoutId });
     } catch (err) {
       console.error('Yoco checkout error:', err);
-      res.status(500).json({ error: 'Could not create payment' });
+      res.status(500).json({ error: 'Could not create payment', code: E.PAYMENT_CREATE_FAILED });
     }
   });
 
   router.get('/:venueCode/request-status', async (req, res) => {
     const { venueCode } = req.params;
     const { checkoutId } = req.query;
-    if (!checkoutId || typeof checkoutId !== 'string') return res.status(400).json({ error: 'checkoutId required' });
+    if (!checkoutId || typeof checkoutId !== 'string') return res.status(400).json({ error: 'checkoutId required', code: E.PAYMENT_CHECKOUT_REQUIRED });
 
     const pending = db.getPendingPayment(checkoutId);
     if (!pending) return res.json({ fulfilled: true });
     if (pending.venueCode !== venueCode) {
-      return res.status(403).json({ error: 'Invalid checkout' });
+      return res.status(403).json({ error: 'Invalid checkout', code: E.PAYMENT_CHECKOUT_INVALID });
     }
 
     const yocoSecret = process.env.YOCO_SECRET_KEY;

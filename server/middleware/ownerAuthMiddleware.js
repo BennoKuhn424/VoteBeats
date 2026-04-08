@@ -5,6 +5,15 @@ if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
 }
 const JWT_SECRET = process.env.JWT_SECRET || 'speeldit-dev-secret-change-in-production';
 
+/**
+ * Express middleware — verifies the platform owner JWT (`role: 'owner'`).
+ * Attaches `req.owner` and calls next() on success.
+ * Responds 401 for missing/invalid tokens and 403 if the token belongs to a
+ * venue owner rather than the platform owner.
+ * @param {import('express').Request}  req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
 function ownerAuthMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
 

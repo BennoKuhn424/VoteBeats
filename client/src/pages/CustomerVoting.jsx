@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../utils/api';
 import socket from '../utils/socket';
+import { isValidQueuePayload } from '../utils/socketValidation';
 import { getDeviceId } from '../utils/deviceId';
 import { useVisibilityAwarePolling } from '../hooks/useVisibilityAwarePolling';
 import NowPlaying from '../components/customer/NowPlaying';
@@ -14,7 +15,7 @@ import VolumeSuggestion from '../components/customer/VolumeSuggestion';
 export default function CustomerVoting() {
   const { venueCode } = useParams();
   const [queue, setQueue] = useState({ nowPlaying: null, upcoming: [], myVotes: {}, requestSettings: {} });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showLyrics, setShowLyrics] = useState(false);
   const [lyricsData, setLyricsData] = useState(null);
@@ -33,28 +34,42 @@ export default function CustomerVoting() {
   // socket effect never needs to re-register just because fetchQueue changed.
   const fetchQueueRef = useRef(null);
 
+  // AbortController for the in-flight getQueue request. Cancelled when a newer
+  // fetch starts so stale responses never overwrite fresher data.
+  const queueAbortRef = useRef(null);
+
   // Pre-fetch lyrics whenever the playing song changes
   useEffect(() => {
     const song = queue.nowPlaying;
     setShowLyrics(false);
     if (!song) { setLyricsData(null); return; }
     setLyricsData(null);
-    api.getLyrics(song.title, song.artist, song.duration)
+    const controller = new AbortController();
+    api.getLyrics(song.title, song.artist, song.duration, { signal: controller.signal })
       .then((res) => {
         const { syncedLyrics, plainLyrics } = res.data;
         setLyricsData(syncedLyrics || plainLyrics ? { syncedLyrics, plainLyrics } : null);
       })
-      .catch(() => setLyricsData(null));
+      .catch((err) => {
+        if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+        setLyricsData(null);
+      });
+    return () => controller.abort();
   }, [queue.nowPlaying?.appleId]);
 
   const fetchQueue = useCallback(async () => {
     if (!venueCode) return;
+    // Cancel any in-flight request — its response would be stale
+    queueAbortRef.current?.abort();
+    queueAbortRef.current = new AbortController();
     try {
-      const response = await api.getQueue(venueCode, deviceId);
+      const response = await api.getQueue(venueCode, deviceId, { signal: queueAbortRef.current.signal });
       setQueue(response.data);
       setError(null);
       httpFailCountRef.current = 0;
     } catch (err) {
+      // Ignore cancellations — a newer request is already in flight
+      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
       httpFailCountRef.current += 1;
       if (err.response?.status === 404) {
         setError('Venue not found');
@@ -96,6 +111,7 @@ export default function CustomerVoting() {
     }
 
     function onQueueUpdated(data) {
+      if (!isValidQueuePayload(data)) return;
       setQueue((prev) => ({
         ...data,
         myVotes: prev.myVotes || data.myVotes || {},
@@ -129,6 +145,8 @@ export default function CustomerVoting() {
       socket.off('disconnect', onDisconnect);
       socket.off('queue:updated', onQueueUpdated);
       socket.disconnect();
+      // Cancel any in-flight queue request so it doesn't update unmounted state
+      queueAbortRef.current?.abort();
     };
   // fetchQueue is intentionally omitted — we access it via fetchQueueRef so
   // the socket is never torn down just because the callback reference changed.

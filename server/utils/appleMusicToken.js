@@ -9,6 +9,13 @@ const jwt = require('jsonwebtoken');
 let cachedToken = null;
 let cachedExpiry = 0;
 
+/**
+ * Generate (or return a cached) Apple MusicKit JWT developer token.
+ * Reads private key from APPLE_MUSIC_KEY env var (raw .p8 content) or
+ * APPLE_MUSIC_KEY_PATH (path to .p8 file on disk).
+ * Token is cached for 1 hour; expires after 180 days.
+ * @returns {string|null} JWT string, or null if credentials are not configured.
+ */
 function getDeveloperToken() {
   const teamId = process.env.APPLE_TEAM_ID;
   const keyId = process.env.APPLE_KEY_ID;

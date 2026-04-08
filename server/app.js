@@ -84,7 +84,9 @@ app.get('/api/health', (req, res) => {
 // Yoco webhook needs raw body for signature verification (must be before express.json)
 app.post('/api/webhooks/yoco', express.raw({ type: 'application/json' }), yocoWebhook);
 
-app.use(express.json());
+// 50kb covers all legitimate API payloads (song requests, settings, votes).
+// Rejects oversized bodies before they reach route handlers.
+app.use(express.json({ limit: '50kb' }));
 app.use(requestLogger);
 
 app.use('/api', apiLimiter);

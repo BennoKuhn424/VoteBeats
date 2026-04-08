@@ -5,6 +5,11 @@
  * Time range is [start, end) in minutes from midnight; supports overnight (e.g. 22:00–02:00).
  */
 
+/**
+ * Convert a Date to minutes elapsed since midnight (in the Date's local timezone).
+ * @param {Date} date
+ * @returns {number} 0–1439
+ */
 function minutesFromMidnight(date) {
   return date.getHours() * 60 + date.getMinutes();
 }
@@ -21,6 +26,13 @@ function slotStartMinutes(s) {
   return sh * 60 + sm;
 }
 
+/**
+ * Check whether a schedule slot is active at a given time.
+ * Supports overnight ranges (e.g. startHour=22, endHour=2).
+ * @param {{ startHour: number, endHour: number, startMinute?: number, endMinute?: number, days?: number[] }} s
+ * @param {Date} [now]
+ * @returns {boolean}
+ */
 function slotMatches(s, now = new Date()) {
   if (!s || typeof s.startHour !== 'number' || typeof s.endHour !== 'number') return false;
   const currentDay = now.getDay();
