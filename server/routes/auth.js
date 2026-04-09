@@ -6,6 +6,7 @@ const db = require('../utils/database');
 const E = require('../utils/errorCodes');
 const validate = require('../middleware/validate');
 const { registerSchema, loginSchema } = require('../utils/schemas');
+const { revoke, isRevoked } = require('../utils/tokenBlacklist');
 
 const router = express.Router();
 if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
@@ -103,7 +104,7 @@ router.post('/register', validate(registerSchema), async (req, res) => {
     db.saveVenue(code, venue);
 
     const csrf = crypto.randomBytes(32).toString('hex');
-    const token = jwt.sign({ venueCode: code, csrf }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ venueCode: code, csrf, jti: crypto.randomUUID() }, JWT_SECRET, { expiresIn: '7d' });
     setAuthCookies(res, token, csrf);
 
     res.status(201).json({
@@ -134,7 +135,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
       const match = await bcrypt.compare(password, ownerHash);
       if (match) {
         const csrf = crypto.randomBytes(32).toString('hex');
-        const token = jwt.sign({ role: 'owner', csrf }, JWT_SECRET, { expiresIn: '7d' });
+        const token = jwt.sign({ role: 'owner', csrf, jti: crypto.randomUUID() }, JWT_SECRET, { expiresIn: '7d' });
         setAuthCookies(res, token, csrf);
         return res.json({ role: 'owner' });
       }
@@ -175,6 +176,15 @@ router.post('/login', validate(loginSchema), async (req, res) => {
 
 // POST /api/auth/logout
 router.post('/logout', (req, res) => {
+  const token = req.cookies?.auth_token;
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      if (decoded.jti && decoded.exp) revoke(decoded.jti, decoded.exp);
+    } catch {
+      // Token already invalid — nothing to revoke
+    }
+  }
   clearAuthCookies(res);
   res.json({ ok: true });
 });

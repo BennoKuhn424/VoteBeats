@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const db = require('../utils/database');
+const { isRevoked } = require('../utils/tokenBlacklist');
 
 if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
   throw new Error('FATAL: JWT_SECRET environment variable must be set in production');
@@ -26,6 +27,11 @@ function authMiddleware(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+
+    if (decoded.jti && isRevoked(decoded.jti)) {
+      return res.status(401).json({ error: 'Token has been revoked' });
+    }
+
     const venue = db.getVenue(decoded.venueCode);
 
     if (!venue) {
