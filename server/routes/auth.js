@@ -4,6 +4,8 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const db = require('../utils/database');
 const E = require('../utils/errorCodes');
+const validate = require('../middleware/validate');
+const { registerSchema, loginSchema } = require('../utils/schemas');
 
 const router = express.Router();
 if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
@@ -59,17 +61,9 @@ function generateVenueCode() {
 }
 
 // POST /api/auth/register
-router.post('/register', async (req, res) => {
+router.post('/register', validate(registerSchema), async (req, res) => {
   try {
     const { email, password, venueName, location } = req.body;
-
-    if (!email || !password || !venueName) {
-      return res.status(400).json({ error: 'Email, password and venue name required', code: E.AUTH_MISSING_FIELDS });
-    }
-
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters', code: E.AUTH_PASSWORD_TOO_SHORT });
-    }
 
     // Block reserved owner email before any writes
     if (process.env.OWNER_EMAIL && email.trim().toLowerCase() === process.env.OWNER_EMAIL.trim().toLowerCase()) {
@@ -123,13 +117,9 @@ router.post('/register', async (req, res) => {
 });
 
 // POST /api/auth/login (email + password)
-router.post('/login', async (req, res) => {
+router.post('/login', validate(loginSchema), async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password required', code: E.AUTH_MISSING_FIELDS });
-    }
 
     // Platform owner: if this email is OWNER_EMAIL, never fall through to venue login
     const ownerEmail = (process.env.OWNER_EMAIL || '').trim().toLowerCase();

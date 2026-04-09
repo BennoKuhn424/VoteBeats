@@ -10,6 +10,14 @@ const queueRepo = require('../repos/queueRepo');
 const { serverAutofill, autofillIfQueueEmpty, attachAutofillRoutes } = require('./queueAutofill');
 const attachVoteRoutes = require('./queueVote');
 const attachPaymentRoutes = require('./queuePayment');
+const validate = require('../middleware/validate');
+const {
+  requestSongSchema,
+  songIdSchema,
+  playingSchema,
+  volumeReportSchema,
+  volumeFeedbackSchema,
+} = require('../utils/schemas');
 
 const router = express.Router();
 
@@ -29,27 +37,18 @@ const VOLUME_FEEDBACK_COOLDOWN_MS = 90 * 1000;
 const VOLUME_REPORT_MAX_AGE_MS = 30 * 60 * 1000;
 
 // POST /api/queue/:venueCode/report-volume — venue player reports slider level (0–100)
-router.post('/:venueCode/report-volume', (req, res) => {
+router.post('/:venueCode/report-volume', validate(volumeReportSchema), (req, res) => {
   const { venueCode } = req.params;
   if (!db.getVenue(venueCode)) return res.status(404).json({ error: 'Venue not found', code: E.QUEUE_VENUE_NOT_FOUND });
-  const raw = req.body?.volumePercent;
-  const n = typeof raw === 'number' ? raw : parseFloat(raw);
-  if (Number.isNaN(n)) return res.status(400).json({ error: 'volumePercent required', code: E.QUEUE_INVALID_VOLUME });
-  db.setPlayerVolumeReport(venueCode, n);
+  db.setPlayerVolumeReport(venueCode, req.body.volumePercent);
   res.json({ ok: true });
 });
 
 // POST /api/queue/:venueCode/volume-feedback — customer: too loud / too soft
-router.post('/:venueCode/volume-feedback', (req, res) => {
+router.post('/:venueCode/volume-feedback', validate(volumeFeedbackSchema), (req, res) => {
   const { venueCode } = req.params;
-  const { direction, deviceId } = req.body || {};
+  const { direction, deviceId } = req.body;
   if (!db.getVenue(venueCode)) return res.status(404).json({ error: 'Venue not found', code: E.QUEUE_VENUE_NOT_FOUND });
-  if (!deviceId || typeof deviceId !== 'string') {
-    return res.status(400).json({ error: 'deviceId required', code: E.QUEUE_DEVICE_REQUIRED });
-  }
-  if (direction !== 'too_loud' && direction !== 'too_soft') {
-    return res.status(400).json({ error: 'direction must be too_loud or too_soft', code: E.QUEUE_INVALID_DIRECTION });
-  }
 
   const key = `${venueCode}:${deviceId}`;
   const now = Date.now();
@@ -151,22 +150,9 @@ router.get('/:venueCode', async (req, res) => {
 });
 
 // POST /api/queue/:venueCode/request
-router.post('/:venueCode/request', async (req, res) => {
+router.post('/:venueCode/request', validate(requestSongSchema), async (req, res) => {
   const { venueCode } = req.params;
   const { song, deviceId } = req.body;
-
-  if (!song || !song.appleId || !song.title) {
-    return res.status(400).json({ error: 'Song with appleId and title is required', code: E.QUEUE_SONG_MISSING_FIELDS });
-  }
-  if (!deviceId || typeof deviceId !== 'string') {
-    return res.status(400).json({ error: 'deviceId is required', code: E.QUEUE_DEVICE_REQUIRED });
-  }
-  if (deviceId.length > 256) {
-    return res.status(400).json({ error: 'Invalid deviceId', code: E.QUEUE_DEVICE_ID_INVALID });
-  }
-  if (String(song.title).length > 500 || String(song.artist || '').length > 500) {
-    return res.status(400).json({ error: 'Song title or artist name too long', code: E.QUEUE_SONG_TOO_LONG });
-  }
 
   const venue = db.getVenue(venueCode);
   if (!venue) {
@@ -236,7 +222,7 @@ router.post('/:venueCode/request', async (req, res) => {
 attachVoteRoutes(router);
 
 // POST /api/queue/:venueCode/playing
-router.post('/:venueCode/playing', async (req, res) => {
+router.post('/:venueCode/playing', validate(playingSchema), async (req, res) => {
   try {
     const { venueCode } = req.params;
     const { songId, positionSeconds } = req.body;
@@ -269,7 +255,7 @@ router.post('/:venueCode/playing', async (req, res) => {
 });
 
 // POST /api/queue/:venueCode/pause
-router.post('/:venueCode/pause', async (req, res) => {
+router.post('/:venueCode/pause', validate(songIdSchema), async (req, res) => {
   try {
     const { venueCode } = req.params;
     const { songId } = req.body;
@@ -304,14 +290,10 @@ router.post('/:venueCode/pause', async (req, res) => {
 });
 
 // POST /api/queue/:venueCode/advance
-router.post('/:venueCode/advance', async (req, res) => {
+router.post('/:venueCode/advance', validate(songIdSchema), async (req, res) => {
   try {
     const { venueCode } = req.params;
     const { songId } = req.body;
-
-    if (!songId) {
-      return res.status(400).json({ error: 'songId required for advance', code: E.QUEUE_ADVANCE_MISSING_SONG });
-    }
 
     const currentSongId = queueRepo.get(venueCode).nowPlaying?.id ?? null;
     if (currentSongId !== songId) {
@@ -339,17 +321,13 @@ router.post('/:venueCode/advance', async (req, res) => {
 });
 
 // POST /api/queue/:venueCode/skip (venue owner only)
-router.post('/:venueCode/skip', authMiddleware, async (req, res) => {
+router.post('/:venueCode/skip', authMiddleware, validate(songIdSchema), async (req, res) => {
   try {
     if (req.venue.code !== req.params.venueCode) {
       return res.status(403).json({ error: 'Unauthorized', code: E.QUEUE_SKIP_UNAUTHORIZED });
     }
     const { venueCode } = req.params;
     const { songId } = req.body;
-
-    if (!songId) {
-      return res.status(400).json({ error: 'songId required for skip', code: E.QUEUE_SKIP_MISSING_SONG });
-    }
 
     const currentSongId = queueRepo.get(venueCode).nowPlaying?.id;
     if (currentSongId && currentSongId !== songId) {

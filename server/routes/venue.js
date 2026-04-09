@@ -3,6 +3,15 @@ const db = require('../utils/database');
 const venueRepo = require('../repos/venueRepo');
 const authMiddleware = require('../middleware/authMiddleware');
 const { verifyCheckoutWithYoco } = require('../utils/yoco');
+const validate = require('../middleware/validate');
+const {
+  createPlaylistSchema,
+  renamePlaylistSchema,
+  addSongToPlaylistSchema,
+  banArtistSchema,
+  generateCheckoutSchema,
+  generatePlaylistSchema,
+} = require('../utils/schemas');
 
 const router = express.Router();
 
@@ -160,10 +169,9 @@ router.put('/:venueCode/settings', authMiddleware, (req, res) => {
 // ── Multi-playlist CRUD ──────────────────────────────────────────────────────
 
 // POST /api/venue/:venueCode/playlists – create a new named playlist
-router.post('/:venueCode/playlists', authMiddleware, (req, res) => {
+router.post('/:venueCode/playlists', authMiddleware, validate(createPlaylistSchema), (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
   const { name } = req.body;
-  if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
 
   const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
   const playlist = { id: `pl_${Date.now()}`, name: name.trim(), songs: [] };
@@ -200,10 +208,9 @@ router.put('/:venueCode/playlists/:playlistId/activate', authMiddleware, (req, r
 });
 
 // PUT /api/venue/:venueCode/playlists/:playlistId/rename – rename a playlist
-router.put('/:venueCode/playlists/:playlistId/rename', authMiddleware, async (req, res) => {
+router.put('/:venueCode/playlists/:playlistId/rename', authMiddleware, validate(renamePlaylistSchema), async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
   const { name } = req.body;
-  if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
 
   let rejection = null;
   const updated = await venueRepo.update(req.params.venueCode, (venue) => {
@@ -220,11 +227,10 @@ router.put('/:venueCode/playlists/:playlistId/rename', authMiddleware, async (re
 // ── Per-playlist song management ─────────────────────────────────────────────
 
 // POST /api/venue/:venueCode/playlists/:playlistId/songs – add a song
-router.post('/:venueCode/playlists/:playlistId/songs', authMiddleware, async (req, res) => {
+router.post('/:venueCode/playlists/:playlistId/songs', authMiddleware, validate(addSongToPlaylistSchema), async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   const { id, appleId, title, artist, albumArt, duration } = req.body;
-  if (!appleId || !title) return res.status(400).json({ error: 'appleId and title are required' });
 
   let rejection = null;
   let resultPlaylist = null;
@@ -263,10 +269,9 @@ router.delete('/:venueCode/playlists/:playlistId/songs/:appleId', authMiddleware
 });
 
 // POST /api/venue/:venueCode/ban-artist – quick-ban an artist from the player
-router.post('/:venueCode/ban-artist', authMiddleware, async (req, res) => {
+router.post('/:venueCode/ban-artist', authMiddleware, validate(banArtistSchema), async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
   const { artist } = req.body;
-  if (!artist?.trim()) return res.status(400).json({ error: 'Artist name is required' });
 
   const updated = await venueRepo.update(req.params.venueCode, (venue) => {
     if (!venue.settings) venue.settings = {};
@@ -285,12 +290,10 @@ router.post('/:venueCode/ban-artist', authMiddleware, async (req, res) => {
 // ── AI Playlist generation (R1 per song, min R25) ────────────────────────────
 
 // POST /api/venue/:venueCode/playlists/:playlistId/generate-checkout
-router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddleware, async (req, res) => {
+router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddleware, validate(generateCheckoutSchema), async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
-  const { prompt, count: rawCount } = req.body;
-  if (!prompt?.trim()) return res.status(400).json({ error: 'Prompt is required' });
-  const count = Math.min(Math.max(Math.round(Number(rawCount) || 100), 25), 400);
+  const { prompt, count } = req.body;
 
   const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
   if (!venue.playlists.some((p) => p.id === req.params.playlistId)) {
@@ -341,11 +344,10 @@ router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddlewar
 });
 
 // POST /api/venue/:venueCode/playlists/:playlistId/generate – verify payment, call Claude, add songs
-router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, async (req, res) => {
+router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, validate(generatePlaylistSchema), async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   const { checkoutId, prompt: bodyPrompt, count: bodyCount } = req.body;
-  if (!checkoutId || typeof checkoutId !== 'string') return res.status(400).json({ error: 'checkoutId required' });
 
   const pending = db.getPendingPayment(checkoutId);
 

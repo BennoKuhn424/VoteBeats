@@ -4,19 +4,17 @@ const broadcast = require('../utils/broadcast');
 const { fulfillPaidRequest } = require('../utils/paymentFulfill');
 const { verifyCheckoutWithYoco } = require('../utils/yoco');
 const E = require('../utils/errorCodes');
+const validate = require('../middleware/validate');
+const { createPaymentSchema } = require('../utils/schemas');
 
 /**
  * POST /api/queue/:venueCode/create-payment
  * GET /api/queue/:venueCode/request-status
  */
 function attachPaymentRoutes(router) {
-  router.post('/:venueCode/create-payment', async (req, res) => {
+  router.post('/:venueCode/create-payment', validate(createPaymentSchema), async (req, res) => {
     const { venueCode } = req.params;
     const { song, deviceId, clientOrigin } = req.body;
-
-    if (!song?.appleId || !song?.title || !deviceId || typeof deviceId !== 'string') {
-      return res.status(400).json({ error: 'song (appleId, title) and deviceId are required', code: E.PAYMENT_MISSING_FIELDS });
-    }
 
     const venue = db.getVenue(venueCode);
     if (!venue) return res.status(404).json({ error: 'Venue not found', code: E.PAYMENT_VENUE_NOT_FOUND });

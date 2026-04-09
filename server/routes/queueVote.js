@@ -3,6 +3,8 @@ const queueRepo = require('../repos/queueRepo');
 const broadcast = require('../utils/broadcast');
 const { logEvent } = require('../utils/logEvent');
 const E = require('../utils/errorCodes');
+const validate = require('../middleware/validate');
+const { voteSchema } = require('../utils/schemas');
 
 // ── Vote throttle: max 5 votes per direction per device per 60s ──────────────
 const downvoteTimestamps = {}; // { deviceId: [ts, ts, …] }
@@ -40,17 +42,9 @@ const DOWNVOTE_REMOVAL_THRESHOLD = -3;
  * POST /api/queue/:venueCode/vote
  */
 function attachVoteRoutes(router) {
-  router.post('/:venueCode/vote', async (req, res) => {
+  router.post('/:venueCode/vote', validate(voteSchema), async (req, res) => {
     const { venueCode } = req.params;
     const { songId, voteValue, deviceId } = req.body;
-
-    if (!songId || !deviceId || typeof deviceId !== 'string') {
-      return res.status(400).json({ error: 'songId and deviceId are required', code: E.VOTE_MISSING_FIELDS });
-    }
-
-    if (voteValue !== 1 && voteValue !== -1) {
-      return res.status(400).json({ error: 'Invalid vote value', code: E.VOTE_INVALID_VALUE });
-    }
 
     if (voteValue === -1 && isVoteThrottled(downvoteTimestamps, deviceId)) {
       return res.status(429).json({ error: 'Too many downvotes — slow down', code: E.VOTE_RATE_LIMITED_DOWN });
