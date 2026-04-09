@@ -40,9 +40,10 @@ export default function VenueDashboard() {
       setVenue(response.data);
     } catch (err) {
       console.error('Error fetching venue:', err);
-      navigate('/venue/login');
+      // Only redirect on auth failures — the api.js 401 interceptor handles that.
+      // Other errors (network blip, 5xx) should not kick the user to login.
     }
-  }, [navigate]);
+  }, []);
 
   const fetchQueue = useCallback(async (code) => {
     try {

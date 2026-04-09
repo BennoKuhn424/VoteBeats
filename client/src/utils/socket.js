@@ -1,9 +1,10 @@
 import { io } from 'socket.io-client';
 
-// Strip /api suffix so we connect to the socket server root
-const SERVER_URL = (import.meta.env.VITE_API_URL || '')
-  .replace(/\/api\/?$/, '')
-  .replace(/\/$/, '') || '';
+// Socket.IO connects directly to Render (not through the Vercel proxy) because
+// Vercel edge rewrites don't support WebSocket upgrades.
+// Set VITE_SOCKET_URL=https://votebeats-pu5n.onrender.com in Vercel env vars.
+// In local dev this falls back to empty string (Vite proxy handles /socket.io).
+const SERVER_URL = (import.meta.env.VITE_SOCKET_URL || '');
 
 const socket = io(SERVER_URL, {
   autoConnect: false,

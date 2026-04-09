@@ -4,6 +4,10 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://votebeats-pu5n.onrender.com/api/:path*"
+    },
+    {
       "source": "/((?!assets/)(?!.*\\.(?:ico|png|svg|jpg|jpeg|gif|webp|txt|xml|json|webmanifest|woff2?|map|html)$).*)",
       "destination": "/index.html"
     }

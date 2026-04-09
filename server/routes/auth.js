@@ -18,12 +18,12 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 
 /**
  * Cookie options for the httpOnly auth token and the readable CSRF token.
- * In production: SameSite=None (cross-origin Vercel → Render) + Secure.
- * In development: SameSite=Lax (same-origin localhost, no HTTPS needed).
+ * SameSite=Lax works because API requests are proxied through Vercel, making
+ * them same-origin from the browser's perspective (no cross-site cookie needed).
  */
 const BASE_COOKIE_OPTS = {
   secure: IS_PROD,
-  sameSite: IS_PROD ? 'none' : 'lax',
+  sameSite: 'lax',
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   path: '/',
 };
