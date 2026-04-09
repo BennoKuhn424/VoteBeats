@@ -6,22 +6,23 @@ if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
 }
 const JWT_SECRET = process.env.JWT_SECRET || 'speeldit-dev-secret-change-in-production';
 
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
 /**
- * Express middleware — verifies the venue owner's JWT and attaches the venue
- * object to `req.venue`. Responds 401 if the token is missing, invalid, or
- * the venue no longer exists.
+ * Express middleware — verifies the venue owner's JWT from the httpOnly
+ * auth_token cookie and attaches the venue object to `req.venue`.
+ * For state-changing requests (POST/PUT/DELETE/PATCH), also validates the
+ * CSRF token: the X-CSRF-Token header must match the `csrf` claim in the JWT.
  * @param {import('express').Request}  req
  * @param {import('express').Response} res
  * @param {import('express').NextFunction} next
  */
 function authMiddleware(req, res, next) {
-  const authHeader = req.headers.authorization;
+  const token = req.cookies?.auth_token;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!token) {
     return res.status(401).json({ error: 'No token provided' });
   }
-
-  const token = authHeader.slice(7);
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
@@ -29,6 +30,14 @@ function authMiddleware(req, res, next) {
 
     if (!venue) {
       return res.status(401).json({ error: 'Venue not found' });
+    }
+
+    // CSRF check for state-changing requests
+    if (!SAFE_METHODS.has(req.method)) {
+      const csrfHeader = req.headers['x-csrf-token'];
+      if (!csrfHeader || csrfHeader !== decoded.csrf) {
+        return res.status(403).json({ error: 'Invalid CSRF token' });
+      }
     }
 
     req.venue = venue;

@@ -24,12 +24,12 @@ export default function VenueLogin() {
     try {
       if (isRegister) {
         const res = await api.register(email, password, venueName, location);
-        localStorage.setItem('speeldit_token', res.data.token);
+        localStorage.setItem('speeldit_logged_in', '1');
         localStorage.setItem('speeldit_venue_code', res.data.venueCode);
         navigate('/venue/dashboard');
       } else {
         const res = await api.login(email, password);
-        localStorage.setItem('speeldit_token', res.data.token);
+        localStorage.setItem('speeldit_logged_in', '1');
         if (res.data.role === 'owner') {
           localStorage.setItem('speeldit_role', 'owner');
           localStorage.removeItem('speeldit_venue_code');

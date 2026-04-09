@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const db = require('../utils/database');
 const E = require('../utils/errorCodes');
 
@@ -9,6 +10,41 @@ if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
   throw new Error('FATAL: JWT_SECRET environment variable must be set in production');
 }
 const JWT_SECRET = process.env.JWT_SECRET || 'speeldit-dev-secret-change-in-production';
+
+const IS_PROD = process.env.NODE_ENV === 'production';
+
+/**
+ * Cookie options for the httpOnly auth token and the readable CSRF token.
+ * In production: SameSite=None (cross-origin Vercel → Render) + Secure.
+ * In development: SameSite=Lax (same-origin localhost, no HTTPS needed).
+ */
+const BASE_COOKIE_OPTS = {
+  secure: IS_PROD,
+  sameSite: IS_PROD ? 'none' : 'lax',
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  path: '/',
+};
+
+/**
+ * Sets auth_token (httpOnly) and csrf_token (readable) cookies on the response.
+ * @param {import('express').Response} res
+ * @param {string} token  - signed JWT
+ * @param {string} csrf   - random CSRF token (also embedded in JWT payload)
+ */
+function setAuthCookies(res, token, csrf) {
+  res.cookie('auth_token', token, { ...BASE_COOKIE_OPTS, httpOnly: true });
+  res.cookie('csrf_token', csrf, { ...BASE_COOKIE_OPTS, httpOnly: false });
+}
+
+/**
+ * Clears auth and CSRF cookies.
+ * @param {import('express').Response} res
+ */
+function clearAuthCookies(res) {
+  const clearOpts = { ...BASE_COOKIE_OPTS, maxAge: 0 };
+  res.cookie('auth_token', '', clearOpts);
+  res.cookie('csrf_token', '', clearOpts);
+}
 
 function generateVenueCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -72,10 +108,11 @@ router.post('/register', async (req, res) => {
 
     db.saveVenue(code, venue);
 
-    const token = jwt.sign({ venueCode: code }, JWT_SECRET, { expiresIn: '7d' });
+    const csrf = crypto.randomBytes(32).toString('hex');
+    const token = jwt.sign({ venueCode: code, csrf }, JWT_SECRET, { expiresIn: '7d' });
+    setAuthCookies(res, token, csrf);
 
     res.status(201).json({
-      token,
       venueCode: code,
       venue: { code, name: venue.name, location: venue.location, settings: venue.settings },
     });
@@ -95,7 +132,6 @@ router.post('/login', async (req, res) => {
     }
 
     // Platform owner: if this email is OWNER_EMAIL, never fall through to venue login
-    // (avoids stale venues on disk with the same email shadowing owner dashboard).
     const ownerEmail = (process.env.OWNER_EMAIL || '').trim().toLowerCase();
     const ownerHash = process.env.OWNER_PASSWORD_HASH;
     if (ownerEmail && email.trim().toLowerCase() === ownerEmail) {
@@ -107,8 +143,10 @@ router.post('/login', async (req, res) => {
       }
       const match = await bcrypt.compare(password, ownerHash);
       if (match) {
-        const token = jwt.sign({ role: 'owner' }, JWT_SECRET, { expiresIn: '7d' });
-        return res.json({ token, role: 'owner' });
+        const csrf = crypto.randomBytes(32).toString('hex');
+        const token = jwt.sign({ role: 'owner', csrf }, JWT_SECRET, { expiresIn: '7d' });
+        setAuthCookies(res, token, csrf);
+        return res.json({ role: 'owner' });
       }
       return res.status(401).json({ error: 'Invalid email or password', code: E.AUTH_INVALID_CREDENTIALS });
     }
@@ -126,10 +164,11 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password', code: E.AUTH_INVALID_CREDENTIALS });
     }
 
-    const token = jwt.sign({ venueCode: venue.code }, JWT_SECRET, { expiresIn: '7d' });
+    const csrf = crypto.randomBytes(32).toString('hex');
+    const token = jwt.sign({ venueCode: venue.code, csrf }, JWT_SECRET, { expiresIn: '7d' });
+    setAuthCookies(res, token, csrf);
 
     res.json({
-      token,
       venueCode: venue.code,
       venue: {
         code: venue.code,
@@ -142,6 +181,12 @@ router.post('/login', async (req, res) => {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed', code: E.AUTH_LOGIN_FAILED });
   }
+});
+
+// POST /api/auth/logout
+router.post('/logout', (req, res) => {
+  clearAuthCookies(res);
+  res.json({ ok: true });
 });
 
 module.exports = router;

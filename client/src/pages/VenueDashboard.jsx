@@ -61,10 +61,9 @@ export default function VenueDashboard() {
   useVisibilityAwarePolling(pollQueue, 3000);
 
   useEffect(() => {
-    const token = localStorage.getItem('speeldit_token');
     const venueCode = localStorage.getItem('speeldit_venue_code');
 
-    if (!token || !venueCode) {
+    if (!venueCode) {
       navigate('/venue/login');
       return;
     }
@@ -113,8 +112,9 @@ export default function VenueDashboard() {
     try { await api.banArtist(venue.code, artist); } catch {}
   }
 
-  function handleLogout() {
-    localStorage.removeItem('speeldit_token');
+  async function handleLogout() {
+    try { await api.logout(); } catch {}
+    localStorage.removeItem('speeldit_logged_in');
     localStorage.removeItem('speeldit_venue_code');
     navigate('/venue/login');
   }

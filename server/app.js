@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
 const { yocoWebhook } = require('./routes/webhooks');
 const { requestLogger } = require('./middleware/requestLogger');
 const { authLimiter, apiLimiter } = require('./middleware/rateLimiters');
@@ -87,6 +88,7 @@ app.post('/api/webhooks/yoco', express.raw({ type: 'application/json' }), yocoWe
 // 50kb covers all legitimate API payloads (song requests, settings, votes).
 // Rejects oversized bodies before they reach route handlers.
 app.use(express.json({ limit: '50kb' }));
+app.use(cookieParser());
 app.use(requestLogger);
 
 app.use('/api', apiLimiter);

@@ -27,7 +27,7 @@ export default function OwnerDashboard() {
     } catch (e) {
       setError(e.response?.data?.error || 'Could not load dashboard');
       if (e.response?.status === 401 || e.response?.status === 403) {
-        localStorage.removeItem('speeldit_token');
+        localStorage.removeItem('speeldit_logged_in');
         localStorage.removeItem('speeldit_role');
         navigate('/venue/login', { replace: true });
       }
@@ -37,9 +37,8 @@ export default function OwnerDashboard() {
   }, [navigate]);
 
   useEffect(() => {
-    const token = localStorage.getItem('speeldit_token');
     const role = localStorage.getItem('speeldit_role');
-    if (!token || role !== 'owner') {
+    if (role !== 'owner') {
       navigate('/venue/login', { replace: true });
       return;
     }
@@ -48,8 +47,9 @@ export default function OwnerDashboard() {
     return () => clearInterval(t);
   }, [navigate, load]);
 
-  function handleLogout() {
-    localStorage.removeItem('speeldit_token');
+  async function handleLogout() {
+    try { await api.logout(); } catch {}
+    localStorage.removeItem('speeldit_logged_in');
     localStorage.removeItem('speeldit_role');
     localStorage.removeItem('speeldit_venue_code');
     navigate('/venue/login');

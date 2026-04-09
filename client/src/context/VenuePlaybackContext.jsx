@@ -152,8 +152,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   // ── MusicKit init ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!venueCode) return;
-    const token = localStorage.getItem('speeldit_token');
-    if (!token) return;
+    if (!localStorage.getItem('speeldit_logged_in')) return;
 
     let stateListener = null;
     let timeListener = null;

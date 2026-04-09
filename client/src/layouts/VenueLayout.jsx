@@ -11,7 +11,7 @@ import VenuePlayerBar from '../components/venue/VenuePlayerBar';
 export default function VenueLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const token = localStorage.getItem('speeldit_token');
+  const loggedIn = localStorage.getItem('speeldit_logged_in');
 
   const playerMatch = matchPath({ path: '/venue/player/:venueCode', end: true }, location.pathname);
   const codeFromPlayerUrl = playerMatch?.params?.venueCode;
@@ -25,7 +25,7 @@ export default function VenueLayout() {
   const venueCode = codeFromPlayerUrl || localStorage.getItem('speeldit_venue_code') || null;
 
   useEffect(() => {
-    if (!token) {
+    if (!loggedIn) {
       navigate('/venue/login');
       return;
     }
@@ -36,9 +36,9 @@ export default function VenueLayout() {
     if (!venueCode) {
       navigate('/venue/login', { replace: true });
     }
-  }, [token, venueCode, navigate]);
+  }, [loggedIn, venueCode, navigate]);
 
-  if (!token) return null;
+  if (!loggedIn) return null;
   if (localStorage.getItem('speeldit_role') === 'owner') return null;
   if (!venueCode) return null;
 

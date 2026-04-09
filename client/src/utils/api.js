@@ -10,28 +10,39 @@ const api = axios.create({
   baseURL: API_URL,
   // 10s timeout covers slow mobile networks; long ops (generatePlaylist) override per-call
   timeout: 10000,
+  // Required so the browser sends the auth_token + csrf_token cookies cross-origin
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
     ...(isNgrok && { 'ngrok-skip-browser-warning': '1' }),
   },
 });
 
-// JWT injection — never send an old session token on login/register (confuses auth + 401 handling)
+/** Reads the csrf_token cookie set by the server after login. */
+function getCsrfToken() {
+  if (typeof document === 'undefined') return '';
+  const match = document.cookie.split(';').map((c) => c.trim()).find((c) => c.startsWith('csrf_token='));
+  return match ? match.slice('csrf_token='.length) : '';
+}
+
+// Inject CSRF token on every state-changing request. Never send stale tokens on login/register.
 api.interceptors.request.use((config) => {
+  const method = (config.method || 'get').toLowerCase();
   const path = `${config.baseURL || ''}${config.url || ''}`;
   const isAuthPublic =
     path.includes('/auth/login') ||
     path.includes('/auth/register') ||
     (config.url || '').includes('auth/login') ||
     (config.url || '').includes('auth/register');
-  if (!isAuthPublic) {
-    const token = localStorage.getItem('speeldit_token');
-    if (token) config.headers.Authorization = `Bearer ${token}`;
+
+  if (!isAuthPublic && !['get', 'head', 'options'].includes(method)) {
+    const csrf = getCsrfToken();
+    if (csrf) config.headers['X-CSRF-Token'] = csrf;
   }
   return config;
 });
 
-// Expired or invalid venue session: clear storage and return to login (skip auth form errors)
+// Expired or invalid session: clear local auth state and return to login
 api.interceptors.response.use(
   (res) => res,
   (error) => {
@@ -40,8 +51,8 @@ api.interceptors.response.use(
     if (u.includes('auth/login') || u.includes('auth/register')) {
       return Promise.reject(error);
     }
-    if (!localStorage.getItem('speeldit_token')) return Promise.reject(error);
-    localStorage.removeItem('speeldit_token');
+    // Clear client-side auth markers (the httpOnly cookie is cleared by /logout)
+    localStorage.removeItem('speeldit_logged_in');
     localStorage.removeItem('speeldit_venue_code');
     localStorage.removeItem('speeldit_role');
     if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/venue/login')) {
@@ -103,6 +114,7 @@ export default {
   login: (email, password) => api.post('/auth/login', { email, password }),
   register: (email, password, venueName, location) =>
     api.post('/auth/register', { email, password, venueName, location }),
+  logout: () => api.post('/auth/logout'),
 
   getVenue: (venueCode) => api.get(`/venue/${venueCode}`),
 
