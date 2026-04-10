@@ -319,35 +319,9 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     if (musicRef.current) musicRef.current.volume = volume / 100;
   }, [volume]);
 
-  // ── Pause on tab hide, resume on tab show ────────────────────────────────
-  // Prevents battery drain and audio playing in the background when the venue
-  // operator switches away from the tab. Only acts when actually playing —
-  // does not interfere with transitioning, paused-by-user, or idle states.
-  useEffect(() => {
-    let pausedByVisibility = false;
-
-    function handleVisibilityChange() {
-      const music = musicRef.current;
-      if (!music) return;
-
-      if (document.hidden) {
-        // Only pause if we are actively playing — don't touch paused/idle states
-        if (playerStateRef.current === PLAYER_STATES.PLAYING) {
-          music.pause();
-          pausedByVisibility = true;
-        }
-      } else {
-        // Only resume if we were the ones who paused it
-        if (pausedByVisibility) {
-          pausedByVisibility = false;
-          music.play().catch(() => {});
-        }
-      }
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
+  // Music must keep playing when the tab is in the background — venues use
+  // tablets for other things while SpeelDit plays. The Wake Lock API in
+  // VenuePlayerBar.jsx prevents the screen from dimming.
 
   // Report volume to server so customer feedback can be correlated with venue level
   useEffect(() => {
