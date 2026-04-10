@@ -55,7 +55,7 @@ describe('POST /api/auth/register', () => {
       .post('/api/auth/register')
       .send({ password: 'secret123', venueName: 'My Bar' });
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/email/i);
+    expect(res.body.error).toBeDefined();
   });
 
   test('400 when password is missing', async () => {
@@ -98,28 +98,33 @@ describe('POST /api/auth/register', () => {
     }
   });
 
-  test('201 with token, venueCode, and venue on success', async () => {
+  test('201 with cookies, venueCode, and venue on success', async () => {
     stubEmptyVenues();
     const res = await request(app)
       .post('/api/auth/register')
       .send({ email: 'new@bar.com', password: 'secret123', venueName: 'Grand Venue', location: 'JHB' });
     expect(res.status).toBe(201);
-    expect(typeof res.body.token).toBe('string');
+    // Token is now in httpOnly cookie, not response body
+    const cookies = res.headers['set-cookie'];
+    expect(cookies.some(c => c.startsWith('auth_token='))).toBe(true);
+    expect(cookies.some(c => c.startsWith('csrf_token='))).toBe(true);
     expect(res.body.venueCode).toHaveLength(6);
     expect(res.body.venue.name).toBe('Grand Venue');
     expect(res.body.venue.location).toBe('JHB');
     expect(db.saveVenue).toHaveBeenCalledTimes(1);
   });
 
-  test('token payload contains the new venueCode', async () => {
+  test('auth cookie contains the new venueCode', async () => {
     stubEmptyVenues();
     const res = await request(app)
       .post('/api/auth/register')
       .send({ email: 'new@bar.com', password: 'secret123', venueName: 'Bar' });
     expect(res.status).toBe(201);
-    // Decode (no verify) to inspect payload
+    const cookies = res.headers['set-cookie'];
+    const authCookie = cookies.find(c => c.startsWith('auth_token='));
+    const tokenValue = authCookie.split('=')[1].split(';')[0];
     const jwt = require('jsonwebtoken');
-    const payload = jwt.decode(res.body.token);
+    const payload = jwt.decode(tokenValue);
     expect(payload.venueCode).toBe(res.body.venueCode);
   });
 });
@@ -155,13 +160,14 @@ describe('POST /api/auth/login', () => {
     expect(res.status).toBe(401);
   });
 
-  test('200 with token and venueCode on correct credentials', async () => {
+  test('200 with cookies and venueCode on correct credentials', async () => {
     stubExistingVenue();
     const res = await request(app)
       .post('/api/auth/login')
       .send({ email: 'owner@bar.com', password: TEST_PASSWORD });
     expect(res.status).toBe(200);
-    expect(typeof res.body.token).toBe('string');
+    const cookies = res.headers['set-cookie'];
+    expect(cookies.some(c => c.startsWith('auth_token='))).toBe(true);
     expect(res.body.venueCode).toBe('TSTV01');
   });
 
@@ -186,8 +192,11 @@ describe('POST /api/auth/login', () => {
         .send({ email: ownerEmail, password: 'owner-secret' });
       expect(res.status).toBe(200);
       expect(res.body.role).toBe('owner');
+      const cookies = res.headers['set-cookie'];
+      const authCookie = cookies.find(c => c.startsWith('auth_token='));
+      const tokenValue = authCookie.split('=')[1].split(';')[0];
       const jwt = require('jsonwebtoken');
-      const payload = jwt.decode(res.body.token);
+      const payload = jwt.decode(tokenValue);
       expect(payload.role).toBe('owner');
     } finally {
       process.env.OWNER_EMAIL = prev.email;

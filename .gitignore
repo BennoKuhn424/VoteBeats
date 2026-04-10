@@ -29,3 +29,6 @@ dist-ssr
 /playwright-report/
 /test-results/
 /.playwright/
+
+.vercel
+.env*.local
