@@ -49,6 +49,11 @@ export default function Home() {
             Log in to your dashboard
           </Link>
         </p>
+
+        <footer className="mt-12 pt-6 border-t border-carbon-200 text-center text-xs text-carbon-400 space-x-4">
+          <Link to="/privacy" className="hover:text-carbon-600 transition-colors">Privacy Policy</Link>
+          <Link to="/terms" className="hover:text-carbon-600 transition-colors">Terms of Service</Link>
+        </footer>
       </div>
     </div>
   );

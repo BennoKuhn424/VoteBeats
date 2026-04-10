@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import api from '../utils/api';
 import Button from '../components/shared/Button';
@@ -192,6 +192,15 @@ export default function VenueLogin() {
               <p className="text-red-500 text-sm">{error}</p>
             )}
 
+            {isRegister && (
+              <p className="text-xs text-zinc-500 mt-4">
+                By registering, you agree to our{' '}
+                <Link to="/terms" className="text-brand-600 underline">Terms of Service</Link>{' '}
+                and{' '}
+                <Link to="/privacy" className="text-brand-600 underline">Privacy Policy</Link>.
+              </p>
+            )}
+
             {/* Login/Register Button */}
             <Button
               type="submit"
@@ -229,15 +238,19 @@ export default function VenueLogin() {
           </div>
         </div>
 
-        {/* Footer Link */}
-        <div className="mt-6 text-center">
+        {/* Footer Links */}
+        <div className="mt-6 text-center space-y-2">
           <button
             type="button"
             onClick={() => navigate('/')}
             className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors"
           >
-            ← Back to Home
+            &larr; Back to Home
           </button>
+          <div className="text-xs text-zinc-400 space-x-4">
+            <Link to="/privacy" className="hover:text-zinc-600 transition-colors">Privacy Policy</Link>
+            <Link to="/terms" className="hover:text-zinc-600 transition-colors">Terms of Service</Link>
+          </div>
         </div>
       </div>
     </div>

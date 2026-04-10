@@ -8,21 +8,29 @@ import VenueDashboard from './pages/VenueDashboard';
 import VenuePlayer from './pages/VenuePlayer';
 import VenueBrowsePlaylists from './pages/VenueBrowsePlaylists';
 import OwnerDashboard from './pages/OwnerDashboard';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
+import CookieConsent from './components/shared/CookieConsent';
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/owner" element={<OwnerDashboard />} />
-      <Route path="/v/:venueCode" element={<CustomerVoting />} />
-      <Route path="/v/:venueCode/request-success" element={<RequestSuccess />} />
-      <Route path="/venue/login" element={<VenueLogin />} />
-      <Route path="/venue" element={<VenueLayout />}>
-        <Route index element={<Navigate to="/venue/dashboard" replace />} />
-        <Route path="dashboard" element={<VenueDashboard />} />
-        <Route path="playlists" element={<VenueBrowsePlaylists />} />
-        <Route path="player/:venueCode" element={<VenuePlayer />} />
-      </Route>
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/terms" element={<TermsOfService />} />
+        <Route path="/owner" element={<OwnerDashboard />} />
+        <Route path="/v/:venueCode" element={<CustomerVoting />} />
+        <Route path="/v/:venueCode/request-success" element={<RequestSuccess />} />
+        <Route path="/venue/login" element={<VenueLogin />} />
+        <Route path="/venue" element={<VenueLayout />}>
+          <Route index element={<Navigate to="/venue/dashboard" replace />} />
+          <Route path="dashboard" element={<VenueDashboard />} />
+          <Route path="playlists" element={<VenueBrowsePlaylists />} />
+          <Route path="player/:venueCode" element={<VenuePlayer />} />
+        </Route>
+      </Routes>
+      <CookieConsent />
+    </>
   );
 }
