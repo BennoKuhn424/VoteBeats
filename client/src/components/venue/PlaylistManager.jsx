@@ -31,6 +31,8 @@ export default function PlaylistManager({
   const [searchError, setSearchError] = useState(null);
   const [addedIds, setAddedIds] = useState(new Set());
 
+  const [actionError, setActionError] = useState('');
+
   // Generate
   const [showGenerate, setShowGenerate] = useState(false);
   const [generatePrompt, setGeneratePrompt] = useState('');
@@ -94,7 +96,7 @@ export default function PlaylistManager({
       switchTab(res.data.playlists[0]?.id || null);
       dispatchVenuePlayerMetaRefresh();
     } catch (err) {
-      alert(err.response?.data?.error || 'Could not delete playlist');
+      setActionError(err.response?.data?.error || 'Could not delete playlist');
     }
   }
 
@@ -130,7 +132,7 @@ export default function PlaylistManager({
       setPlaylists((prev) => prev.map((p) => p.id === selectedId ? { ...p, songs: res.data.playlist.songs } : p));
       setAddedIds((prev) => new Set(prev).add(song.appleId));
     } catch (err) {
-      alert(err.response?.data?.error || 'Could not add song');
+      setActionError(err.response?.data?.error || 'Could not add song');
     }
   }
 
@@ -141,7 +143,7 @@ export default function PlaylistManager({
       setPlaylists((prev) => prev.map((p) => p.id === selectedId ? { ...p, songs: res.data.playlist.songs } : p));
       setAddedIds((prev) => { const n = new Set(prev); n.delete(appleId); return n; });
     } catch (err) {
-      alert(err.response?.data?.error || 'Could not remove song');
+      setActionError(err.response?.data?.error || 'Could not remove song');
     }
   }
 
@@ -200,6 +202,12 @@ export default function PlaylistManager({
 
   return (
     <div className="space-y-5">
+      {actionError && (
+        <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-red-500/10 border border-red-500/30 rounded-lg text-red-500 text-sm">
+          <span>{actionError}</span>
+          <button onClick={() => setActionError('')} className="shrink-0 text-red-400 hover:text-red-300">&times;</button>
+        </div>
+      )}
       {playlists.length === 0 && !isEditing && (
         <div className={`${card} flex flex-col items-center text-center`}>
           <ListMusic className={`h-8 w-8 mb-2 ${isLight ? 'text-zinc-300' : 'text-dark-500'}`} />

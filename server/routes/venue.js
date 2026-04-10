@@ -13,7 +13,10 @@ const {
   generatePlaylistSchema,
 } = require('../utils/schemas');
 
+const validateVenueCode = require('../middleware/validateVenueCode');
+
 const router = express.Router();
+router.param('venueCode', validateVenueCode);
 
 // ── Migrate single-playlist venues to multi-playlist format ──────────────────
 function normalizePlaylists(venue) {

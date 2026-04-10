@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation, matchPath } from 'react-router-dom';
 import { VenuePlaybackProvider } from '../context/VenuePlaybackContext';
 import VenuePlayerBar from '../components/venue/VenuePlayerBar';
+import api from '../utils/api';
 
 /**
  * Layout for venue dashboard, playlists, and related routes. Keeps
@@ -12,6 +13,7 @@ export default function VenueLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const loggedIn = localStorage.getItem('speeldit_logged_in');
+  const [verified, setVerified] = useState(false);
 
   const playerMatch = matchPath({ path: '/venue/player/:venueCode', end: true }, location.pathname);
   const codeFromPlayerUrl = playerMatch?.params?.venueCode;
@@ -35,7 +37,12 @@ export default function VenueLayout() {
     }
     if (!venueCode) {
       navigate('/venue/login', { replace: true });
+      return;
     }
+    // Validate the session is still active server-side on mount
+    api.getVenue(venueCode).then(() => setVerified(true)).catch(() => {
+      // 401 interceptor in api.js will handle redirect + localStorage cleanup
+    });
   }, [loggedIn, venueCode, navigate]);
 
   if (!loggedIn) return null;

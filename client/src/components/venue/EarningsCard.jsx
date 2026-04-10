@@ -5,6 +5,7 @@ import api from '../../utils/api';
 export default function EarningsCard({ venueCode, showPlaceholder, variant = 'dark', embedded }) {
   const [earnings, setEarnings] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
 
   useEffect(() => {
     if (!venueCode) return;
@@ -17,8 +18,10 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
     try {
       const res = await api.getVenueEarnings(venueCode);
       setEarnings(res.data);
+      setFetchError(false);
     } catch {
       setEarnings(null);
+      setFetchError(true);
     } finally {
       setLoading(false);
     }
@@ -51,6 +54,19 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
             <div className="h-8 bg-dark-600 rounded w-1/3" />
           </>
         )}
+      </div>
+    );
+  }
+
+  if (fetchError && !earnings) {
+    return (
+      <div className={cardClass}>
+        <p className={`text-sm ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>
+          Could not load earnings.{' '}
+          <button onClick={fetchEarnings} className="text-brand-500 hover:text-brand-400 underline">
+            Retry
+          </button>
+        </p>
       </div>
     );
   }

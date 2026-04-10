@@ -59,6 +59,7 @@ app.use(
       cb(new Error('Not allowed by CORS'));
     },
     credentials: true,
+    maxAge: 86400, // Cache preflight responses for 24 hours
   })
 );
 

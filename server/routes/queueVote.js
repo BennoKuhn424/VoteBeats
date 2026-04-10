@@ -46,6 +46,10 @@ function attachVoteRoutes(router) {
     const { venueCode } = req.params;
     const { songId, voteValue, deviceId } = req.body;
 
+    if (!db.getVenue(venueCode)) {
+      return res.status(404).json({ error: 'Venue not found', code: E.QUEUE_VENUE_NOT_FOUND });
+    }
+
     if (voteValue === -1 && isVoteThrottled(downvoteTimestamps, deviceId)) {
       return res.status(429).json({ error: 'Too many downvotes — slow down', code: E.VOTE_RATE_LIMITED_DOWN });
     }

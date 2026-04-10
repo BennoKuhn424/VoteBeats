@@ -52,9 +52,10 @@ function clearAuthCookies(res) {
 function generateVenueCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   for (let attempt = 0; attempt < 100; attempt++) {
+    const bytes = crypto.randomBytes(6);
     let code = '';
     for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
+      code += chars.charAt(bytes[i] % chars.length);
     }
     if (!db.getVenue(code)) return code;
   }
@@ -156,7 +157,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
     }
 
     const csrf = crypto.randomBytes(32).toString('hex');
-    const token = jwt.sign({ venueCode: venue.code, csrf }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ venueCode: venue.code, csrf, jti: crypto.randomUUID() }, JWT_SECRET, { expiresIn: '7d' });
     setAuthCookies(res, token, csrf);
 
     res.json({

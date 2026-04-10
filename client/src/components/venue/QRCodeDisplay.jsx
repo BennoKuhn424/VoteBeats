@@ -1,9 +1,7 @@
 import { QRCodeSVG } from 'qrcode.react';
 
 export default function QRCodeDisplay({ venueCode, venueName, variant = 'dark' }) {
-  const baseUrl =
-    import.meta.env.VITE_PUBLIC_URL ||
-    (typeof window !== 'undefined' ? window.location.origin : 'https://yourapp.vercel.app');
+  const baseUrl = import.meta.env.VITE_PUBLIC_URL || window.location.origin;
   const votingUrl = `${baseUrl.replace(/\/$/, '')}/v/${venueCode}`;
 
   const isLight = variant === 'light';

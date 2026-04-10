@@ -49,14 +49,23 @@ function validateQueue(venueCode, queue) {
   const dur = queue.nowPlaying?.duration;
   if (dur !== undefined && dur !== null) {
     if (typeof dur !== 'number' || dur < 0 || dur > 3600) {
-      issues.push(`nowPlaying.duration=${dur} is out of range [0, 3600]`);
+      issues.push(`nowPlaying.duration=${dur} is out of range [0, 3600] — clamped`);
+      queue.nowPlaying.duration = Math.min(3600, Math.max(0, Number(dur) || 0));
     }
   }
 
-  // ── Upcoming song items have required fields ──────────────────────────────
-  queue.upcoming.forEach((s, i) => {
-    if (!s.appleId) issues.push(`upcoming[${i}] (id=${s.id}) is missing appleId`);
+  // ── Upcoming song items have required fields — remove corrupted entries ───
+  const beforeFilterLen = queue.upcoming.length;
+  queue.upcoming = queue.upcoming.filter((s) => {
+    if (!s.appleId) {
+      issues.push(`upcoming (id=${s.id}) is missing appleId — removed`);
+      return false;
+    }
+    return true;
   });
+  if (queue.upcoming.length !== beforeFilterLen) {
+    issues.push(`removed ${beforeFilterLen - queue.upcoming.length} song(s) missing appleId`);
+  }
 
   if (issues.length > 0) {
     console.warn(`[QUEUE_INVARIANT] venueCode=${venueCode} —`, issues.join('; '));

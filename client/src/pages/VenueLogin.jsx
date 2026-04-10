@@ -19,6 +19,16 @@ export default function VenueLogin() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+
+    if (isRegister && password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+    if (isRegister && venueName.trim().length === 0) {
+      setError('Venue name is required');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -93,6 +103,8 @@ export default function VenueLogin() {
                   className={inputClass}
                   placeholder="your@email.com"
                   required
+                  maxLength={254}
+                  autoComplete="email"
                 />
               </div>
             </div>
@@ -112,6 +124,7 @@ export default function VenueLogin() {
                     className="w-full min-h-touch px-4 py-3 bg-white border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-zinc-900 placeholder:text-zinc-400"
                     placeholder="My Bar"
                     required
+                    maxLength={100}
                   />
                 </div>
                 <div className="space-y-2">
@@ -125,6 +138,7 @@ export default function VenueLogin() {
                     onChange={(e) => setLocation(e.target.value)}
                     className="w-full min-h-touch px-4 py-3 bg-white border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-zinc-900 placeholder:text-zinc-400"
                     placeholder="City or address"
+                    maxLength={200}
                   />
                 </div>
               </>
@@ -155,6 +169,9 @@ export default function VenueLogin() {
                   className={inputClass}
                   placeholder="Enter your password"
                   required
+                  maxLength={128}
+                  minLength={isRegister ? 8 : 1}
+                  autoComplete={isRegister ? 'new-password' : 'current-password'}
                 />
                 <button
                   type="button"

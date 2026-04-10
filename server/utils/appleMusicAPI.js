@@ -610,6 +610,7 @@ async function searchAppleMusic(query, venueCode) {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
+          signal: AbortSignal.timeout(8000),
         }
       );
       if (!res.ok) throw new Error(`Apple Music search error: ${res.status}`);
@@ -705,6 +706,7 @@ async function searchByGenre(genres, venueCode) {
               Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json',
             },
+            signal: AbortSignal.timeout(8000),
           }
         );
         if (!res.ok) throw new Error(`Apple Music autofill error: ${res.status}`);

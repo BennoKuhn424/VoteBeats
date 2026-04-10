@@ -54,6 +54,7 @@ async function yocoWebhook(req, res) {
     : Buffer.from(typeof req.body === 'string' ? req.body : '', 'utf8');
 
   if (!verifyYocoWebhookSignature(rawBuf, req.headers)) {
+    console.warn(`Webhook signature verification failed: ip=${ip}`);
     return res.sendStatus(403);
   }
 

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import * as Sentry from '@sentry/react';
 import App from './App';
+import ErrorBoundary from './components/shared/ErrorBoundary';
 import './index.css';
 
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN;
@@ -35,13 +36,15 @@ function AppTree() {
 
 const root = (
   <React.StrictMode>
-    {sentryDsn ? (
-      <Sentry.ErrorBoundary fallback={<div className="min-h-screen flex items-center justify-center p-6 text-zinc-600">Something went wrong. Please refresh the page.</div>}>
+    <ErrorBoundary>
+      {sentryDsn ? (
+        <Sentry.ErrorBoundary fallback={<div className="min-h-screen flex items-center justify-center p-6 text-zinc-600">Something went wrong. Please refresh the page.</div>}>
+          <AppTree />
+        </Sentry.ErrorBoundary>
+      ) : (
         <AppTree />
-      </Sentry.ErrorBoundary>
-    ) : (
-      <AppTree />
-    )}
+      )}
+    </ErrorBoundary>
   </React.StrictMode>
 );
 

@@ -9,6 +9,9 @@ router.get('/', async (req, res) => {
   if (!title || !artist) {
     return res.status(400).json({ error: 'title and artist are required' });
   }
+  if (title.length > 500 || artist.length > 500) {
+    return res.status(400).json({ error: 'title or artist too long' });
+  }
 
   try {
     // Try exact match first (faster, includes duration for better accuracy)

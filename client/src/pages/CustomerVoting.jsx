@@ -17,6 +17,7 @@ export default function CustomerVoting() {
   const [queue, setQueue] = useState({ nowPlaying: null, upcoming: [], myVotes: {}, requestSettings: {} });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [requestError, setRequestError] = useState('');
   const [showLyrics, setShowLyrics] = useState(false);
   const [lyricsData, setLyricsData] = useState(null);
   const [isConnected, setIsConnected] = useState(socket.connected);
@@ -157,6 +158,7 @@ export default function CustomerVoting() {
   useVisibilityAwarePolling(fetchQueue, 15000);
 
   async function handleRequestSong(song, paymentInfo) {
+    setRequestError('');
     try {
       if (paymentInfo?.requiresPayment) {
         const res = await api.createPayment(venueCode, song, deviceId);
@@ -171,7 +173,7 @@ export default function CustomerVoting() {
           window.location.href = res.data.redirectUrl;
           return;
         }
-        alert('Payment could not be started. Please try again.');
+        setRequestError('Payment could not be started. Please try again.');
         return;
       } else {
         await api.requestSong(venueCode, song, deviceId);
@@ -179,7 +181,7 @@ export default function CustomerVoting() {
         fetchQueue();
       }
     } catch (err) {
-      alert(err.response?.data?.error || 'Error requesting song');
+      setRequestError(err.response?.data?.error || 'Error requesting song');
     }
   }
 
@@ -215,6 +217,13 @@ export default function CustomerVoting() {
           onRequestSong={handleRequestSong}
           requestSettings={queue.requestSettings}
         />
+
+        {requestError && (
+          <div className="mb-4 flex items-center justify-between gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+            <span>{requestError}</span>
+            <button onClick={() => setRequestError('')} className="shrink-0 text-red-400 hover:text-red-300">&times;</button>
+          </div>
+        )}
 
         {queue.nowPlaying && (
           <NowPlaying

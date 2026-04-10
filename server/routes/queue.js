@@ -19,7 +19,10 @@ const {
   volumeFeedbackSchema,
 } = require('../utils/schemas');
 
+const validateVenueCode = require('../middleware/validateVenueCode');
+
 const router = express.Router();
+router.param('venueCode', validateVenueCode);
 
 // ── Anchor-pattern helper ─────────────────────────────────────────────────────
 function getCurrentPositionMs(np) {

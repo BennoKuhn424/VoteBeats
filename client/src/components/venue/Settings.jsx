@@ -8,6 +8,7 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
   const [requirePaymentForRequest, setRequirePaymentForRequest] = useState(false);
   const [requestPriceCents, setRequestPriceCents] = useState(1000);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!venueCode) return;
@@ -25,6 +26,7 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    setError('');
     setSaving(true);
     try {
       await api.updateSettings(venueCode, {
@@ -38,8 +40,10 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
       onSaved?.();
     } catch (err) {
       console.error(err);
+      setError(err.response?.data?.error || 'Failed to save settings');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   const isLight = variant === 'light';
@@ -114,6 +118,7 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
             </div>
           )}
         </div>
+        {error && <p className="text-red-500 text-sm">{error}</p>}
         <Button type="submit" disabled={saving} className="w-full">
           {saving ? 'Saving...' : 'Save settings'}
         </Button>

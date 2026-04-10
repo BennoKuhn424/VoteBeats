@@ -51,6 +51,7 @@ export default function PlaylistScheduleModal({
   onSave,
 }) {
   const [timeSlots, setTimeSlots] = useState([]);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !playlistId) return;
@@ -99,10 +100,16 @@ export default function PlaylistScheduleModal({
     updateTimeSlot(slotId, 'days', newDays);
   };
 
-  const handleSave = () => {
-    const serverSlots = timeSlots.map((ui) => uiToServerSlot(playlistId, ui));
-    onSave(serverSlots);
-    onClose();
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const serverSlots = timeSlots.map((ui) => uiToServerSlot(playlistId, ui));
+      await onSave(serverSlots);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -225,9 +232,10 @@ export default function PlaylistScheduleModal({
           <button
             type="button"
             onClick={handleSave}
-            className="flex-1 px-4 py-3 bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors min-h-[44px] font-semibold"
+            disabled={saving}
+            className="flex-1 px-4 py-3 bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors min-h-[44px] font-semibold disabled:opacity-50"
           >
-            Save schedule
+            {saving ? 'Saving...' : 'Save schedule'}
           </button>
         </div>
       </div>

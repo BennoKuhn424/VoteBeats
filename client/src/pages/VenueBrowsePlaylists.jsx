@@ -134,6 +134,7 @@ export default function VenueBrowsePlaylists() {
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [creatingPlaylist, setCreatingPlaylist] = useState(false);
   const [playlistSync, setPlaylistSync] = useState(0);
+  const [actionError, setActionError] = useState('');
 
   const categories = ['All', 'Has songs', 'Empty'];
 
@@ -202,7 +203,7 @@ export default function VenueBrowsePlaylists() {
       loadVenue();
       dispatchVenuePlayerMetaRefresh();
     } catch (e) {
-      alert(e.response?.data?.error || 'Could not activate');
+      setActionError(e.response?.data?.error || 'Could not activate');
     }
     setActionLoading(false);
   }
@@ -218,7 +219,7 @@ export default function VenueBrowsePlaylists() {
       });
       loadVenue();
     } catch (e) {
-      alert(e.response?.data?.error || 'Could not save schedule');
+      setActionError(e.response?.data?.error || 'Could not save schedule');
     }
   }
 
@@ -257,7 +258,7 @@ export default function VenueBrowsePlaylists() {
       setEditorBump((b) => b + 1);
       scrollToPlaylistManager();
     } catch (err) {
-      alert(err.response?.data?.error || 'Could not create playlist');
+      setActionError(err.response?.data?.error || 'Could not create playlist');
     }
     setCreatingPlaylist(false);
   }
@@ -340,6 +341,12 @@ export default function VenueBrowsePlaylists() {
       )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {actionError && (
+          <div className="mb-4 flex items-center justify-between gap-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            <span>{actionError}</span>
+            <button onClick={() => setActionError('')} className="shrink-0 text-red-400 hover:text-red-600">&times;</button>
+          </div>
+        )}
         <div className="mb-6 sm:mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <button
