@@ -14,6 +14,19 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Password is required').max(128, 'Password too long'),
 });
 
+const forgotPasswordSchema = z.object({
+  email: z.string().trim().email('Invalid email address').max(254, 'Email too long'),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Token is required').max(256, 'Invalid token'),
+  password: z.string().min(8, 'Password must be at least 8 characters').max(128, 'Password too long'),
+});
+
+const resendVerificationSchema = z.object({
+  email: z.string().trim().email('Invalid email address').max(254, 'Email too long'),
+});
+
 // ── Queue ────────────────────────────────────────────────────────────────────
 
 const songSchema = z.object({
@@ -97,6 +110,9 @@ const generatePlaylistSchema = z.object({
 module.exports = {
   registerSchema,
   loginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  resendVerificationSchema,
   requestSongSchema,
   voteSchema,
   songIdSchema,

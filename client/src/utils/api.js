@@ -115,6 +115,10 @@ export default {
   register: (email, password, venueName, location) =>
     api.post('/auth/register', { email, password, venueName, location }),
   logout: () => api.post('/auth/logout'),
+  verifyEmail: (token) => api.get('/auth/verify-email', { params: { token } }),
+  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+  resetPassword: (token, password) => api.post('/auth/reset-password', { token, password }),
+  resendVerification: (email) => api.post('/auth/resend-verification', { email }),
 
   getVenue: (venueCode) => api.get(`/venue/${venueCode}`),
 

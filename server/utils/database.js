@@ -248,6 +248,50 @@ module.exports = {
     writeJSON('playerVolume.json', data);
   },
 
+  // ── Auth tokens (email verification & password reset) ─────────────────────
+  getAuthToken: (token) => {
+    const tokens = readJSON('authTokens.json');
+    return tokens[token] || null;
+  },
+  saveAuthToken: (token, data) => {
+    const tokens = readJSON('authTokens.json');
+    tokens[token] = { ...data, createdAt: Date.now() };
+    writeJSON('authTokens.json', tokens);
+  },
+  removeAuthToken: (token) => {
+    const tokens = readJSON('authTokens.json');
+    if (tokens[token]) {
+      delete tokens[token];
+      writeJSON('authTokens.json', tokens);
+    }
+  },
+  /** Remove tokens of a given type for an email (e.g. invalidate old reset tokens). */
+  removeAuthTokensByEmail: (email, type) => {
+    const tokens = readJSON('authTokens.json');
+    let changed = false;
+    for (const [key, val] of Object.entries(tokens)) {
+      if (val.email === email && val.type === type) {
+        delete tokens[key];
+        changed = true;
+      }
+    }
+    if (changed) writeJSON('authTokens.json', tokens);
+  },
+  /** Purge expired auth tokens. */
+  purgeExpiredAuthTokens: () => {
+    const tokens = readJSON('authTokens.json');
+    const now = Date.now();
+    let removed = 0;
+    for (const [key, val] of Object.entries(tokens)) {
+      if (val.expiresAt && val.expiresAt < now) {
+        delete tokens[key];
+        removed += 1;
+      }
+    }
+    if (removed > 0) writeJSON('authTokens.json', tokens);
+    return removed;
+  },
+
   getAllVenueEarningsForMonth: (year, month) => {
     const payments = readJSON('payments.json');
     const list = Array.isArray(payments.list) ? payments.list : [];

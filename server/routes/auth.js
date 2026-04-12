@@ -5,8 +5,12 @@ const crypto = require('crypto');
 const db = require('../utils/database');
 const E = require('../utils/errorCodes');
 const validate = require('../middleware/validate');
-const { registerSchema, loginSchema } = require('../utils/schemas');
+const {
+  registerSchema, loginSchema, forgotPasswordSchema,
+  resetPasswordSchema, resendVerificationSchema,
+} = require('../utils/schemas');
 const { revoke, isRevoked } = require('../utils/tokenBlacklist');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
 
 const router = express.Router();
 if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
@@ -16,33 +20,21 @@ const JWT_SECRET = process.env.JWT_SECRET || 'speeldit-dev-secret-change-in-prod
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 
-/**
- * Cookie options for the httpOnly auth token and the readable CSRF token.
- * SameSite=Lax works because API requests are proxied through Vercel, making
- * them same-origin from the browser's perspective (no cross-site cookie needed).
- */
+const VERIFY_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
+const RESET_TOKEN_EXPIRY_MS = 60 * 60 * 1000;        // 1 hour
+
 const BASE_COOKIE_OPTS = {
   secure: IS_PROD,
   sameSite: 'lax',
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  maxAge: 7 * 24 * 60 * 60 * 1000,
   path: '/',
 };
 
-/**
- * Sets auth_token (httpOnly) and csrf_token (readable) cookies on the response.
- * @param {import('express').Response} res
- * @param {string} token  - signed JWT
- * @param {string} csrf   - random CSRF token (also embedded in JWT payload)
- */
 function setAuthCookies(res, token, csrf) {
   res.cookie('auth_token', token, { ...BASE_COOKIE_OPTS, httpOnly: true });
   res.cookie('csrf_token', csrf, { ...BASE_COOKIE_OPTS, httpOnly: false });
 }
 
-/**
- * Clears auth and CSRF cookies.
- * @param {import('express').Response} res
- */
 function clearAuthCookies(res) {
   const clearOpts = { ...BASE_COOKIE_OPTS, maxAge: 0 };
   res.cookie('auth_token', '', clearOpts);
@@ -62,12 +54,16 @@ function generateVenueCode() {
   throw new Error('Could not generate a unique venue code after 100 attempts');
 }
 
-// POST /api/auth/register
+/** Generate a cryptographically random token for email verification or password reset. */
+function generateSecureToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+// ─── POST /api/auth/register ────────────────────────────────────────────────
 router.post('/register', validate(registerSchema), async (req, res) => {
   try {
     const { email, password, venueName, location } = req.body;
 
-    // Block reserved owner email before any writes
     if (process.env.OWNER_EMAIL && email.trim().toLowerCase() === process.env.OWNER_EMAIL.trim().toLowerCase()) {
       return res.status(400).json({ error: 'Email not available', code: E.AUTH_EMAIL_UNAVAILABLE });
     }
@@ -88,7 +84,7 @@ router.post('/register', validate(registerSchema), async (req, res) => {
       code,
       name: venueName,
       location: location || '',
-      owner: { email: emailNorm, passwordHash },
+      owner: { email: emailNorm, passwordHash, emailVerified: false },
       settings: {
         allowExplicit: false,
         maxSongsPerUser: 3,
@@ -104,13 +100,27 @@ router.post('/register', validate(registerSchema), async (req, res) => {
 
     db.saveVenue(code, venue);
 
-    const csrf = crypto.randomBytes(32).toString('hex');
-    const token = jwt.sign({ venueCode: code, csrf, jti: crypto.randomUUID() }, JWT_SECRET, { expiresIn: '7d' });
-    setAuthCookies(res, token, csrf);
-
-    res.status(201).json({
+    // Send verification email
+    const verifyToken = generateSecureToken();
+    db.removeAuthTokensByEmail(emailNorm, 'verify');
+    db.saveAuthToken(verifyToken, {
+      email: emailNorm,
+      type: 'verify',
       venueCode: code,
-      venue: { code, name: venue.name, location: venue.location, settings: venue.settings },
+      expiresAt: Date.now() + VERIFY_TOKEN_EXPIRY_MS,
+    });
+
+    try {
+      await sendVerificationEmail(emailNorm, verifyToken, venueName);
+    } catch (emailErr) {
+      console.error('[EMAIL] Failed to send verification email:', emailErr.message);
+    }
+
+    // Don't auto-login — they need to verify first.
+    res.status(201).json({
+      message: 'Registration successful. Please check your email to verify your account.',
+      venueCode: code,
+      requiresVerification: true,
     });
   } catch (err) {
     console.error('Register error:', err);
@@ -118,12 +128,12 @@ router.post('/register', validate(registerSchema), async (req, res) => {
   }
 });
 
-// POST /api/auth/login (email + password)
+// ─── POST /api/auth/login ───────────────────────────────────────────────────
 router.post('/login', validate(loginSchema), async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Platform owner: if this email is OWNER_EMAIL, never fall through to venue login
+    // Platform owner login
     const ownerEmail = (process.env.OWNER_EMAIL || '').trim().toLowerCase();
     const ownerHash = process.env.OWNER_PASSWORD_HASH;
     if (ownerEmail && email.trim().toLowerCase() === ownerEmail) {
@@ -143,6 +153,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password', code: E.AUTH_INVALID_CREDENTIALS });
     }
 
+    // Venue owner login
     const venues = db.getAllVenues();
     const venue = Object.values(venues).find(
       (v) => v.owner?.email?.toLowerCase() === email.toLowerCase()
@@ -154,6 +165,15 @@ router.post('/login', validate(loginSchema), async (req, res) => {
     const match = await bcrypt.compare(password, venue.owner.passwordHash);
     if (!match) {
       return res.status(401).json({ error: 'Invalid email or password', code: E.AUTH_INVALID_CREDENTIALS });
+    }
+
+    // Block login if email is not verified
+    if (venue.owner.emailVerified === false) {
+      return res.status(403).json({
+        error: 'Please verify your email before logging in. Check your inbox for a verification link.',
+        code: E.AUTH_EMAIL_NOT_VERIFIED,
+        email: venue.owner.email,
+      });
     }
 
     const csrf = crypto.randomBytes(32).toString('hex');
@@ -175,7 +195,157 @@ router.post('/login', validate(loginSchema), async (req, res) => {
   }
 });
 
-// POST /api/auth/logout
+// ─── GET /api/auth/verify-email?token=xxx ───────────────────────────────────
+router.get('/verify-email', async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'Invalid verification link', code: E.AUTH_VERIFY_INVALID_TOKEN });
+    }
+
+    const record = db.getAuthToken(token);
+    if (!record || record.type !== 'verify') {
+      return res.status(400).json({ error: 'Invalid or already-used verification link', code: E.AUTH_VERIFY_INVALID_TOKEN });
+    }
+
+    if (record.expiresAt < Date.now()) {
+      db.removeAuthToken(token);
+      return res.status(400).json({ error: 'Verification link has expired. Please request a new one.', code: E.AUTH_VERIFY_EXPIRED });
+    }
+
+    // Mark email as verified on the venue
+    const venue = db.getVenue(record.venueCode);
+    if (venue && venue.owner) {
+      venue.owner.emailVerified = true;
+      db.saveVenue(record.venueCode, venue);
+    }
+
+    // Clean up all verify tokens for this email
+    db.removeAuthTokensByEmail(record.email, 'verify');
+
+    res.json({ message: 'Email verified successfully. You can now log in.' });
+  } catch (err) {
+    console.error('Verify email error:', err);
+    res.status(500).json({ error: 'Verification failed', code: E.AUTH_VERIFY_FAILED });
+  }
+});
+
+// ─── POST /api/auth/resend-verification ─────────────────────────────────────
+router.post('/resend-verification', validate(resendVerificationSchema), async (req, res) => {
+  try {
+    const emailNorm = req.body.email.trim().toLowerCase();
+
+    const venues = db.getAllVenues();
+    const venue = Object.values(venues).find(
+      (v) => v.owner?.email?.toLowerCase() === emailNorm
+    );
+
+    // Always return success to prevent email enumeration
+    if (!venue) {
+      return res.json({ message: 'If that email is registered, a verification link has been sent.' });
+    }
+
+    if (venue.owner.emailVerified === true) {
+      return res.status(400).json({ error: 'Email is already verified. You can log in.', code: E.AUTH_ALREADY_VERIFIED });
+    }
+
+    const verifyToken = generateSecureToken();
+    db.removeAuthTokensByEmail(emailNorm, 'verify');
+    db.saveAuthToken(verifyToken, {
+      email: emailNorm,
+      type: 'verify',
+      venueCode: venue.code,
+      expiresAt: Date.now() + VERIFY_TOKEN_EXPIRY_MS,
+    });
+
+    try {
+      await sendVerificationEmail(emailNorm, verifyToken, venue.name);
+    } catch (emailErr) {
+      console.error('[EMAIL] Failed to resend verification email:', emailErr.message);
+    }
+
+    res.json({ message: 'If that email is registered, a verification link has been sent.' });
+  } catch (err) {
+    console.error('Resend verification error:', err);
+    res.status(500).json({ error: 'Could not resend verification email', code: E.AUTH_RESEND_FAILED });
+  }
+});
+
+// ─── POST /api/auth/forgot-password ─────────────────────────────────────────
+router.post('/forgot-password', validate(forgotPasswordSchema), async (req, res) => {
+  try {
+    const emailNorm = req.body.email.trim().toLowerCase();
+
+    const venues = db.getAllVenues();
+    const venue = Object.values(venues).find(
+      (v) => v.owner?.email?.toLowerCase() === emailNorm
+    );
+
+    // Always return success to prevent email enumeration
+    if (!venue) {
+      return res.json({ message: 'If that email is registered, a password reset link has been sent.' });
+    }
+
+    const resetToken = generateSecureToken();
+    db.removeAuthTokensByEmail(emailNorm, 'reset');
+    db.saveAuthToken(resetToken, {
+      email: emailNorm,
+      type: 'reset',
+      venueCode: venue.code,
+      expiresAt: Date.now() + RESET_TOKEN_EXPIRY_MS,
+    });
+
+    try {
+      await sendPasswordResetEmail(emailNorm, resetToken);
+    } catch (emailErr) {
+      console.error('[EMAIL] Failed to send password reset email:', emailErr.message);
+    }
+
+    res.json({ message: 'If that email is registered, a password reset link has been sent.' });
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    res.status(500).json({ error: 'Could not process password reset', code: E.AUTH_FORGOT_FAILED });
+  }
+});
+
+// ─── POST /api/auth/reset-password ──────────────────────────────────────────
+router.post('/reset-password', validate(resetPasswordSchema), async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    const record = db.getAuthToken(token);
+    if (!record || record.type !== 'reset') {
+      return res.status(400).json({ error: 'Invalid or already-used reset link', code: E.AUTH_RESET_INVALID_TOKEN });
+    }
+
+    if (record.expiresAt < Date.now()) {
+      db.removeAuthToken(token);
+      return res.status(400).json({ error: 'Reset link has expired. Please request a new one.', code: E.AUTH_RESET_EXPIRED });
+    }
+
+    const venue = db.getVenue(record.venueCode);
+    if (!venue || !venue.owner) {
+      db.removeAuthToken(token);
+      return res.status(400).json({ error: 'Account not found', code: E.AUTH_RESET_FAILED });
+    }
+
+    // Update password
+    venue.owner.passwordHash = await bcrypt.hash(password, 10);
+    // Also verify email if it wasn't already (they proved email ownership)
+    venue.owner.emailVerified = true;
+    db.saveVenue(record.venueCode, venue);
+
+    // Clean up all reset tokens for this email
+    db.removeAuthTokensByEmail(record.email, 'reset');
+
+    res.json({ message: 'Password has been reset. You can now log in with your new password.' });
+  } catch (err) {
+    console.error('Reset password error:', err);
+    res.status(500).json({ error: 'Could not reset password', code: E.AUTH_RESET_FAILED });
+  }
+});
+
+// ─── POST /api/auth/logout ──────────────────────────────────────────────────
 router.post('/logout', (req, res) => {
   const token = req.cookies?.auth_token;
   if (token) {

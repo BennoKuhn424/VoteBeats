@@ -14,11 +14,16 @@ export default function VenueLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+  const [unverifiedEmail, setUnverifiedEmail] = useState('');
+  const [resending, setResending] = useState(false);
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    setInfo('');
+    setUnverifiedEmail('');
 
     if (isRegister && password.length < 8) {
       setError('Password must be at least 8 characters');
@@ -33,10 +38,11 @@ export default function VenueLogin() {
 
     try {
       if (isRegister) {
-        const res = await api.register(email, password, venueName, location);
-        localStorage.setItem('speeldit_logged_in', '1');
-        localStorage.setItem('speeldit_venue_code', res.data.venueCode);
-        navigate('/venue/dashboard');
+        await api.register(email, password, venueName, location);
+        // Registration no longer auto-logs in — show verification message
+        setInfo('Registration successful! Check your email for a verification link.');
+        setIsRegister(false);
+        setPassword('');
       } else {
         const res = await api.login(email, password);
         localStorage.setItem('speeldit_logged_in', '1');
@@ -51,13 +57,35 @@ export default function VenueLogin() {
         }
       }
     } catch (err) {
+      const code = err.response?.data?.code;
       const msg = err.response?.data?.error || 'Something went wrong';
-      const hint = (err.response?.status === 401 && msg.toLowerCase().includes('invalid'))
-        ? ' If you registered elsewhere, try registering again on this server.'
-        : '';
-      setError(msg + hint);
+
+      if (code === 'AUTH_EMAIL_NOT_VERIFIED') {
+        setUnverifiedEmail(err.response?.data?.email || email);
+        setError(msg);
+      } else {
+        const hint = (err.response?.status === 401 && msg.toLowerCase().includes('invalid'))
+          ? ' If you registered elsewhere, try registering again on this server.'
+          : '';
+        setError(msg + hint);
+      }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResendVerification() {
+    if (!unverifiedEmail) return;
+    setResending(true);
+    try {
+      await api.resendVerification(unverifiedEmail);
+      setInfo('Verification email sent! Check your inbox.');
+      setError('');
+      setUnverifiedEmail('');
+    } catch {
+      setError('Could not resend verification email. Please try again.');
+    } finally {
+      setResending(false);
     }
   }
 
@@ -85,6 +113,13 @@ export default function VenueLogin() {
                 : 'Sign in to access your venue dashboard'}
             </p>
           </div>
+
+          {/* Success / info banner */}
+          {info && (
+            <div className="mb-5 p-3 rounded-lg bg-green-50 border border-green-200">
+              <p className="text-sm text-green-800">{info}</p>
+            </div>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -151,12 +186,12 @@ export default function VenueLogin() {
                   Password
                 </label>
                 {!isRegister && (
-                  <button
-                    type="button"
+                  <Link
+                    to="/forgot-password"
                     className="text-sm text-brand-600 hover:text-brand-700 transition-colors"
                   >
                     Forgot password?
-                  </button>
+                  </Link>
                 )}
               </div>
               <div className="relative">
@@ -189,7 +224,19 @@ export default function VenueLogin() {
             </div>
 
             {error && (
-              <p className="text-red-500 text-sm">{error}</p>
+              <div>
+                <p className="text-red-500 text-sm">{error}</p>
+                {unverifiedEmail && (
+                  <button
+                    type="button"
+                    onClick={handleResendVerification}
+                    disabled={resending}
+                    className="mt-2 text-sm text-brand-600 hover:text-brand-700 font-medium underline"
+                  >
+                    {resending ? 'Sending...' : 'Resend verification email'}
+                  </button>
+                )}
+              </div>
             )}
 
             {isRegister && (
@@ -230,6 +277,8 @@ export default function VenueLogin() {
               onClick={() => {
                 setIsRegister(!isRegister);
                 setError('');
+                setInfo('');
+                setUnverifiedEmail('');
               }}
               className="text-sm text-zinc-700 hover:text-zinc-900 transition-colors"
             >
