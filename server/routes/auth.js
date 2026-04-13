@@ -372,6 +372,41 @@ router.post('/reset-password', tokenVerifyLimiter, validate(resetPasswordSchema)
   }
 });
 
+// ─── GET /api/auth/me — check current session ──────────────────────────────
+// Returns the user's role and venueCode if authenticated, 401 otherwise.
+// The frontend calls this on mount to sync auth state with the cookie.
+router.get('/me', (req, res) => {
+  const token = req.cookies?.auth_token;
+  if (!token) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    if (decoded.jti && isRevoked(decoded.jti)) {
+      return res.status(401).json({ error: 'Token has been revoked' });
+    }
+
+    if (decoded.role === 'owner') {
+      return res.json({ role: 'owner' });
+    }
+
+    const venue = db.getVenue(decoded.venueCode);
+    if (!venue) {
+      return res.status(401).json({ error: 'Venue not found' });
+    }
+
+    res.json({
+      role: 'venue',
+      venueCode: venue.code,
+      venueName: venue.name,
+    });
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+});
+
 // ─── POST /api/auth/logout ──────────────────────────────────────────────────
 router.post('/logout', (req, res) => {
   const token = req.cookies?.auth_token;

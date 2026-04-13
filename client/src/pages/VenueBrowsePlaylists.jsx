@@ -4,6 +4,7 @@ import {
   ArrowLeft, Search, Check, ListMusic, Clock, Loader2, Pencil, Plus, X,
 } from 'lucide-react';
 import api from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import PlaylistManager from '../components/venue/PlaylistManager';
 import PlaylistScheduleModal from '../components/venue/PlaylistScheduleModal';
 import { dispatchVenuePlayerMetaRefresh } from '../utils/venuePlayerEvents';
@@ -118,7 +119,8 @@ function PlaylistCard({ playlist, songCount, coverUrl, isActive, isScheduled, is
 
 export default function VenueBrowsePlaylists() {
   const navigate = useNavigate();
-  const venueCode = localStorage.getItem('speeldit_venue_code');
+  const { user } = useAuth();
+  const venueCode = user?.venueCode;
   const [venue, setVenue] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('All');

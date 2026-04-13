@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation, matchPath } from 'react-router-dom';
 import { VenuePlaybackProvider } from '../context/VenuePlaybackContext';
+import { useAuth } from '../context/AuthContext';
 import VenuePlayerBar from '../components/venue/VenuePlayerBar';
 import api from '../utils/api';
 
@@ -12,7 +13,7 @@ import api from '../utils/api';
 export default function VenueLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const loggedIn = localStorage.getItem('speeldit_logged_in');
+  const { user, loading, setVenueCode } = useAuth();
   const [verified, setVerified] = useState(false);
 
   const playerMatch = matchPath({ path: '/venue/player/:venueCode', end: true }, location.pathname);
@@ -20,18 +21,19 @@ export default function VenueLayout() {
 
   useEffect(() => {
     if (codeFromPlayerUrl) {
-      localStorage.setItem('speeldit_venue_code', codeFromPlayerUrl);
+      setVenueCode(codeFromPlayerUrl);
     }
-  }, [codeFromPlayerUrl]);
+  }, [codeFromPlayerUrl, setVenueCode]);
 
-  const venueCode = codeFromPlayerUrl || localStorage.getItem('speeldit_venue_code') || null;
+  const venueCode = codeFromPlayerUrl || user?.venueCode || null;
 
   useEffect(() => {
-    if (!loggedIn) {
-      navigate('/venue/login');
+    if (loading) return;
+    if (!user) {
+      navigate('/venue/login', { replace: true });
       return;
     }
-    if (localStorage.getItem('speeldit_role') === 'owner') {
+    if (user.role === 'owner') {
       navigate('/owner', { replace: true });
       return;
     }
@@ -43,11 +45,9 @@ export default function VenueLayout() {
     api.getVenue(venueCode).then(() => setVerified(true)).catch(() => {
       // 401 interceptor in api.js will handle redirect + localStorage cleanup
     });
-  }, [loggedIn, venueCode, navigate]);
+  }, [loading, user, venueCode, navigate]);
 
-  if (!loggedIn) return null;
-  if (localStorage.getItem('speeldit_role') === 'owner') return null;
-  if (!venueCode) return null;
+  if (loading || !user || user.role === 'owner' || !venueCode) return null;
 
   return (
     <VenuePlaybackProvider venueCode={venueCode}>

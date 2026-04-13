@@ -11,10 +11,12 @@ import {
   Radio,
 } from 'lucide-react';
 import api from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import Logo from '../components/shared/Logo';
 
 export default function OwnerDashboard() {
   const navigate = useNavigate();
+  const { user, loading: authLoading, logout } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -27,31 +29,27 @@ export default function OwnerDashboard() {
     } catch (e) {
       setError(e.response?.data?.error || 'Could not load dashboard');
       if (e.response?.status === 401 || e.response?.status === 403) {
-        localStorage.removeItem('speeldit_logged_in');
-        localStorage.removeItem('speeldit_role');
+        await logout();
         navigate('/venue/login', { replace: true });
       }
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, [navigate, logout]);
 
   useEffect(() => {
-    const role = localStorage.getItem('speeldit_role');
-    if (role !== 'owner') {
+    if (authLoading) return;
+    if (!user || user.role !== 'owner') {
       navigate('/venue/login', { replace: true });
       return;
     }
     load();
     const t = setInterval(load, 20000);
     return () => clearInterval(t);
-  }, [navigate, load]);
+  }, [authLoading, user, navigate, load]);
 
   async function handleLogout() {
-    try { await api.logout(); } catch {}
-    localStorage.removeItem('speeldit_logged_in');
-    localStorage.removeItem('speeldit_role');
-    localStorage.removeItem('speeldit_venue_code');
+    await logout();
     navigate('/venue/login');
   }
 

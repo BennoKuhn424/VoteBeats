@@ -48,7 +48,7 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status !== 401) return Promise.reject(error);
     const u = String(error.config?.url || '');
-    if (u.includes('auth/login') || u.includes('auth/register')) {
+    if (u.includes('auth/login') || u.includes('auth/register') || u.includes('auth/me')) {
       return Promise.reject(error);
     }
     // Clear client-side auth markers (the httpOnly cookie is cleared by /logout)
@@ -111,6 +111,7 @@ export default {
 
   getDeveloperToken: () => api.get('/token'),
 
+  getMe: () => api.get('/auth/me'),
   login: (email, password) => api.post('/auth/login', { email, password }),
   register: (email, password, venueName, location) =>
     api.post('/auth/register', { email, password, venueName, location }),

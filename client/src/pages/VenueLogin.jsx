@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import api from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import Button from '../components/shared/Button';
 import Logo from '../components/shared/Logo';
 
@@ -18,6 +19,7 @@ export default function VenueLogin() {
   const [unverifiedEmail, setUnverifiedEmail] = useState('');
   const [resending, setResending] = useState(false);
   const navigate = useNavigate();
+  const { login: authLogin } = useAuth();
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -45,14 +47,10 @@ export default function VenueLogin() {
         setPassword('');
       } else {
         const res = await api.login(email, password);
-        localStorage.setItem('speeldit_logged_in', '1');
+        authLogin(res.data);
         if (res.data.role === 'owner') {
-          localStorage.setItem('speeldit_role', 'owner');
-          localStorage.removeItem('speeldit_venue_code');
           navigate('/owner');
         } else {
-          localStorage.removeItem('speeldit_role');
-          localStorage.setItem('speeldit_venue_code', res.data.venue?.code ?? res.data.venueCode);
           navigate('/venue/dashboard');
         }
       }

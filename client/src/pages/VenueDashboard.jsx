@@ -13,6 +13,7 @@ import {
   Clock,
 } from 'lucide-react';
 import api from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import { VENUE_PLAYER_META_REFRESH } from '../utils/venuePlayerEvents';
 import Button from '../components/shared/Button';
 import QRCodeDisplay from '../components/venue/QRCodeDisplay';
@@ -33,6 +34,7 @@ export default function VenueDashboard() {
   const [showSettings, setShowSettings] = useState(false);
   const [copiedVotingUrl, setCopiedVotingUrl] = useState(false);
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   const fetchVenue = useCallback(async (code) => {
     try {
@@ -55,14 +57,14 @@ export default function VenueDashboard() {
   }, []);
 
   const pollQueue = useCallback(() => {
-    const code = localStorage.getItem('speeldit_venue_code');
+    const code = user?.venueCode;
     if (code) fetchQueue(code);
-  }, [fetchQueue]);
+  }, [user?.venueCode, fetchQueue]);
 
   useVisibilityAwarePolling(pollQueue, 3000);
 
   useEffect(() => {
-    const venueCode = localStorage.getItem('speeldit_venue_code');
+    const venueCode = user?.venueCode;
 
     if (!venueCode) {
       navigate('/venue/login');
@@ -71,7 +73,7 @@ export default function VenueDashboard() {
 
     fetchVenue(venueCode);
     fetchQueue(venueCode);
-  }, [navigate, fetchVenue, fetchQueue]);
+  }, [user?.venueCode, navigate, fetchVenue, fetchQueue]);
 
   useEffect(() => {
     const code = venue?.code;
@@ -114,9 +116,7 @@ export default function VenueDashboard() {
   }
 
   async function handleLogout() {
-    try { await api.logout(); } catch {}
-    localStorage.removeItem('speeldit_logged_in');
-    localStorage.removeItem('speeldit_venue_code');
+    await logout();
     navigate('/venue/login');
   }
 
