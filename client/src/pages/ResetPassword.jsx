@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { Lock, Eye, EyeOff, CheckCircle, XCircle } from 'lucide-react';
 import api from '../utils/api';
 import Button from '../components/shared/Button';
@@ -9,6 +9,7 @@ export default function ResetPassword() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
 
+  const navigate = useNavigate();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -33,6 +34,8 @@ export default function ResetPassword() {
     try {
       await api.resetPassword(token, password);
       setSuccess(true);
+      // Clear the token from the URL so it can't be accidentally shared
+      navigate('/reset-password', { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Something went wrong. The link may be invalid or expired.');
     } finally {
@@ -144,7 +147,7 @@ export default function ResetPassword() {
 
                 <Button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || success}
                   className="w-full !py-3 !h-11 bg-brand-600 hover:!bg-brand-500 !text-white font-medium"
                 >
                   {loading ? 'Resetting...' : 'Reset password'}

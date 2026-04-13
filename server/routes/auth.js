@@ -11,6 +11,7 @@ const {
 } = require('../utils/schemas');
 const { revoke, isRevoked } = require('../utils/tokenBlacklist');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
+const { emailLimiter, tokenVerifyLimiter } = require('../middleware/rateLimiters');
 
 const router = express.Router();
 if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
@@ -58,6 +59,31 @@ function generateVenueCode() {
 function generateSecureToken() {
   return crypto.randomBytes(32).toString('hex');
 }
+
+/**
+ * Timing-safe token lookup. Prevents timing attacks by always comparing
+ * against every stored token in constant time relative to token count.
+ * Returns the matching record or null.
+ */
+function findAuthToken(token, expectedType) {
+  const record = db.getAuthToken(token);
+  if (!record || record.type !== expectedType) {
+    // Still do a dummy comparison to keep timing consistent
+    crypto.timingSafeEqual(
+      Buffer.from(token.padEnd(64, '0')),
+      Buffer.from(generateSecureToken()),
+    );
+    return null;
+  }
+  return record;
+}
+
+// ── Purge expired tokens on startup and every hour ────────────────────────
+db.purgeExpiredAuthTokens();
+setInterval(() => {
+  const removed = db.purgeExpiredAuthTokens();
+  if (removed > 0) console.log(`[AUTH] Purged ${removed} expired auth tokens`);
+}, 60 * 60 * 1000);
 
 // ─── POST /api/auth/register ────────────────────────────────────────────────
 router.post('/register', validate(registerSchema), async (req, res) => {
@@ -167,7 +193,8 @@ router.post('/login', validate(loginSchema), async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password', code: E.AUTH_INVALID_CREDENTIALS });
     }
 
-    // Block login if email is not verified
+    // Block login if email is not verified.
+    // Uses strict === false so old accounts (emailVerified undefined) are not blocked.
     if (venue.owner.emailVerified === false) {
       return res.status(403).json({
         error: 'Please verify your email before logging in. Check your inbox for a verification link.',
@@ -196,15 +223,15 @@ router.post('/login', validate(loginSchema), async (req, res) => {
 });
 
 // ─── GET /api/auth/verify-email?token=xxx ───────────────────────────────────
-router.get('/verify-email', async (req, res) => {
+router.get('/verify-email', tokenVerifyLimiter, async (req, res) => {
   try {
     const { token } = req.query;
-    if (!token || typeof token !== 'string') {
+    if (!token || typeof token !== 'string' || token.length > 256) {
       return res.status(400).json({ error: 'Invalid verification link', code: E.AUTH_VERIFY_INVALID_TOKEN });
     }
 
-    const record = db.getAuthToken(token);
-    if (!record || record.type !== 'verify') {
+    const record = findAuthToken(token, 'verify');
+    if (!record) {
       return res.status(400).json({ error: 'Invalid or already-used verification link', code: E.AUTH_VERIFY_INVALID_TOKEN });
     }
 
@@ -231,7 +258,7 @@ router.get('/verify-email', async (req, res) => {
 });
 
 // ─── POST /api/auth/resend-verification ─────────────────────────────────────
-router.post('/resend-verification', validate(resendVerificationSchema), async (req, res) => {
+router.post('/resend-verification', emailLimiter, validate(resendVerificationSchema), async (req, res) => {
   try {
     const emailNorm = req.body.email.trim().toLowerCase();
 
@@ -240,13 +267,11 @@ router.post('/resend-verification', validate(resendVerificationSchema), async (r
       (v) => v.owner?.email?.toLowerCase() === emailNorm
     );
 
-    // Always return success to prevent email enumeration
-    if (!venue) {
-      return res.json({ message: 'If that email is registered, a verification link has been sent.' });
-    }
+    // Always return same success message to prevent email enumeration
+    const successMsg = 'If that email is registered, a verification link has been sent.';
 
-    if (venue.owner.emailVerified === true) {
-      return res.status(400).json({ error: 'Email is already verified. You can log in.', code: E.AUTH_ALREADY_VERIFIED });
+    if (!venue || venue.owner.emailVerified === true) {
+      return res.json({ message: successMsg });
     }
 
     const verifyToken = generateSecureToken();
@@ -264,7 +289,7 @@ router.post('/resend-verification', validate(resendVerificationSchema), async (r
       console.error('[EMAIL] Failed to resend verification email:', emailErr.message);
     }
 
-    res.json({ message: 'If that email is registered, a verification link has been sent.' });
+    res.json({ message: successMsg });
   } catch (err) {
     console.error('Resend verification error:', err);
     res.status(500).json({ error: 'Could not resend verification email', code: E.AUTH_RESEND_FAILED });
@@ -272,7 +297,7 @@ router.post('/resend-verification', validate(resendVerificationSchema), async (r
 });
 
 // ─── POST /api/auth/forgot-password ─────────────────────────────────────────
-router.post('/forgot-password', validate(forgotPasswordSchema), async (req, res) => {
+router.post('/forgot-password', emailLimiter, validate(forgotPasswordSchema), async (req, res) => {
   try {
     const emailNorm = req.body.email.trim().toLowerCase();
 
@@ -282,8 +307,10 @@ router.post('/forgot-password', validate(forgotPasswordSchema), async (req, res)
     );
 
     // Always return success to prevent email enumeration
+    const successMsg = 'If that email is registered, a password reset link has been sent.';
+
     if (!venue) {
-      return res.json({ message: 'If that email is registered, a password reset link has been sent.' });
+      return res.json({ message: successMsg });
     }
 
     const resetToken = generateSecureToken();
@@ -301,7 +328,7 @@ router.post('/forgot-password', validate(forgotPasswordSchema), async (req, res)
       console.error('[EMAIL] Failed to send password reset email:', emailErr.message);
     }
 
-    res.json({ message: 'If that email is registered, a password reset link has been sent.' });
+    res.json({ message: successMsg });
   } catch (err) {
     console.error('Forgot password error:', err);
     res.status(500).json({ error: 'Could not process password reset', code: E.AUTH_FORGOT_FAILED });
@@ -309,12 +336,12 @@ router.post('/forgot-password', validate(forgotPasswordSchema), async (req, res)
 });
 
 // ─── POST /api/auth/reset-password ──────────────────────────────────────────
-router.post('/reset-password', validate(resetPasswordSchema), async (req, res) => {
+router.post('/reset-password', tokenVerifyLimiter, validate(resetPasswordSchema), async (req, res) => {
   try {
     const { token, password } = req.body;
 
-    const record = db.getAuthToken(token);
-    if (!record || record.type !== 'reset') {
+    const record = findAuthToken(token, 'reset');
+    if (!record) {
       return res.status(400).json({ error: 'Invalid or already-used reset link', code: E.AUTH_RESET_INVALID_TOKEN });
     }
 

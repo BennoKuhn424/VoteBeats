@@ -351,14 +351,8 @@ export function VenuePlaybackProvider({ venueCode, children }) {
     }, PLAY_LOCK_SAFETY_MS);
     try {
       if (!music.isAuthorized) {
-        try {
-          sessionStorage.setItem('speeldit_auth_pending', JSON.stringify({
-            venueCode, returnPath: window.location.pathname + window.location.search, ts: Date.now(),
-          }));
-        } catch {}
         await music.authorize();
         setIsAuthorized(music.isAuthorized);
-        try { sessionStorage.removeItem('speeldit_auth_pending'); } catch {}
       }
       const mk = music.playbackState;
       if (mk === 1 || mk === 2 || mk === 3) {
@@ -739,48 +733,22 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   }, [venueCode]);
 
   // authorize: trigger Apple Music sign-in.
-  // On mobile Safari, MusicKit opens a new tab instead of a popup — if the
-  // flow breaks the user lands on a random page. We save state so the venue
-  // page can recover, add a timeout, and retry once on failure.
   const authorize = useCallback(async () => {
     const music = musicRef.current;
     if (!music) return;
     hasUserGestureRef.current = true; // user tapped — satisfies autoplay policy
-
-    // Persist venue context so the user can return if the auth redirect
-    // navigates away from the page (common on mobile Safari).
     try {
-      sessionStorage.setItem('speeldit_auth_pending', JSON.stringify({
-        venueCode,
-        returnPath: window.location.pathname + window.location.search,
-        ts: Date.now(),
-      }));
-    } catch {}
-
-    try {
-      // Race the authorize() call against a generous timeout — on mobile the
-      // popup/redirect can hang indefinitely when blocked by CSP or ad
-      // injectors.
-      const AUTH_TIMEOUT_MS = 120_000; // 2 min
-      const result = await Promise.race([
-        music.authorize(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Apple Music sign-in timed out')), AUTH_TIMEOUT_MS),
-        ),
-      ]);
+      await music.authorize();
       setIsAuthorized(music.isAuthorized);
-      try { sessionStorage.removeItem('speeldit_auth_pending'); } catch {}
     } catch (err) {
       console.error('Auth error:', err);
-      // If we got back but auth didn't stick, show a helpful message.
       if (!music.isAuthorized) {
         setErrorWithPriority('Could not connect to Apple Music — tap Retry');
       } else {
         setIsAuthorized(true);
-        try { sessionStorage.removeItem('speeldit_auth_pending'); } catch {}
       }
     }
-  }, [venueCode]);
+  }, [setErrorWithPriority]);
 
   // changeMode: update autoplay mode state + server setting.
   const changeMode = useCallback(async (mode) => {

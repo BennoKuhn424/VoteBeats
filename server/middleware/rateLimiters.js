@@ -39,4 +39,28 @@ const ownerLimiter = rateLimit({
   message: { error: 'Too many requests to admin endpoints. Please slow down.' },
 });
 
-module.exports = { authLimiter, apiLimiter, ownerLimiter };
+/**
+ * Strict limit for email-sending endpoints (forgot-password, resend-verification).
+ * Prevents abuse of the email service — 5 requests per 15 minutes per IP.
+ */
+const emailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many email requests. Please wait before trying again.' },
+});
+
+/**
+ * Limit for token verification endpoints (verify-email, reset-password).
+ * Prevents brute-force token guessing — 10 attempts per 15 minutes per IP.
+ */
+const tokenVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please wait before trying again.' },
+});
+
+module.exports = { authLimiter, apiLimiter, ownerLimiter, emailLimiter, tokenVerifyLimiter };
