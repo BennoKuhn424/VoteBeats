@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const paymentCrypto = require('./paymentCrypto');
 
 // Use DATA_DIR env var to point at a Render Persistent Disk (survives redeploys).
 // Falls back to the local ./data folder for development.
@@ -99,6 +100,98 @@ function writeJSON(filename, data) {
   }
 }
 
+// ── Encrypted JSON read/write for sensitive files (payments) ─────────────────
+// Files are stored as { _encrypted: "<base64>" } when encryption is enabled.
+// On read, if the file is plaintext JSON (migration), it's read normally and
+// re-encrypted on the next write. This makes the transition seamless.
+const ENCRYPTED_FILES = new Set(['payments.json', 'pendingPayments.json']);
+
+function readEncryptedJSON(filename) {
+  if (!paymentCrypto.ENABLED || !ENCRYPTED_FILES.has(filename)) {
+    return readJSON(filename);
+  }
+  if (cache[filename] !== undefined) return cache[filename];
+
+  const filepath = path.join(DATA_DIR, filename);
+  if (!fs.existsSync(filepath)) {
+    cache[filename] = {};
+    return {};
+  }
+
+  let raw;
+  try {
+    raw = fs.readFileSync(filepath, 'utf8');
+  } catch (err) {
+    console.error(JSON.stringify({
+      t: new Date().toISOString(), level: 'CRITICAL',
+      msg: 'db-read-failed', file: filename, error: err.message,
+    }));
+    cache[filename] = {};
+    return {};
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    cache[filename] = {};
+    return {};
+  }
+
+  // Already encrypted — decrypt it
+  if (parsed && typeof parsed._encrypted === 'string') {
+    const plaintext = paymentCrypto.decrypt(parsed._encrypted);
+    if (plaintext === null) {
+      console.error(JSON.stringify({
+        t: new Date().toISOString(), level: 'CRITICAL',
+        msg: 'db-decrypt-failed', file: filename,
+        action: 'Check PAYMENT_ENCRYPTION_KEY — returning empty object',
+      }));
+      cache[filename] = {};
+      return {};
+    }
+    try {
+      const data = JSON.parse(plaintext);
+      cache[filename] = data;
+      return data;
+    } catch {
+      cache[filename] = {};
+      return {};
+    }
+  }
+
+  // Plaintext JSON (pre-migration) — read it normally, next write will encrypt
+  if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    cache[filename] = parsed;
+    return parsed;
+  }
+
+  cache[filename] = {};
+  return {};
+}
+
+function writeEncryptedJSON(filename, data) {
+  if (!paymentCrypto.ENABLED || !ENCRYPTED_FILES.has(filename)) {
+    return writeJSON(filename, data);
+  }
+
+  const plaintext = JSON.stringify(data);
+  const encrypted = paymentCrypto.encrypt(plaintext);
+  const wrapper = { _encrypted: encrypted };
+
+  const filepath = path.join(DATA_DIR, filename);
+  const json = JSON.stringify(wrapper);
+  const tmp = path.join(DATA_DIR, `.${filename}.${process.pid}.${Date.now()}.tmp`);
+  try {
+    fs.writeFileSync(tmp, json, 'utf8');
+    fs.renameSync(tmp, filepath);
+    cache[filename] = data;
+  } catch (err) {
+    try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch (_) {}
+    throw err;
+  }
+}
+
 module.exports = {
   // Venues
   getVenue: (code) => readJSON('venues.json')[code],
@@ -159,24 +252,24 @@ module.exports = {
 
   // Pending payments (Yoco checkoutId -> { venueCode, song, deviceId })
   getPendingPayment: (checkoutId) => {
-    const pending = readJSON('pendingPayments.json');
+    const pending = readEncryptedJSON('pendingPayments.json');
     return pending[checkoutId] || null;
   },
   setPendingPayment: (checkoutId, data) => {
-    const pending = readJSON('pendingPayments.json');
+    const pending = readEncryptedJSON('pendingPayments.json');
     pending[checkoutId] = { ...data, createdAt: Date.now() };
-    writeJSON('pendingPayments.json', pending);
+    writeEncryptedJSON('pendingPayments.json', pending);
   },
   removePendingPayment: (checkoutId) => {
-    const pending = readJSON('pendingPayments.json');
+    const pending = readEncryptedJSON('pendingPayments.json');
     if (pending[checkoutId]) {
       delete pending[checkoutId];
-      writeJSON('pendingPayments.json', pending);
+      writeEncryptedJSON('pendingPayments.json', pending);
     }
   },
   /** Remove pending checkout rows older than maxAgeMs (abandoned checkouts). */
   purgeStalePendingPayments: (maxAgeMs) => {
-    const pending = readJSON('pendingPayments.json');
+    const pending = readEncryptedJSON('pendingPayments.json');
     const now = Date.now();
     let removed = 0;
     for (const [id, row] of Object.entries(pending)) {
@@ -186,13 +279,13 @@ module.exports = {
         removed += 1;
       }
     }
-    if (removed > 0) writeJSON('pendingPayments.json', pending);
+    if (removed > 0) writeEncryptedJSON('pendingPayments.json', pending);
     return removed;
   },
 
   // Payments log (for earnings tracking)
   addPayment: (venueCode, amountCents, checkoutId) => {
-    let payments = readJSON('payments.json');
+    let payments = readEncryptedJSON('payments.json');
     if (!payments || typeof payments !== 'object') payments = {};
     const list = Array.isArray(payments.list) ? payments.list : [];
     list.push({
@@ -202,10 +295,10 @@ module.exports = {
       createdAt: Date.now(),
     });
     payments.list = list;
-    writeJSON('payments.json', payments);
+    writeEncryptedJSON('payments.json', payments);
   },
   getVenueEarningsForMonth: (venueCode, year, month) => {
-    const payments = readJSON('payments.json');
+    const payments = readEncryptedJSON('payments.json');
     const list = Array.isArray(payments.list) ? payments.list : [];
     const start = new Date(year, month - 1, 1).getTime();
     const end = new Date(year, month, 0, 23, 59, 59, 999).getTime();
@@ -293,7 +386,7 @@ module.exports = {
   },
 
   getAllVenueEarningsForMonth: (year, month) => {
-    const payments = readJSON('payments.json');
+    const payments = readEncryptedJSON('payments.json');
     const list = Array.isArray(payments.list) ? payments.list : [];
     const start = new Date(year, month - 1, 1).getTime();
     const end = new Date(year, month, 0, 23, 59, 59, 999).getTime();
@@ -317,7 +410,7 @@ module.exports = {
       createdAt: v.createdAt || null,
     }));
 
-    const payments = readJSON('payments.json');
+    const payments = readEncryptedJSON('payments.json');
     const list = Array.isArray(payments.list) ? payments.list : [];
     const allTimeGrossCents = list.reduce((s, p) => s + (p.amountCents || 0), 0);
 
