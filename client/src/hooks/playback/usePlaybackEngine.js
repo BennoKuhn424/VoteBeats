@@ -90,16 +90,14 @@ export function usePlaybackEngine(refs, venueCode) {
         await music.authorize();
       }
 
-      // Build the queue BEFORE any async stop — keeps the gap between the
-      // user gesture and setQueue({ startPlaying: true }) as short as possible.
+      // Build IDs before any async work to keep the gesture-to-play gap minimal.
       const ids = buildPreloadAppleIds(song, refs.queue?.upcoming ?? []);
 
-      const mk = music.playbackState;
-      if (mk === 1 || mk === 2 || mk === 3) {
-        try { await withTimeout(music.stop(), STOP_TIMEOUT_MS); } catch {}
-        await new Promise((r) => setTimeout(r, POST_STOP_DELAY_MS));
-      }
-
+      // DO NOT call music.stop() before setQueue on iOS Safari.
+      // setQueue({ startPlaying: true }) replaces the queue AND starts the new
+      // track atomically. Calling stop() first tears down the audio session,
+      // which burns the user-gesture context and causes "The operation was
+      // aborted" on every subsequent play attempt in that tap cycle.
       await runSetQueueThenPlay(music, ids);
       setPlayerError(null);
       refs.playFailCount = 0;

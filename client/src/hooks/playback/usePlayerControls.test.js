@@ -125,7 +125,7 @@ describe('usePlayerControls', () => {
   });
 
   describe('skip', () => {
-    it('stops music, transitions, and plays next song', async () => {
+    it('transitions and plays next song without calling stop (iOS safe)', async () => {
       const music = createMusicMock({ playbackState: 2 });
       const nextSong = { id: 'n1', appleId: 'na1', title: 'Next' };
       const refs = createRefs({
@@ -140,7 +140,8 @@ describe('usePlayerControls', () => {
       const { result } = renderHook(() => usePlayerControls(refs, 'V1', deps));
 
       await act(async () => { await result.current.skip(); });
-      expect(music.stop).toHaveBeenCalled();
+      // stop() must NOT be called — setQueue({ startPlaying }) replaces atomically
+      expect(music.stop).not.toHaveBeenCalled();
       expect(deps.beginTransition).toHaveBeenCalled();
       expect(deps.playSong).toHaveBeenCalledWith(nextSong);
       expect(deps.endTransition).toHaveBeenCalled();

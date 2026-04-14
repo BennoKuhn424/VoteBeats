@@ -234,7 +234,8 @@ describe('usePlaybackEngine', () => {
       expect(runSetQueueThenPlay).toHaveBeenCalled();
     });
 
-    it('calls stop + delay only when MusicKit is playing (playbackState 2)', async () => {
+    it('does NOT call stop when MusicKit is playing (setQueue replaces atomically)', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
       const music = createMusicMock({ playbackState: 2 });
       const refs = createRefs({ music });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
@@ -242,10 +243,13 @@ describe('usePlaybackEngine', () => {
       await act(async () => {
         await result.current.playSong({ appleId: 'a1', id: 's1' });
       });
-      expect(music.stop).toHaveBeenCalled();
+      // stop() must NOT be called — it kills the iOS audio session
+      expect(music.stop).not.toHaveBeenCalled();
+      expect(runSetQueueThenPlay).toHaveBeenCalled();
     });
 
-    it('calls stop + delay only when MusicKit is paused (playbackState 3)', async () => {
+    it('does NOT call stop when MusicKit is paused (setQueue replaces atomically)', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
       const music = createMusicMock({ playbackState: 3 });
       const refs = createRefs({ music });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
@@ -253,7 +257,8 @@ describe('usePlaybackEngine', () => {
       await act(async () => {
         await result.current.playSong({ appleId: 'a1', id: 's1' });
       });
-      expect(music.stop).toHaveBeenCalled();
+      expect(music.stop).not.toHaveBeenCalled();
+      expect(runSetQueueThenPlay).toHaveBeenCalled();
     });
   });
 

@@ -85,7 +85,7 @@ describe('useMediaSession', () => {
     expect(session.metadata).not.toBeNull();
     expect(session.metadata.title).toBe('My Song');
     expect(session.metadata.artist).toBe('My Artist');
-    expect(session.metadata.artwork).toEqual([{ src: 'https://img/art.jpg', sizes: '512x512' }]);
+    expect(session.metadata.artwork).toEqual([{ src: 'https://img/art.jpg', sizes: '300x300' }]);
   });
 
   it('sets metadata without artwork when albumArt is missing', () => {
@@ -105,6 +105,33 @@ describe('useMediaSession', () => {
     })));
     const artwork = session.metadata.artwork[0];
     expect(artwork.type).toBeUndefined();
+  });
+
+  it('rejects http:// artwork (iOS mixed content)', () => {
+    const np = { title: 'Song', artist: 'Artist', albumArt: 'http://insecure/art.jpg' };
+    renderHook(() => useMediaSession(baseProps({
+      queue: { nowPlaying: np, upcoming: [] },
+      playerState: PLAYER_STATES.PLAYING,
+    })));
+    expect(session.metadata.artwork).toEqual([]);
+  });
+
+  it('replaces Apple Music {w}x{h} template tokens in artwork URL', () => {
+    const np = { title: 'Song', artist: 'Artist', albumArt: 'https://is1-ssl.mzstatic.com/image/{w}x{h}bb.jpg' };
+    renderHook(() => useMediaSession(baseProps({
+      queue: { nowPlaying: np, upcoming: [] },
+      playerState: PLAYER_STATES.PLAYING,
+    })));
+    expect(session.metadata.artwork[0].src).toBe('https://is1-ssl.mzstatic.com/image/300x300bb.jpg');
+  });
+
+  it('rejects data: URI artwork (too large for iOS media session)', () => {
+    const np = { title: 'Song', artist: 'Artist', albumArt: 'data:image/png;base64,abc123' };
+    renderHook(() => useMediaSession(baseProps({
+      queue: { nowPlaying: np, upcoming: [] },
+      playerState: PLAYER_STATES.PLAYING,
+    })));
+    expect(session.metadata.artwork).toEqual([]);
   });
 
   it('falls back to metadata without artwork when MediaMetadata throws on artwork', () => {

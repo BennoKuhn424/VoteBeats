@@ -24,11 +24,17 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 const VERIFY_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 const RESET_TOKEN_EXPIRY_MS = 60 * 60 * 1000;        // 1 hour
 
+// COOKIE_DOMAIN lets the cookie survive Vercel-rewrite proxying on mobile
+// browsers. When set (e.g. ".speeldit.com"), the cookie works across subdomains
+// and avoids iOS Safari ITP edge-cases with domain-less proxied cookies.
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
+
 const BASE_COOKIE_OPTS = {
   secure: IS_PROD,
-  sameSite: 'lax',
+  sameSite: IS_PROD ? 'none' : 'lax',
   maxAge: 7 * 24 * 60 * 60 * 1000,
   path: '/',
+  ...(COOKIE_DOMAIN && { domain: COOKIE_DOMAIN }),
 };
 
 function setAuthCookies(res, token, csrf) {

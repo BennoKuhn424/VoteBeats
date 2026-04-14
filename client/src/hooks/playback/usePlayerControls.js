@@ -80,8 +80,9 @@ export function usePlayerControls(refs, venueCode, {
   const skip = useCallback(async () => {
     if (refs.playerState === PLAYER_STATES.TRANSITIONING) return;
     if (refs.playLock) return;
-    const music = refs.music;
-    if (music) { try { await music.stop(); } catch {} }
+    // DO NOT call music.stop() here — setQueue({ startPlaying: true }) in
+    // playSong replaces the queue atomically.  Calling stop() first tears down
+    // the iOS audio session and causes "Operation was aborted".
     beginTransition();
     const currentQueue = refs.queue;
     const skippedSongId = currentQueue.nowPlaying?.id;

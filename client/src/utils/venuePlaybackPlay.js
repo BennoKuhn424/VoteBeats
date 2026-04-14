@@ -37,6 +37,14 @@ export function buildPreloadAppleIds(song, upcoming = []) {
 
 /**
  * Dominant path for "queue ready → audio starts": setQueue then play.
+ *
+ * iOS Safari gesture-chain survival strategy:
+ *   1. setQueue({ startPlaying: true }) — MusicKit v3 starts playback during
+ *      the queue load, keeping the audio session alive.
+ *   2. If MusicKit silently ignores startPlaying (rare), fall back to play().
+ *   3. If play() throws AbortError (gesture expired), callers catch it and
+ *      transition to WAITING so the next user tap retries cleanly.
+ *
  * @param {object} music — MusicKit instance (or mock)
  * @param {string[]} appleIds
  * @param {{ setQueueMs?: number, playMs?: number }} [timeouts] — defaults to production caps
@@ -44,9 +52,6 @@ export function buildPreloadAppleIds(song, upcoming = []) {
 export async function runSetQueueThenPlay(music, appleIds, timeouts = {}) {
   const sq = timeouts.setQueueMs ?? PLAY_SET_QUEUE_MS;
   const pl = timeouts.playMs ?? PLAY_START_MS;
-  // MusicKit v3: startPlaying merges setQueue+play into one call so the
-  // user-gesture context survives on mobile Safari / Chrome.  We still
-  // call play() as a fallback in case the flag is silently ignored.
   await withTimeout(music.setQueue({ songs: appleIds, startPlaying: true }), sq);
   if (music.playbackState !== 2) {
     await withTimeout(music.play(), pl);
