@@ -56,6 +56,7 @@ app.use(
     origin(origin, cb) {
       // Allow requests with no origin (mobile apps, curl, server-to-server)
       if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+      console.error(`CORS blocked origin: "${origin}" | allowed: ${JSON.stringify(allowedOrigins)}`);
       cb(new Error('Not allowed by CORS'));
     },
     credentials: true,
