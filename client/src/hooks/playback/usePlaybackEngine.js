@@ -113,9 +113,17 @@ export function usePlaybackEngine(refs, venueCode) {
       } else {
         console.error('[PLAY_ERROR]', err?.message || err);
         refs.currentSongId = null;
-        const isNetwork = !navigator.onLine || /timeout/i.test(err?.message || '');
+        const errMsg = String(err?.message || '').toLowerCase();
+        const isNetwork = !navigator.onLine || /timeout/i.test(errMsg);
+        const isDrmKey = errMsg.includes('key') || errMsg.includes('drm') ||
+          errMsg.includes('media_key') || errMsg.includes('decrypt');
         refs.playFailCount += 1;
-        if (isNetwork) {
+        if (isDrmKey) {
+          // DRM key failure — stale Music User Token; handled via mediaPlaybackError
+          // listener too, but catch it here in case it surfaces through the promise.
+          setErrorWithPriority(ERRORS.DRM_KEY);
+          refs.playFailCount = 0;
+        } else if (isNetwork) {
           setErrorWithPriority(ERRORS.SLOW_INTERNET);
           refs.playFailCount = 0;
         } else if (refs.playFailCount >= 3) {

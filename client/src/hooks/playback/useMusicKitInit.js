@@ -24,6 +24,7 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
     let timeListener = null;
     let itemListener = null;
     let authListener = null;
+    let errorListener = null;
     let onVisibilityForAuth = null;
 
     async function init() {
@@ -119,6 +120,30 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
         authListener = () => { setIsAuthorized(music.isAuthorized); };
         music.addEventListener('authorizationStatusDidChange', authListener);
 
+        // DRM / media key error handler — catches EME key session failures
+        // that fire asynchronously after setQueue/play() resolve (e.g. Safari
+        // iPhone "MEDIA_Key error in dispatchkeyerror: TypeError{}").
+        errorListener = (evt) => {
+          const err = evt?.error || evt;
+          const msg = String(err?.message || err?.errorCode || err || '').toLowerCase();
+          console.error('[MUSICKIT_MEDIA_ERROR]', err);
+
+          const isDrmKey = msg.includes('key') || msg.includes('drm') ||
+            msg.includes('media_key') || msg.includes('decrypt') ||
+            msg.includes('license') || err?.name === 'TypeError';
+
+          if (isDrmKey) {
+            // Stale Music User Token — invalidate so Retry triggers fresh auth
+            music.unauthorize().catch(() => {});
+            setIsAuthorized(false);
+            updatePlayerState(PLAYER_STATES.IDLE);
+            setErrorWithPriority(ERRORS.DRM_KEY);
+          } else {
+            setErrorWithPriority(ERRORS.PLAYBACK_FAILED);
+          }
+        };
+        music.addEventListener('mediaPlaybackError', errorListener);
+
         onVisibilityForAuth = () => {
           if (!document.hidden) setIsAuthorized(music.isAuthorized);
         };
@@ -142,16 +167,38 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
         if (timeListener) music.removeEventListener('playbackTimeDidChange', timeListener);
         if (itemListener) music.removeEventListener('nowPlayingItemDidChange', itemListener);
         if (authListener) music.removeEventListener('authorizationStatusDidChange', authListener);
+        if (errorListener) music.removeEventListener('mediaPlaybackError', errorListener);
       }
       if (onVisibilityForAuth) document.removeEventListener('visibilitychange', onVisibilityForAuth);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [venueCode, initKey]);
 
-  const retryInit = useCallback(() => {
+  const retryInit = useCallback(async () => {
     setPlayerError(null);
+    // If MusicKit exists but authorization was invalidated (DRM key error),
+    // re-authorize within this tap's gesture context before re-initializing.
+    const music = refs.music;
+    if (music && !music.isAuthorized) {
+      try {
+        await music.authorize();
+        setIsAuthorized(music.isAuthorized);
+        // Replay the current song if one was queued
+        if (music.isAuthorized) {
+          updatePlayerState(PLAYER_STATES.IDLE);
+          const np = refs.queue?.nowPlaying;
+          if (np && refs.playSong) {
+            refs.currentSongId = np.id;
+            refs.playSong(np);
+          }
+          return;
+        }
+      } catch (err) {
+        console.warn('[RETRY_AUTH] re-authorize failed:', err?.message);
+      }
+    }
     setInitKey((k) => k + 1);
-  }, [setPlayerError]);
+  }, [refs, setPlayerError, setIsAuthorized, updatePlayerState]);
 
   return { isAuthorized, setIsAuthorized, playbackTime, playbackDuration, retryInit };
 }
