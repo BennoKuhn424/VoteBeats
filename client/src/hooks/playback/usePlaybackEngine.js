@@ -89,15 +89,17 @@ export function usePlaybackEngine(refs, venueCode) {
       if (!music.isAuthorized) {
         await music.authorize();
       }
+
+      // Build the queue BEFORE any async stop — keeps the gap between the
+      // user gesture and setQueue({ startPlaying: true }) as short as possible.
+      const ids = buildPreloadAppleIds(song, refs.queue?.upcoming ?? []);
+
       const mk = music.playbackState;
       if (mk === 1 || mk === 2 || mk === 3) {
         try { await withTimeout(music.stop(), STOP_TIMEOUT_MS); } catch {}
-        // Only delay when we actually stopped — keeps the gap minimal so the
-        // user-gesture context survives on mobile Safari.
         await new Promise((r) => setTimeout(r, POST_STOP_DELAY_MS));
       }
 
-      const ids = buildPreloadAppleIds(song, refs.queue?.upcoming ?? []);
       await runSetQueueThenPlay(music, ids);
       setPlayerError(null);
       refs.playFailCount = 0;

@@ -13,18 +13,23 @@ function delay(ms) {
 }
 
 function createMusicKitMock({ setQueueMs, playMs, stopMs = 0 }) {
-  return {
+  const mock = {
     playbackState: 0,
     setQueue: vi.fn(async () => {
       await delay(setQueueMs);
+      // startPlaying: true means MusicKit starts playing during setQueue
+      mock.playbackState = 2;
     }),
     play: vi.fn(async () => {
       await delay(playMs);
+      mock.playbackState = 2;
     }),
     stop: vi.fn(async () => {
       await delay(stopMs);
+      mock.playbackState = 0;
     }),
   };
+  return mock;
 }
 
 describe('buildPreloadAppleIds', () => {
@@ -60,22 +65,25 @@ describe('runSetQueueThenPlay — 100 timing iterations', () => {
     await runSetQueueThenPlay(music, ['a', 'b'], { setQueueMs: generousCap, playMs: generousCap });
     const elapsed = performance.now() - t0;
 
-    expect(music.setQueue).toHaveBeenCalledWith({ songs: ['a', 'b'] });
-    expect(music.play).toHaveBeenCalledTimes(1);
-    expect(elapsed).toBeGreaterThanOrEqual(setQueueMs + playMs - 2);
-    expect(elapsed).toBeLessThan(setQueueMs + playMs + 100);
+    expect(music.setQueue).toHaveBeenCalledWith({ songs: ['a', 'b'], startPlaying: true });
+    // play() is skipped when startPlaying already set playbackState to 2
+    expect(music.play).not.toHaveBeenCalled();
+    expect(elapsed).toBeGreaterThanOrEqual(setQueueMs - 2);
+    expect(elapsed).toBeLessThan(setQueueMs + 100);
   });
 });
 
 describe('runStopDelaySetQueuePlay (first-tap path, mocked)', () => {
-  it('chains stop + post-delay + setQueue + play', async () => {
+  it('chains stop + post-delay + setQueue (with startPlaying)', async () => {
     const music = {
       playbackState: 2,
       stop: vi.fn(async () => {
         await delay(4);
+        music.playbackState = 0;
       }),
       setQueue: vi.fn(async () => {
         await delay(5);
+        music.playbackState = 2; // startPlaying kicks in
       }),
       play: vi.fn(async () => {
         await delay(3);
@@ -89,14 +97,17 @@ describe('runStopDelaySetQueuePlay (first-tap path, mocked)', () => {
     );
     const elapsed = performance.now() - t0;
     expect(music.stop).toHaveBeenCalled();
-    expect(elapsed).toBeGreaterThanOrEqual(4 + 5 + 3 - 2);
-    expect(elapsed).toBeLessThan(4 + 5 + 3 + 120);
+    // play() skipped because startPlaying already set state to 2
+    expect(music.play).not.toHaveBeenCalled();
+    expect(elapsed).toBeGreaterThanOrEqual(4 + 5 - 2);
+    expect(elapsed).toBeLessThan(4 + 5 + 120);
   });
 });
 
 describe('withTimeout / failure modes', () => {
   it('runSetQueueThenPlay aborts when setQueue hangs past cap', async () => {
     const music = {
+      playbackState: 0,
       setQueue: vi.fn(() => new Promise(() => {})),
       play: vi.fn(),
     };

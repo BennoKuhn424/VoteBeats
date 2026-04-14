@@ -44,8 +44,13 @@ export function buildPreloadAppleIds(song, upcoming = []) {
 export async function runSetQueueThenPlay(music, appleIds, timeouts = {}) {
   const sq = timeouts.setQueueMs ?? PLAY_SET_QUEUE_MS;
   const pl = timeouts.playMs ?? PLAY_START_MS;
-  await withTimeout(music.setQueue({ songs: appleIds }), sq);
-  await withTimeout(music.play(), pl);
+  // MusicKit v3: startPlaying merges setQueue+play into one call so the
+  // user-gesture context survives on mobile Safari / Chrome.  We still
+  // call play() as a fallback in case the flag is silently ignored.
+  await withTimeout(music.setQueue({ songs: appleIds, startPlaying: true }), sq);
+  if (music.playbackState !== 2) {
+    await withTimeout(music.play(), pl);
+  }
 }
 
 /**
