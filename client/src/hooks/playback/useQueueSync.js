@@ -80,9 +80,21 @@ export function useQueueSync(refs, venueCode, { beginTransition, endTransition, 
       } else if (!refs.hasUserGesture) {
         updatePlayerState(PLAYER_STATES.WAITING);
       } else {
-        beginTransition();
-        refs.currentSongId = nowPlaying.id;
-        try { await refs.playSong?.(nowPlaying); } finally { endTransition(); }
+        // iOS transient activation expires ~5s after a tap. Socket-driven
+        // playSong from an idle player outside that window fails with MKError
+        // "MEDIA_SESSION". If MusicKit is idle/none AND the last gesture is
+        // stale, park in WAITING so the next tap retries cleanly.
+        const IOS_ACTIVATION_WINDOW_MS = 4000;
+        const mkState = refs.music?.playbackState ?? 0;
+        const isIdle = mkState === 0 || mkState === 4 || mkState === 5;
+        const gestureStale = Date.now() - (refs.lastGestureAt || 0) > IOS_ACTIVATION_WINDOW_MS;
+        if (isIdle && gestureStale) {
+          updatePlayerState(PLAYER_STATES.WAITING);
+        } else {
+          beginTransition();
+          refs.currentSongId = nowPlaying.id;
+          try { await refs.playSong?.(nowPlaying); } finally { endTransition(); }
+        }
       }
     }
 
@@ -98,9 +110,17 @@ export function useQueueSync(refs, venueCode, { beginTransition, endTransition, 
           if (np?.appleId && np.id !== refs.currentSongId &&
               refs.playerState !== PLAYER_STATES.TRANSITIONING &&
               !refs.playLock) {
-            beginTransition();
-            refs.currentSongId = np.id;
-            try { await refs.playSong?.(np); } finally { endTransition(); }
+            const IOS_ACTIVATION_WINDOW_MS = 4000;
+            const mkState = refs.music?.playbackState ?? 0;
+            const isIdle = mkState === 0 || mkState === 4 || mkState === 5;
+            const gestureStale = Date.now() - (refs.lastGestureAt || 0) > IOS_ACTIVATION_WINDOW_MS;
+            if (isIdle && gestureStale) {
+              updatePlayerState(PLAYER_STATES.WAITING);
+            } else {
+              beginTransition();
+              refs.currentSongId = np.id;
+              try { await refs.playSong?.(np); } finally { endTransition(); }
+            }
           }
         } catch {}
       }

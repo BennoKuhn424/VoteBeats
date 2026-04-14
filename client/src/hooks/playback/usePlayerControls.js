@@ -35,6 +35,7 @@ export function usePlayerControls(refs, venueCode, {
     const music = refs.music;
     if (!music) return;
     refs.hasUserGesture = true;
+    refs.lastGestureAt = Date.now();
     const wasWaiting = refs.playerState === PLAYER_STATES.WAITING;
     const nowPlaying = refs.queue.nowPlaying;
     const mk = music.playbackState;
@@ -119,6 +120,7 @@ export function usePlayerControls(refs, venueCode, {
     const music = refs.music;
     if (!music) return;
     refs.hasUserGesture = true;
+    refs.lastGestureAt = Date.now();
     try {
       await music.authorize();
       setIsAuthorized(music.isAuthorized);

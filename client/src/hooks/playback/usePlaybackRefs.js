@@ -26,6 +26,7 @@ export function usePlaybackRefs() {
       playerState: PLAYER_STATES.NOT_READY,
       currentSongId: null,
       hasUserGesture: false,
+      lastGestureAt: 0,
 
       // ── Play lock: serialises playSong calls ──
       playLock: false,
