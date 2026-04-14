@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import {
   Music2, Play, Pause, SkipBack, SkipForward, Volume2, Loader2,
@@ -60,25 +60,72 @@ export default function VenuePlayerBar({ venueCode }) {
     return venueMeta.playlists.find((p) => p.id === id)?.name ?? null;
   }, [venueMeta]);
 
-  useEffect(() => {
+  // Wake Lock: iOS Safari requires the request to be made from INSIDE a user
+  // gesture handler (tap). Requesting from useEffect silently fails with
+  // NotAllowedError. We call requestWakeLock() directly from onClick handlers
+  // below and use this effect only for re-acquire-on-visibility and cleanup.
+  const wakeLockRef = useRef(null);
+  const requestWakeLock = useCallback(async () => {
     if (!('wakeLock' in navigator)) return;
-    let lock = null;
-    async function requestLock() {
-      try {
-        lock = await navigator.wakeLock.request('screen');
-        lock.addEventListener('release', () => { lock = null; });
-      } catch (_) {}
+    if (wakeLockRef.current) return;
+    try {
+      const lock = await navigator.wakeLock.request('screen');
+      wakeLockRef.current = lock;
+      console.log('[WAKE_LOCK] acquired');
+      lock.addEventListener('release', () => {
+        console.log('[WAKE_LOCK] released by system');
+        wakeLockRef.current = null;
+      });
+    } catch (err) {
+      console.warn('[WAKE_LOCK] request failed:', err?.name, err?.message);
     }
-    requestLock();
+  }, []);
+
+  useEffect(() => {
+    if (!('wakeLock' in navigator)) {
+      console.warn('[WAKE_LOCK] not supported (needs iOS 16.4+ or modern Android)');
+      return;
+    }
     function onVisibility() {
-      if (document.visibilityState === 'visible' && !lock) requestLock();
+      // Re-acquire when returning to the tab if we had a lock before
+      if (document.visibilityState === 'visible' && isPlaying && !wakeLockRef.current) {
+        requestWakeLock();
+      }
     }
     document.addEventListener('visibilitychange', onVisibility);
+    // Safety net: iOS can silently release the lock without firing 'release'.
+    // Every 30s while playing, re-request if we don't currently hold it.
+    const healthCheck = setInterval(() => {
+      if (isPlaying && !wakeLockRef.current && document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    }, 30000);
     return () => {
+      clearInterval(healthCheck);
       document.removeEventListener('visibilitychange', onVisibility);
-      if (lock) lock.release().catch(() => {});
+      if (wakeLockRef.current) wakeLockRef.current.release().catch(() => {});
+      wakeLockRef.current = null;
     };
-  }, []);
+  }, [isPlaying, requestWakeLock]);
+
+  // Tap-time handlers: request the lock BEFORE calling the control, so the
+  // request fires inside the user gesture window (iOS requirement).
+  const handlePlayPause = useCallback(() => {
+    requestWakeLock();
+    playPause();
+  }, [requestWakeLock, playPause]);
+  const handleSkip = useCallback(() => {
+    requestWakeLock();
+    skip();
+  }, [requestWakeLock, skip]);
+  const handleRestart = useCallback(() => {
+    requestWakeLock();
+    restart();
+  }, [requestWakeLock, restart]);
+  const handleAuthorize = useCallback(() => {
+    requestWakeLock();
+    authorize();
+  }, [requestWakeLock, authorize]);
 
   // Full sync when venue or page changes (autoplay mode from server).
   useEffect(() => {
@@ -171,7 +218,7 @@ export default function VenuePlayerBar({ venueCode }) {
           {musicReady && !isAuthorized && (
             <button
               type="button"
-              onClick={authorize}
+              onClick={handleAuthorize}
               className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 whitespace-nowrap min-h-[44px]"
             >
               <Music2 className="h-4 w-4 shrink-0" />
@@ -182,7 +229,7 @@ export default function VenuePlayerBar({ venueCode }) {
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={restart}
+                onClick={handleRestart}
                 disabled={busyPlayback}
                 className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 disabled:opacity-40"
                 aria-label="Back to start"
@@ -191,7 +238,7 @@ export default function VenuePlayerBar({ venueCode }) {
               </button>
               <button
                 type="button"
-                onClick={playPause}
+                onClick={handlePlayPause}
                 disabled={busyPlayback}
                 className="w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center rounded-full text-white bg-brand-500 hover:bg-brand-600 shadow-md disabled:opacity-60"
                 aria-label={isPlaying ? 'Pause' : 'Play'}
@@ -206,7 +253,7 @@ export default function VenuePlayerBar({ venueCode }) {
               </button>
               <button
                 type="button"
-                onClick={skip}
+                onClick={handleSkip}
                 disabled={busyPlayback}
                 className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 disabled:opacity-40"
                 aria-label="Next"

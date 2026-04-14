@@ -96,6 +96,12 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
         timeListener = () => {
           setPlaybackTime(music.currentPlaybackTime || 0);
           setPlaybackDuration(music.currentPlaybackDuration || 0);
+          // Refresh "session active" timestamp on every tick while playing so
+          // the queue-sync gesture gate lets auto-advance through at song end,
+          // even if the last explicit play started minutes ago.
+          if (music.playbackState === 2) {
+            refs.lastPlayStartedAt = Date.now();
+          }
         };
 
         // Detect background auto-advance via MusicKit's pre-loaded queue.

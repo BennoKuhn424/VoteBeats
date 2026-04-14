@@ -404,6 +404,21 @@ describe('usePlaybackEngine', () => {
       expect(result.current.playerError).toBe(ERRORS.NEEDS_ATTENTION);
     });
 
+    it('sets refs.lastPlayStartedAt on successful play (iOS session-active window)', async () => {
+      // Regression: auto-advance after a song ends relies on this timestamp.
+      // If playSong doesn't stamp it, the queue-sync gesture gate blocks the
+      // next playSong and autoplay stops dead after the first song on iOS.
+      const music = createMusicMock();
+      const refs = createRefs({ music, lastPlayStartedAt: 0 });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      const before = Date.now();
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(refs.lastPlayStartedAt).toBeGreaterThanOrEqual(before);
+    });
+
     it('AbortError does NOT increment playFailCount', async () => {
       const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
       runSetQueueThenPlay.mockRejectedValueOnce(
