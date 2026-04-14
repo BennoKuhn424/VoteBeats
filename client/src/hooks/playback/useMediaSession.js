@@ -17,14 +17,25 @@ export function useMediaSession({ queue, playerState, playbackTime, playbackDura
     const isPaused = playerState === PLAYER_STATES.PAUSED;
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : isPaused ? 'paused' : 'none';
     if (np) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: np.title || 'Speeldit',
-        artist: np.artist || '',
-        album: '',
-        artwork: np.albumArt
-          ? [{ src: np.albumArt, sizes: '512x512', type: 'image/jpeg' }]
-          : [],
-      });
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: np.title || 'Speeldit',
+          artist: np.artist || '',
+          album: '',
+          artwork: np.albumArt
+            ? [{ src: np.albumArt, sizes: '512x512' }]
+            : [],
+        });
+      } catch (_) {
+        // Artwork load can fail on mobile (CORS / network) — set metadata without artwork
+        try {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: np.title || 'Speeldit',
+            artist: np.artist || '',
+            album: '',
+          });
+        } catch (_) {}
+      }
       if (isPlaying && playbackDuration > 0 && 'setPositionState' in navigator.mediaSession) {
         try {
           navigator.mediaSession.setPositionState({

@@ -208,4 +208,172 @@ describe('usePlayerControls', () => {
       expect(refs.autoplayMode).toBe('off');
     });
   });
+
+  describe('playPause — mobile error recovery', () => {
+    it('AbortError on resume transitions to WAITING (iOS Safari)', async () => {
+      const music = createMusicMock({
+        playbackState: 3,
+        play: vi.fn(() => Promise.reject(
+          new DOMException('The operation was aborted.', 'AbortError')
+        )),
+      });
+      const np = { id: 's1', appleId: 'a1' };
+      const refs = createRefs({
+        music,
+        currentSongId: 's1',
+        queue: { nowPlaying: np, upcoming: [] },
+      });
+      const deps = createDeps();
+      const { result } = renderHook(() => usePlayerControls(refs, 'V1', deps));
+
+      await act(async () => { await result.current.playPause(); });
+      expect(deps.updatePlayerState).toHaveBeenCalledWith(PLAYER_STATES.WAITING);
+    });
+
+    it('NotAllowedError on resume transitions to WAITING', async () => {
+      const music = createMusicMock({
+        playbackState: 3,
+        play: vi.fn(() => Promise.reject(
+          new DOMException('The request is not allowed', 'NotAllowedError')
+        )),
+      });
+      const np = { id: 's1', appleId: 'a1' };
+      const refs = createRefs({
+        music,
+        currentSongId: 's1',
+        queue: { nowPlaying: np, upcoming: [] },
+      });
+      const deps = createDeps();
+      const { result } = renderHook(() => usePlayerControls(refs, 'V1', deps));
+
+      await act(async () => { await result.current.playPause(); });
+      expect(deps.updatePlayerState).toHaveBeenCalledWith(PLAYER_STATES.WAITING);
+    });
+
+    it('"abort" in error message transitions to WAITING', async () => {
+      const music = createMusicMock({
+        playbackState: 3,
+        play: vi.fn(() => Promise.reject(
+          new Error('The play() request was aborted by a new load request')
+        )),
+      });
+      const np = { id: 's1', appleId: 'a1' };
+      const refs = createRefs({
+        music,
+        currentSongId: 's1',
+        queue: { nowPlaying: np, upcoming: [] },
+      });
+      const deps = createDeps();
+      const { result } = renderHook(() => usePlayerControls(refs, 'V1', deps));
+
+      await act(async () => { await result.current.playPause(); });
+      expect(deps.updatePlayerState).toHaveBeenCalledWith(PLAYER_STATES.WAITING);
+    });
+
+    it('generic play error does NOT transition to WAITING', async () => {
+      const music = createMusicMock({
+        playbackState: 3,
+        play: vi.fn(() => Promise.reject(new Error('MEDIA_ELEMENT_ERROR'))),
+      });
+      const np = { id: 's1', appleId: 'a1' };
+      const refs = createRefs({
+        music,
+        currentSongId: 's1',
+        queue: { nowPlaying: np, upcoming: [] },
+      });
+      const deps = createDeps();
+      const { result } = renderHook(() => usePlayerControls(refs, 'V1', deps));
+
+      await act(async () => { await result.current.playPause(); });
+      expect(deps.updatePlayerState).not.toHaveBeenCalledWith(PLAYER_STATES.WAITING);
+    });
+
+    it('sets hasUserGesture on every playPause call (mobile gesture tracking)', async () => {
+      const music = createMusicMock({ playbackState: 0 });
+      const refs = createRefs({ music, queue: { nowPlaying: null, upcoming: [] } });
+      const deps = createDeps();
+      const { result } = renderHook(() => usePlayerControls(refs, 'V1', deps));
+
+      expect(refs.hasUserGesture).toBe(false);
+      await act(async () => { await result.current.playPause(); });
+      expect(refs.hasUserGesture).toBe(true);
+    });
+
+    it('plays from idle state (mk=0) when nowPlaying exists (cold start on tablet)', async () => {
+      const music = createMusicMock({ playbackState: 0 });
+      const np = { id: 's1', appleId: 'a1' };
+      const refs = createRefs({
+        music,
+        queue: { nowPlaying: np, upcoming: [] },
+      });
+      const deps = createDeps();
+      const { result } = renderHook(() => usePlayerControls(refs, 'V1', deps));
+
+      await act(async () => { await result.current.playPause(); });
+      expect(refs.currentSongId).toBe('s1');
+      expect(deps.playSong).toHaveBeenCalledWith(np);
+    });
+
+    it('plays from ended state (mk=5) — mobile auto-advance recovery', async () => {
+      const music = createMusicMock({ playbackState: 5 });
+      const np = { id: 's1', appleId: 'a1' };
+      const refs = createRefs({
+        music,
+        queue: { nowPlaying: np, upcoming: [] },
+      });
+      const deps = createDeps();
+      const { result } = renderHook(() => usePlayerControls(refs, 'V1', deps));
+
+      await act(async () => { await result.current.playPause(); });
+      expect(deps.playSong).toHaveBeenCalledWith(np);
+    });
+
+    it('plays from stopped state (mk=4) — mobile background return', async () => {
+      const music = createMusicMock({ playbackState: 4 });
+      const np = { id: 's1', appleId: 'a1' };
+      const refs = createRefs({
+        music,
+        queue: { nowPlaying: np, upcoming: [] },
+      });
+      const deps = createDeps();
+      const { result } = renderHook(() => usePlayerControls(refs, 'V1', deps));
+
+      await act(async () => { await result.current.playPause(); });
+      expect(deps.playSong).toHaveBeenCalledWith(np);
+    });
+  });
+
+  describe('authorize — mobile', () => {
+    it('sets hasUserGesture before authorizing (preserves gesture chain)', async () => {
+      const gestureOrder = [];
+      const music = createMusicMock({
+        isAuthorized: false,
+        authorize: vi.fn(() => {
+          gestureOrder.push(refs.hasUserGesture);
+          music.isAuthorized = true;
+          return Promise.resolve();
+        }),
+      });
+      const refs = createRefs({ music });
+      const deps = createDeps();
+      const { result } = renderHook(() => usePlayerControls(refs, 'V1', deps));
+
+      await act(async () => { await result.current.authorize(); });
+      expect(gestureOrder[0]).toBe(true);
+      expect(deps.setIsAuthorized).toHaveBeenCalledWith(true);
+    });
+
+    it('shows APPLE_CONNECT error when auth fails and still not authorized', async () => {
+      const music = createMusicMock({
+        isAuthorized: false,
+        authorize: vi.fn(() => Promise.reject(new Error('User cancelled'))),
+      });
+      const refs = createRefs({ music });
+      const deps = createDeps();
+      const { result } = renderHook(() => usePlayerControls(refs, 'V1', deps));
+
+      await act(async () => { await result.current.authorize(); });
+      expect(deps.setErrorWithPriority).toHaveBeenCalledWith(ERRORS.APPLE_CONNECT);
+    });
+  });
 });

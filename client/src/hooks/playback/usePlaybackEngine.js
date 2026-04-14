@@ -92,8 +92,10 @@ export function usePlaybackEngine(refs, venueCode) {
       const mk = music.playbackState;
       if (mk === 1 || mk === 2 || mk === 3) {
         try { await withTimeout(music.stop(), STOP_TIMEOUT_MS); } catch {}
+        // Only delay when we actually stopped — keeps the gap minimal so the
+        // user-gesture context survives on mobile Safari.
+        await new Promise((r) => setTimeout(r, POST_STOP_DELAY_MS));
       }
-      await new Promise((r) => setTimeout(r, POST_STOP_DELAY_MS));
 
       const ids = buildPreloadAppleIds(song, refs.queue?.upcoming ?? []);
       await runSetQueueThenPlay(music, ids);
@@ -101,7 +103,12 @@ export function usePlaybackEngine(refs, venueCode) {
       refs.playFailCount = 0;
       api.reportPlaying(venueCode, song.id, 0).catch(() => {});
     } catch (err) {
-      if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
+      if (
+        err?.name === 'NotAllowedError' ||
+        err?.name === 'AbortError' ||
+        err?.message?.toLowerCase().includes('interact') ||
+        err?.message?.toLowerCase().includes('abort')
+      ) {
         updatePlayerState(PLAYER_STATES.WAITING);
       } else {
         console.error('[PLAY_ERROR]', err?.message || err);

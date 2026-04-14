@@ -207,5 +207,217 @@ describe('usePlaybackEngine', () => {
       renderHook(() => usePlaybackEngine(refs, 'TEST'));
       expect(typeof refs.playSong).toBe('function');
     });
+
+    it('authorizes before playing when not authorized (mobile first-tap)', async () => {
+      const music = createMusicMock({ isAuthorized: false });
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(music.authorize).toHaveBeenCalled();
+    });
+
+    it('skips POST_STOP_DELAY when MusicKit is idle (playbackState 0)', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      const music = createMusicMock({ playbackState: 0 });
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      // stop() should NOT be called when idle
+      expect(music.stop).not.toHaveBeenCalled();
+      // but setQueue+play should still run
+      expect(runSetQueueThenPlay).toHaveBeenCalled();
+    });
+
+    it('calls stop + delay only when MusicKit is playing (playbackState 2)', async () => {
+      const music = createMusicMock({ playbackState: 2 });
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(music.stop).toHaveBeenCalled();
+    });
+
+    it('calls stop + delay only when MusicKit is paused (playbackState 3)', async () => {
+      const music = createMusicMock({ playbackState: 3 });
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(music.stop).toHaveBeenCalled();
+    });
+  });
+
+  describe('playSong — mobile error handling', () => {
+    it('AbortError transitions to WAITING (iOS Safari gesture chain broken)', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      runSetQueueThenPlay.mockRejectedValueOnce(
+        new DOMException('The operation was aborted.', 'AbortError')
+      );
+      const music = createMusicMock();
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(result.current.playerState).toBe(PLAYER_STATES.WAITING);
+      expect(result.current.playerError).toBeNull();
+    });
+
+    it('NotAllowedError transitions to WAITING (autoplay policy)', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      runSetQueueThenPlay.mockRejectedValueOnce(
+        new DOMException('The request is not allowed', 'NotAllowedError')
+      );
+      const music = createMusicMock();
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(result.current.playerState).toBe(PLAYER_STATES.WAITING);
+      expect(result.current.playerError).toBeNull();
+    });
+
+    it('"user gesture interact" message transitions to WAITING', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      runSetQueueThenPlay.mockRejectedValueOnce(new Error('User must interact with the page first'));
+      const music = createMusicMock();
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(result.current.playerState).toBe(PLAYER_STATES.WAITING);
+    });
+
+    it('"abort" in message transitions to WAITING (iOS variant wording)', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      runSetQueueThenPlay.mockRejectedValueOnce(new Error('The play() request was aborted by a new load request'));
+      const music = createMusicMock();
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(result.current.playerState).toBe(PLAYER_STATES.WAITING);
+    });
+
+    it('timeout error shows SLOW_INTERNET (mobile cellular)', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      runSetQueueThenPlay.mockRejectedValueOnce(new Error('Timeout after 28000ms'));
+      const music = createMusicMock();
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(result.current.playerError).toBe(ERRORS.SLOW_INTERNET);
+    });
+
+    it('generic MusicKit error shows PLAYBACK_FAILED and clears currentSongId', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      runSetQueueThenPlay.mockRejectedValueOnce(new Error('MEDIA_ELEMENT_ERROR: Format error'));
+      const music = createMusicMock();
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(refs.currentSongId).toBeNull();
+      expect(result.current.playerError).toBe(ERRORS.PLAYBACK_FAILED);
+    });
+
+    it('3 consecutive generic failures escalate to NEEDS_ATTENTION', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      const music = createMusicMock();
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      for (let i = 0; i < 3; i++) {
+        runSetQueueThenPlay.mockRejectedValueOnce(new Error('MEDIA_ELEMENT_ERROR'));
+        await act(async () => {
+          await result.current.playSong({ appleId: 'a1', id: 's1' });
+        });
+      }
+      expect(result.current.playerError).toBe(ERRORS.NEEDS_ATTENTION);
+    });
+
+    it('AbortError does NOT increment playFailCount', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      runSetQueueThenPlay.mockRejectedValueOnce(
+        new DOMException('The operation was aborted.', 'AbortError')
+      );
+      const music = createMusicMock();
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(refs.playFailCount).toBe(0);
+    });
+
+    it('releases lock after AbortError so retry tap works', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      runSetQueueThenPlay.mockRejectedValueOnce(
+        new DOMException('The operation was aborted.', 'AbortError')
+      );
+      const music = createMusicMock();
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(refs.playLock).toBe(false);
+      expect(result.current.playbackLoading).toBe(false);
+    });
+
+    it('releases lock after NotAllowedError so retry tap works', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      runSetQueueThenPlay.mockRejectedValueOnce(
+        new DOMException('The request is not allowed', 'NotAllowedError')
+      );
+      const music = createMusicMock();
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(refs.playLock).toBe(false);
+      expect(result.current.playbackLoading).toBe(false);
+    });
+
+    it('endTransition called on generic error during transition', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      runSetQueueThenPlay.mockRejectedValueOnce(new Error('codec not supported'));
+      const music = createMusicMock({ playbackState: 0 });
+      const refs = createRefs({ music, playerState: PLAYER_STATES.TRANSITIONING });
+      refs.playerState = PLAYER_STATES.TRANSITIONING;
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      // Should have resolved to IDLE (endTransition with mk=0)
+      expect(refs.playerState).not.toBe(PLAYER_STATES.TRANSITIONING);
+    });
   });
 });

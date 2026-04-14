@@ -56,7 +56,12 @@ export function usePlayerControls(refs, venueCode, {
             api.reportPlaying(venueCode, nowPlaying.id, music.currentPlaybackTime || 0).catch(() => {});
           }
         } catch (err) {
-          if (err?.message?.toLowerCase().includes('interact') || err?.name === 'NotAllowedError') {
+          if (
+            err?.name === 'NotAllowedError' ||
+            err?.name === 'AbortError' ||
+            err?.message?.toLowerCase().includes('interact') ||
+            err?.message?.toLowerCase().includes('abort')
+          ) {
             updatePlayerState(PLAYER_STATES.WAITING);
           } else {
             console.error('Play error:', err);
