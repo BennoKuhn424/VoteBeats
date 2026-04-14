@@ -27,6 +27,7 @@ export function usePlaybackRefs() {
       currentSongId: null,
       hasUserGesture: false,
       lastGestureAt: 0,
+      lastPlayStartedAt: 0,
 
       // ── Play lock: serialises playSong calls ──
       playLock: false,

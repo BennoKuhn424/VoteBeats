@@ -85,10 +85,16 @@ export function useQueueSync(refs, venueCode, { beginTransition, endTransition, 
         // "MEDIA_SESSION". If MusicKit is idle/none AND the last gesture is
         // stale, park in WAITING so the next tap retries cleanly.
         const IOS_ACTIVATION_WINDOW_MS = 4000;
+        // iOS keeps the media session "active" for ~90s after the last successful
+        // play start — during that window setQueue works without a fresh tap,
+        // which is what lets autoplay auto-advance to the next song.
+        const SESSION_ACTIVE_WINDOW_MS = 90_000;
         const mkState = refs.music?.playbackState ?? 0;
         const isIdle = mkState === 0 || mkState === 4 || mkState === 5;
-        const gestureStale = Date.now() - (refs.lastGestureAt || 0) > IOS_ACTIVATION_WINDOW_MS;
-        if (isIdle && gestureStale) {
+        const now = Date.now();
+        const gestureFresh = now - (refs.lastGestureAt || 0) <= IOS_ACTIVATION_WINDOW_MS;
+        const sessionActive = now - (refs.lastPlayStartedAt || 0) <= SESSION_ACTIVE_WINDOW_MS;
+        if (isIdle && !gestureFresh && !sessionActive) {
           updatePlayerState(PLAYER_STATES.WAITING);
         } else {
           beginTransition();

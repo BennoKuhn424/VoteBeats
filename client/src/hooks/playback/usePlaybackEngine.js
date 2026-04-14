@@ -109,6 +109,7 @@ export function usePlaybackEngine(refs, venueCode) {
       await runSetQueueThenPlay(music, ids);
       setPlayerError(null);
       refs.playFailCount = 0;
+      refs.lastPlayStartedAt = Date.now();
       api.reportPlaying(venueCode, song.id, 0).catch(() => {});
     } catch (err) {
       const reason = String(err?.reason || '').toUpperCase();
