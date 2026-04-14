@@ -125,10 +125,22 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
         // iPhone "MEDIA_Key error in dispatchkeyerror: TypeError{}").
         errorListener = (evt) => {
           const err = evt?.error || evt;
-          const msg = String(err?.message || err?.errorCode || err || '').toLowerCase();
+          const reason = String(err?.reason || '').toUpperCase();
+          const msg = String(err?.message || err?.errorCode || err?.description || '').toLowerCase();
           console.error('[MUSICKIT_MEDIA_ERROR]', err);
 
-          const isDrmKey = msg.includes('key') || msg.includes('drm') ||
+          // iOS Safari: MEDIA_SESSION means the audio session couldn't activate
+          // (usually the user-gesture chain was broken across an await).
+          // Don't unauthorize — just park in WAITING so the next tap retries
+          // play within a fresh gesture context.
+          const isMediaSession = reason === 'MEDIA_SESSION' || msg.includes('media_session');
+          if (isMediaSession) {
+            updatePlayerState(PLAYER_STATES.WAITING);
+            return;
+          }
+
+          const isDrmKey = reason.includes('KEY') || reason.includes('DRM') ||
+            msg.includes('key') || msg.includes('drm') ||
             msg.includes('media_key') || msg.includes('decrypt') ||
             msg.includes('license') || err?.name === 'TypeError';
 

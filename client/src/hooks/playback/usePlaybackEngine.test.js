@@ -208,7 +208,9 @@ describe('usePlaybackEngine', () => {
       expect(typeof refs.playSong).toBe('function');
     });
 
-    it('authorizes before playing when not authorized (mobile first-tap)', async () => {
+    it('does NOT inline-authorize on iOS (gesture chain would break) — parks in WAITING with APPLE_CONNECT', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      runSetQueueThenPlay.mockClear();
       const music = createMusicMock({ isAuthorized: false });
       const refs = createRefs({ music });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
@@ -216,7 +218,46 @@ describe('usePlaybackEngine', () => {
       await act(async () => {
         await result.current.playSong({ appleId: 'a1', id: 's1' });
       });
-      expect(music.authorize).toHaveBeenCalled();
+      // Must NOT await authorize() inside playSong — that burns the user gesture
+      // and causes MKError "MEDIA_SESSION" on iOS Safari setQueue.
+      expect(music.authorize).not.toHaveBeenCalled();
+      expect(runSetQueueThenPlay).not.toHaveBeenCalled();
+      expect(result.current.playerState).toBe(PLAYER_STATES.WAITING);
+      expect(result.current.playerError).toBe(ERRORS.APPLE_CONNECT);
+      expect(refs.playLock).toBe(false);
+    });
+
+    it('MKError reason: MEDIA_SESSION transitions to WAITING (iOS audio session failure)', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      const mkErr = Object.assign(new Error('MKError'), {
+        isMKError: true,
+        reason: 'MEDIA_SESSION',
+        name: 'MKError',
+      });
+      runSetQueueThenPlay.mockRejectedValueOnce(mkErr);
+      const music = createMusicMock();
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(result.current.playerState).toBe(PLAYER_STATES.WAITING);
+      expect(result.current.playerError).toBeNull();
+      expect(refs.playLock).toBe(false);
+    });
+
+    it('message containing "media_session" transitions to WAITING', async () => {
+      const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
+      runSetQueueThenPlay.mockRejectedValueOnce(new Error('MEDIA_SESSION failed to activate'));
+      const music = createMusicMock();
+      const refs = createRefs({ music });
+      const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
+
+      await act(async () => {
+        await result.current.playSong({ appleId: 'a1', id: 's1' });
+      });
+      expect(result.current.playerState).toBe(PLAYER_STATES.WAITING);
     });
 
     it('skips POST_STOP_DELAY when MusicKit is idle (playbackState 0)', async () => {

@@ -86,8 +86,16 @@ export function usePlaybackEngine(refs, venueCode) {
     }, PLAY_LOCK_SAFETY_MS);
 
     try {
+      // iOS Safari: awaiting authorize() burns the user-gesture chain and
+      // causes MKError "MEDIA_SESSION" on the subsequent setQueue. Require the
+      // user to Connect first via the authorize button, then tap Play.
       if (!music.isAuthorized) {
-        await music.authorize();
+        refs.playLock = false;
+        setPlaybackLoading(false);
+        clearTimeout(lockSafety);
+        setErrorWithPriority(ERRORS.APPLE_CONNECT);
+        updatePlayerState(PLAYER_STATES.WAITING);
+        return;
       }
 
       // Build IDs before any async work to keep the gesture-to-play gap minimal.
@@ -103,11 +111,15 @@ export function usePlaybackEngine(refs, venueCode) {
       refs.playFailCount = 0;
       api.reportPlaying(venueCode, song.id, 0).catch(() => {});
     } catch (err) {
+      const reason = String(err?.reason || '').toUpperCase();
+      const errLower = String(err?.message || '').toLowerCase();
       if (
         err?.name === 'NotAllowedError' ||
         err?.name === 'AbortError' ||
-        err?.message?.toLowerCase().includes('interact') ||
-        err?.message?.toLowerCase().includes('abort')
+        reason === 'MEDIA_SESSION' ||
+        errLower.includes('interact') ||
+        errLower.includes('abort') ||
+        errLower.includes('media_session')
       ) {
         updatePlayerState(PLAYER_STATES.WAITING);
       } else {
