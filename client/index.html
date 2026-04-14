@@ -56,6 +56,15 @@
   <body>
     <div id="root"></div>
     <script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js"></script>
+    <!-- Optional on-device console (enable with VITE_ERUDA=1) -->
+    <script type="module">
+      if (import.meta.env?.VITE_ERUDA === '1') {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/eruda';
+        s.onload = () => window.eruda?.init();
+        document.body.appendChild(s);
+      }
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

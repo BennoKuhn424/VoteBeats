@@ -98,34 +98,35 @@ describe('POST /api/auth/register', () => {
     }
   });
 
-  test('201 with cookies, venueCode, and venue on success', async () => {
+  test('201 with venueCode and requiresVerification on success (no auto-login)', async () => {
     stubEmptyVenues();
     const res = await request(app)
       .post('/api/auth/register')
       .send({ email: 'new@bar.com', password: 'secret123', venueName: 'Grand Venue', location: 'JHB' });
     expect(res.status).toBe(201);
-    // Token is now in httpOnly cookie, not response body
-    const cookies = res.headers['set-cookie'];
-    expect(cookies.some(c => c.startsWith('auth_token='))).toBe(true);
-    expect(cookies.some(c => c.startsWith('csrf_token='))).toBe(true);
+    // Register no longer auto-logs in — requires email verification first
+    expect(res.body.requiresVerification).toBe(true);
     expect(res.body.venueCode).toHaveLength(6);
-    expect(res.body.venue.name).toBe('Grand Venue');
-    expect(res.body.venue.location).toBe('JHB');
+    expect(res.body.message).toMatch(/verify/i);
+    // No auth cookies should be set
+    const cookies = res.headers['set-cookie'] || [];
+    expect(cookies.some(c => c.startsWith('auth_token='))).toBe(false);
     expect(db.saveVenue).toHaveBeenCalledTimes(1);
   });
 
-  test('auth cookie contains the new venueCode', async () => {
+  test('saves verification token after register', async () => {
     stubEmptyVenues();
     const res = await request(app)
       .post('/api/auth/register')
       .send({ email: 'new@bar.com', password: 'secret123', venueName: 'Bar' });
     expect(res.status).toBe(201);
-    const cookies = res.headers['set-cookie'];
-    const authCookie = cookies.find(c => c.startsWith('auth_token='));
-    const tokenValue = authCookie.split('=')[1].split(';')[0];
-    const jwt = require('jsonwebtoken');
-    const payload = jwt.decode(tokenValue);
-    expect(payload.venueCode).toBe(res.body.venueCode);
+    expect(res.body.venueCode).toHaveLength(6);
+    // Should have saved an auth token for email verification
+    expect(db.saveAuthToken).toHaveBeenCalled();
+    const call = db.saveAuthToken.mock.calls[0];
+    expect(typeof call[0]).toBe('string'); // token string
+    expect(call[1].type).toBe('verify');
+    expect(call[1].email).toBe('new@bar.com');
   });
 });
 

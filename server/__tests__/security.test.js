@@ -122,7 +122,7 @@ describe('JWT token integrity', () => {
     expect(payload.jti.length).toBeGreaterThan(0);
   });
 
-  test('register JWT includes jti claim', async () => {
+  test('register does not auto-login (requires email verification)', async () => {
     db.getAllVenues.mockReturnValue({});
     db.getVenue.mockReturnValue(null);
     db.saveVenue.mockImplementation(() => {});
@@ -131,14 +131,11 @@ describe('JWT token integrity', () => {
       .post('/api/auth/register')
       .send({ email: 'new@bar.com', password: 'secret12345', venueName: 'My Bar' });
     expect(res.status).toBe(201);
+    expect(res.body.requiresVerification).toBe(true);
 
-    const cookies = res.headers['set-cookie'];
-    const authCookie = cookies.find(c => c.startsWith('auth_token='));
-    const tokenValue = authCookie.split('=')[1].split(';')[0];
-    const payload = jwt.decode(tokenValue);
-
-    expect(payload.jti).toBeDefined();
-    expect(payload.venueCode).toBeDefined();
+    // No auth cookie should be set — user must verify email first
+    const cookies = res.headers['set-cookie'] || [];
+    expect(cookies.some(c => c.startsWith('auth_token='))).toBe(false);
   });
 
   test('each login generates a unique jti', async () => {
