@@ -1,8 +1,8 @@
 import { QRCodeSVG } from 'qrcode.react';
+import { buildVotingUrl } from '../../utils/publicUrl';
 
 export default function QRCodeDisplay({ venueCode, venueName, variant = 'dark' }) {
-  const baseUrl = import.meta.env.VITE_PUBLIC_URL || window.location.origin;
-  const votingUrl = `${baseUrl.replace(/\/$/, '')}/v/${venueCode}`;
+  const votingUrl = buildVotingUrl(venueCode);
 
   const isLight = variant === 'light';
   const qrBgClass = isLight

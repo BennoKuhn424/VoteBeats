@@ -23,6 +23,7 @@ import EarningsCard from '../components/venue/EarningsCard';
 import AnalyticsDashboard from '../components/venue/AnalyticsDashboard';
 import VolumeAlertsCard from '../components/venue/VolumeAlertsCard';
 import RandomAutoplayCard from '../components/venue/RandomAutoplayCard';
+import { buildVotingUrl } from '../utils/publicUrl';
 
 export default function VenueDashboard() {
   const [venue, setVenue] = useState(null);
@@ -120,10 +121,7 @@ export default function VenueDashboard() {
     navigate('/venue/login');
   }
 
-  const baseUrl =
-    import.meta.env.VITE_PUBLIC_URL ||
-    (typeof window !== 'undefined' ? window.location.origin : '');
-  const votingUrl = `${baseUrl.replace(/\/$/, '')}/v/${venue?.code || ''}`;
+  const votingUrl = buildVotingUrl(venue?.code);
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
