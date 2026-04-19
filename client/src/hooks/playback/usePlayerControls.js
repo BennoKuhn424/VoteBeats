@@ -9,7 +9,7 @@ import api from '../../utils/api';
  * engine primitives (playSong, beginTransition, endTransition).
  *
  * Owns: autoplayMode.
- * Reads from refs: music, playerState, currentSongId, playLock, queue, hasUserGesture.
+ * Reads from refs: provider, playerState, currentSongId, playLock, queue, hasUserGesture.
  * Writes to refs: hasUserGesture, currentSongId, autoplayMode.
  * Calls via refs: playSong, fetchQueue.
  */
@@ -32,16 +32,16 @@ export function usePlayerControls(refs, venueCode, {
   // No beginTransition() here — setPlayerState('transitioning') would trigger a
   // React re-render that breaks WebKit's user gesture chain before music.play().
   const playPause = useCallback(async () => {
-    const music = refs.music;
-    if (!music) return;
+    const provider = refs.provider;
+    if (!provider) return;
     refs.hasUserGesture = true;
     refs.lastGestureAt = Date.now();
     const wasWaiting = refs.playerState === PLAYER_STATES.WAITING;
     const nowPlaying = refs.queue.nowPlaying;
-    const mk = music.playbackState;
+    const mk = provider.playbackState;
 
     if (mk === 2) {
-      await music.pause();
+      await provider.pause();
       if (nowPlaying) api.pausePlaying(venueCode, nowPlaying.id).catch(() => {});
     } else if (wasWaiting && nowPlaying) {
       refs.currentSongId = nowPlaying.id;
@@ -52,9 +52,9 @@ export function usePlayerControls(refs, venueCode, {
         await playSong(nowPlaying);
       } else {
         try {
-          await music.play();
+          await provider.play();
           if (nowPlaying) {
-            api.reportPlaying(venueCode, nowPlaying.id, music.currentPlaybackTime || 0).catch(() => {});
+            api.reportPlaying(venueCode, nowPlaying.id, provider.currentPlaybackTime || 0).catch(() => {});
           }
         } catch (err) {
           if (
@@ -108,25 +108,25 @@ export function usePlayerControls(refs, venueCode, {
 
   // ── restart ──────────────────────────────────────────────────────────────
   const restart = useCallback(async () => {
-    const music = refs.music;
+    const provider = refs.provider;
     const np = refs.queue.nowPlaying;
-    if (!music || !np) return;
-    try { await music.seekToTime(0); } catch {}
+    if (!provider || !np) return;
+    try { await provider.seekToTime(0); } catch {}
     api.reportPlaying(venueCode, np.id, 0).catch(() => {});
   }, [refs, venueCode]);
 
   // ── authorize ────────────────────────────────────────────────────────────
   const authorize = useCallback(async () => {
-    const music = refs.music;
-    if (!music) return;
+    const provider = refs.provider;
+    if (!provider) return;
     refs.hasUserGesture = true;
     refs.lastGestureAt = Date.now();
     try {
-      await music.authorize();
-      setIsAuthorized(music.isAuthorized);
+      await provider.authorize();
+      setIsAuthorized(provider.isAuthorized);
     } catch (err) {
       console.error('Auth error:', err);
-      if (!music.isAuthorized) {
+      if (!provider.isAuthorized) {
         setErrorWithPriority(ERRORS.APPLE_CONNECT);
       } else {
         setIsAuthorized(true);

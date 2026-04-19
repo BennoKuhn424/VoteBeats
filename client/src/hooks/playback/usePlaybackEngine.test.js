@@ -23,7 +23,7 @@ vi.mock('../../utils/venuePlaybackPlay', () => ({
 
 function createRefs(overrides = {}) {
   return {
-    music: null,
+    provider: null,
     playerState: PLAYER_STATES.NOT_READY,
     currentSongId: null,
     hasUserGesture: false,
@@ -125,7 +125,7 @@ describe('usePlaybackEngine', () => {
     });
 
     it('endTransition resolves to IDLE when MusicKit is stopped', () => {
-      const refs = createRefs({ music: createMusicMock({ playbackState: 0 }) });
+      const refs = createRefs({ provider: createMusicMock({ playbackState: 0 }) });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       act(() => { result.current.beginTransition(); });
@@ -134,7 +134,7 @@ describe('usePlaybackEngine', () => {
     });
 
     it('endTransition resolves to PLAYING when MusicKit is playing', () => {
-      const refs = createRefs({ music: createMusicMock({ playbackState: 2 }) });
+      const refs = createRefs({ provider: createMusicMock({ playbackState: 2 }) });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       act(() => { result.current.beginTransition(); });
@@ -145,8 +145,8 @@ describe('usePlaybackEngine', () => {
 
   describe('playSong', () => {
     it('sets playLock during execution and releases after', async () => {
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       expect(refs.playLock).toBe(false);
@@ -157,8 +157,8 @@ describe('usePlaybackEngine', () => {
     });
 
     it('rejects concurrent calls (lock)', async () => {
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       // Manually lock
@@ -167,13 +167,13 @@ describe('usePlaybackEngine', () => {
         await result.current.playSong({ appleId: 'a1', id: 's1' });
       });
       // play() should NOT have been called — lock prevented it
-      expect(music.play).not.toHaveBeenCalled();
+      expect(provider.play).not.toHaveBeenCalled();
     });
 
     it('replays pending queue update after lock release', async () => {
-      const music = createMusicMock();
+      const provider = createMusicMock();
       const handleQueueUpdate = vi.fn();
-      const refs = createRefs({ music, handleQueueUpdate });
+      const refs = createRefs({ provider, handleQueueUpdate });
       const pendingQ = { nowPlaying: { id: 'p1', appleId: 'pa1' }, upcoming: [] };
       refs.pendingQueue = pendingQ;
 
@@ -189,8 +189,8 @@ describe('usePlaybackEngine', () => {
     });
 
     it('skips when navigator.onLine is false', async () => {
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       const orig = navigator.onLine;
@@ -199,7 +199,7 @@ describe('usePlaybackEngine', () => {
         await result.current.playSong({ appleId: 'a1', id: 's1' });
       });
       Object.defineProperty(navigator, 'onLine', { value: orig, writable: true, configurable: true });
-      expect(music.play).not.toHaveBeenCalled();
+      expect(provider.play).not.toHaveBeenCalled();
     });
 
     it('registers itself in refs.playSong', () => {
@@ -211,8 +211,8 @@ describe('usePlaybackEngine', () => {
     it('does NOT inline-authorize on iOS (gesture chain would break) — parks in WAITING with APPLE_CONNECT', async () => {
       const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
       runSetQueueThenPlay.mockClear();
-      const music = createMusicMock({ isAuthorized: false });
-      const refs = createRefs({ music });
+      const provider = createMusicMock({ isAuthorized: false });
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
@@ -220,7 +220,7 @@ describe('usePlaybackEngine', () => {
       });
       // Must NOT await authorize() inside playSong — that burns the user gesture
       // and causes MKError "MEDIA_SESSION" on iOS Safari setQueue.
-      expect(music.authorize).not.toHaveBeenCalled();
+      expect(provider.authorize).not.toHaveBeenCalled();
       expect(runSetQueueThenPlay).not.toHaveBeenCalled();
       expect(result.current.playerState).toBe(PLAYER_STATES.WAITING);
       expect(result.current.playerError).toBe(ERRORS.APPLE_CONNECT);
@@ -235,8 +235,8 @@ describe('usePlaybackEngine', () => {
         name: 'MKError',
       });
       runSetQueueThenPlay.mockRejectedValueOnce(mkErr);
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
@@ -250,8 +250,8 @@ describe('usePlaybackEngine', () => {
     it('message containing "media_session" transitions to WAITING', async () => {
       const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
       runSetQueueThenPlay.mockRejectedValueOnce(new Error('MEDIA_SESSION failed to activate'));
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
@@ -262,43 +262,43 @@ describe('usePlaybackEngine', () => {
 
     it('skips POST_STOP_DELAY when MusicKit is idle (playbackState 0)', async () => {
       const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
-      const music = createMusicMock({ playbackState: 0 });
-      const refs = createRefs({ music });
+      const provider = createMusicMock({ playbackState: 0 });
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
         await result.current.playSong({ appleId: 'a1', id: 's1' });
       });
       // stop() should NOT be called when idle
-      expect(music.stop).not.toHaveBeenCalled();
+      expect(provider.stop).not.toHaveBeenCalled();
       // but setQueue+play should still run
       expect(runSetQueueThenPlay).toHaveBeenCalled();
     });
 
     it('does NOT call stop when MusicKit is playing (setQueue replaces atomically)', async () => {
       const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
-      const music = createMusicMock({ playbackState: 2 });
-      const refs = createRefs({ music });
+      const provider = createMusicMock({ playbackState: 2 });
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
         await result.current.playSong({ appleId: 'a1', id: 's1' });
       });
       // stop() must NOT be called — it kills the iOS audio session
-      expect(music.stop).not.toHaveBeenCalled();
+      expect(provider.stop).not.toHaveBeenCalled();
       expect(runSetQueueThenPlay).toHaveBeenCalled();
     });
 
     it('does NOT call stop when MusicKit is paused (setQueue replaces atomically)', async () => {
       const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
-      const music = createMusicMock({ playbackState: 3 });
-      const refs = createRefs({ music });
+      const provider = createMusicMock({ playbackState: 3 });
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
         await result.current.playSong({ appleId: 'a1', id: 's1' });
       });
-      expect(music.stop).not.toHaveBeenCalled();
+      expect(provider.stop).not.toHaveBeenCalled();
       expect(runSetQueueThenPlay).toHaveBeenCalled();
     });
   });
@@ -309,8 +309,8 @@ describe('usePlaybackEngine', () => {
       runSetQueueThenPlay.mockRejectedValueOnce(
         new DOMException('The operation was aborted.', 'AbortError')
       );
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
@@ -325,8 +325,8 @@ describe('usePlaybackEngine', () => {
       runSetQueueThenPlay.mockRejectedValueOnce(
         new DOMException('The request is not allowed', 'NotAllowedError')
       );
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
@@ -339,8 +339,8 @@ describe('usePlaybackEngine', () => {
     it('"user gesture interact" message transitions to WAITING', async () => {
       const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
       runSetQueueThenPlay.mockRejectedValueOnce(new Error('User must interact with the page first'));
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
@@ -352,8 +352,8 @@ describe('usePlaybackEngine', () => {
     it('"abort" in message transitions to WAITING (iOS variant wording)', async () => {
       const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
       runSetQueueThenPlay.mockRejectedValueOnce(new Error('The play() request was aborted by a new load request'));
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
@@ -365,8 +365,8 @@ describe('usePlaybackEngine', () => {
     it('timeout error shows SLOW_INTERNET (mobile cellular)', async () => {
       const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
       runSetQueueThenPlay.mockRejectedValueOnce(new Error('Timeout after 28000ms'));
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
@@ -378,8 +378,8 @@ describe('usePlaybackEngine', () => {
     it('generic MusicKit error shows PLAYBACK_FAILED and clears currentSongId', async () => {
       const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
       runSetQueueThenPlay.mockRejectedValueOnce(new Error('MEDIA_ELEMENT_ERROR: Format error'));
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
@@ -391,8 +391,8 @@ describe('usePlaybackEngine', () => {
 
     it('3 consecutive generic failures escalate to NEEDS_ATTENTION', async () => {
       const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       for (let i = 0; i < 3; i++) {
@@ -408,8 +408,8 @@ describe('usePlaybackEngine', () => {
       // Regression: auto-advance after a song ends relies on this timestamp.
       // If playSong doesn't stamp it, the queue-sync gesture gate blocks the
       // next playSong and autoplay stops dead after the first song on iOS.
-      const music = createMusicMock();
-      const refs = createRefs({ music, lastPlayStartedAt: 0 });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider, lastPlayStartedAt: 0 });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       const before = Date.now();
@@ -424,8 +424,8 @@ describe('usePlaybackEngine', () => {
       runSetQueueThenPlay.mockRejectedValueOnce(
         new DOMException('The operation was aborted.', 'AbortError')
       );
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
@@ -439,8 +439,8 @@ describe('usePlaybackEngine', () => {
       runSetQueueThenPlay.mockRejectedValueOnce(
         new DOMException('The operation was aborted.', 'AbortError')
       );
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
@@ -455,8 +455,8 @@ describe('usePlaybackEngine', () => {
       runSetQueueThenPlay.mockRejectedValueOnce(
         new DOMException('The request is not allowed', 'NotAllowedError')
       );
-      const music = createMusicMock();
-      const refs = createRefs({ music });
+      const provider = createMusicMock();
+      const refs = createRefs({ provider });
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 
       await act(async () => {
@@ -469,8 +469,8 @@ describe('usePlaybackEngine', () => {
     it('endTransition called on generic error during transition', async () => {
       const { runSetQueueThenPlay } = await import('../../utils/venuePlaybackPlay');
       runSetQueueThenPlay.mockRejectedValueOnce(new Error('codec not supported'));
-      const music = createMusicMock({ playbackState: 0 });
-      const refs = createRefs({ music, playerState: PLAYER_STATES.TRANSITIONING });
+      const provider = createMusicMock({ playbackState: 0 });
+      const refs = createRefs({ provider, playerState: PLAYER_STATES.TRANSITIONING });
       refs.playerState = PLAYER_STATES.TRANSITIONING;
       const { result } = renderHook(() => usePlaybackEngine(refs, 'TEST'));
 

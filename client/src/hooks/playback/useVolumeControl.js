@@ -4,7 +4,7 @@ import api from '../../utils/api';
 /**
  * Volume management: state, localStorage persistence, MusicKit sync, server reporting.
  *
- * Reads from refs: music.
+ * Reads from refs: provider.
  */
 export function useVolumeControl(refs, venueCode) {
   const [volume, setVolume] = useState(() => {
@@ -17,7 +17,7 @@ export function useVolumeControl(refs, venueCode) {
   // Sync to localStorage + MusicKit
   useEffect(() => {
     localStorage.setItem('speeldit_volume', String(volume));
-    if (refs.music) refs.music.volume = volume / 100;
+    if (refs.provider) refs.provider.volume = volume / 100;
   }, [refs, volume]);
 
   // Debounced report to server (for customer feedback correlation)

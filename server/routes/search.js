@@ -1,6 +1,5 @@
 const express = require('express');
-const { getDeveloperToken } = require('../utils/appleMusicToken');
-const { searchAppleMusic } = require('../utils/appleMusicAPI');
+const { getProvider } = require('../providers');
 const E = require('../utils/errorCodes');
 
 const router = express.Router();
@@ -18,14 +17,15 @@ router.get('/', async (req, res) => {
   }
 
   try {
-    const songs = await searchAppleMusic(q.trim(), venueCode || null);
+    const provider = getProvider();
+    const songs = await provider.search(q.trim(), venueCode || null);
 
     // Map to user-requested format: trackName, artistName, artwork (300x300), songId
     const results = songs.map((s) => ({
       trackName: s.title,
       artistName: s.artist,
       artwork: s.albumArt || '',
-      songId: s.appleId,
+      songId: s.providerTrackId || s.appleId,
       duration: s.duration,
       genre: s.genre,
     }));

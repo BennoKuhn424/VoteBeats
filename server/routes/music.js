@@ -1,5 +1,5 @@
 const express = require('express');
-const { searchAppleMusic } = require('../utils/appleMusicAPI');
+const { getProvider } = require('../providers');
 
 const router = express.Router();
 
@@ -12,7 +12,8 @@ router.get('/search', async (req, res) => {
   }
 
   try {
-    const results = await searchAppleMusic(q.trim(), venueCode);
+    const provider = getProvider();
+    const results = await provider.search(q.trim(), venueCode);
     res.json(results);
   } catch (err) {
     console.error('Music search error:', err);

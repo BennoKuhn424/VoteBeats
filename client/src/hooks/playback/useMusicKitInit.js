@@ -1,14 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import { PLAYER_STATES, ERRORS } from './constants';
+import { resolvePlaybackProvider } from '../../providers';
 import api from '../../utils/api';
 
 /**
- * MusicKit initialization, event listeners, and auth state tracking.
+ * Playback SDK initialization, event listeners, and auth state tracking.
  *
  * Owns: isAuthorized, playbackTime, playbackDuration, initKey/retryInit.
- * Writes to refs: music.
+ * Writes to refs: provider.
  * Reads from refs: playerState, currentSongId, autoplayMode, playLock, queue.
  * Calls via refs: playSong, fetchQueue.
+ *
+ * The hook is provider-agnostic — it resolves the active {@link PlaybackProvider}
+ * from the factory, asks it to `initialize(token)`, then wires event listeners
+ * against the provider's MusicKit-shaped proxy surface. Non-Apple providers are
+ * responsible for normalizing `playbackState` (0..5) and event names to
+ * MusicKit's shape so this hook stays SDK-neutral.
  */
 export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerError, setErrorWithPriority, setQueue }) {
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -26,26 +33,20 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
     let authListener = null;
     let errorListener = null;
     let onVisibilityForAuth = null;
+    let cancelled = false;
 
     async function init() {
       try {
-        let music;
-        try { music = MusicKit.getInstance(); } catch {}
-        if (!music) {
-          const res = await api.getDeveloperToken();
-          const devToken = res.data?.token || res.data?.developerToken;
-          if (!devToken) {
-            setPlayerError(ERRORS.APPLE_CONNECT);
-            return;
-          }
-          await MusicKit.configure({
-            developerToken: devToken,
-            app: { name: 'Speeldit', build: '1.0' },
-          });
-          music = MusicKit.getInstance();
+        const { provider, token } = await resolvePlaybackProvider();
+        if (cancelled) return;
+        if (!token) {
+          setPlayerError(ERRORS.APPLE_CONNECT);
+          return;
         }
-        refs.music = music;
-        setIsAuthorized(music.isAuthorized);
+        await provider.initialize(token);
+        if (cancelled) return;
+        refs.provider = provider;
+        setIsAuthorized(provider.isAuthorized);
         setPlayerError(null);
 
         if (typeof navigator !== 'undefined' && navigator.audioSession?.type !== undefined) {
@@ -53,21 +54,21 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
         }
 
         const initialState =
-          music.playbackState === 2 ? PLAYER_STATES.PLAYING :
-          music.playbackState === 3 ? PLAYER_STATES.PAUSED :
+          provider.playbackState === 2 ? PLAYER_STATES.PLAYING :
+          provider.playbackState === 3 ? PLAYER_STATES.PAUSED :
           PLAYER_STATES.IDLE;
         updatePlayerState(initialState);
 
-        setPlaybackTime(music.currentPlaybackTime || 0);
-        setPlaybackDuration(music.currentPlaybackDuration || 0);
+        setPlaybackTime(provider.currentPlaybackTime || 0);
+        setPlaybackDuration(provider.currentPlaybackDuration || 0);
 
-        // MusicKit state listener — drives playerState when not transitioning.
+        // Playback-state listener — drives playerState when not transitioning.
         stateListener = () => {
           if (refs.playerState === PLAYER_STATES.TRANSITIONING) return;
           if (refs.playerState === PLAYER_STATES.WAITING &&
-              music.playbackState !== 2 && music.playbackState !== 3) return;
+              provider.playbackState !== 2 && provider.playbackState !== 3) return;
 
-          const mk = music.playbackState;
+          const mk = provider.playbackState;
           if (mk === 2) updatePlayerState(PLAYER_STATES.PLAYING);
           else if (mk === 3) updatePlayerState(PLAYER_STATES.PAUSED);
           else if (mk === 0 || mk === 4 || mk === 5) {
@@ -76,7 +77,7 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
               const endedId = refs.currentSongId;
               refs.currentSongId = null;
 
-              music.skipToNextItem().catch(() => {});
+              provider.skipToNextItem().catch(() => {});
 
               if (endedId) {
                 api.advanceQueue(venueCode, endedId)
@@ -94,23 +95,23 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
         };
 
         timeListener = () => {
-          setPlaybackTime(music.currentPlaybackTime || 0);
-          setPlaybackDuration(music.currentPlaybackDuration || 0);
+          setPlaybackTime(provider.currentPlaybackTime || 0);
+          setPlaybackDuration(provider.currentPlaybackDuration || 0);
           // Refresh "session active" timestamp on every tick while playing so
           // the queue-sync gesture gate lets auto-advance through at song end,
           // even if the last explicit play started minutes ago.
-          if (music.playbackState === 2) {
+          if (provider.playbackState === 2) {
             refs.lastPlayStartedAt = Date.now();
           }
         };
 
-        // Detect background auto-advance via MusicKit's pre-loaded queue.
+        // Detect background auto-advance via the SDK's pre-loaded queue.
         itemListener = () => {
           if (refs.playLock) return;
-          const newAppleId = String(music.nowPlayingItem?.id || '');
+          const newAppleId = String(provider.nowPlayingItem?.id || '');
           if (!newAppleId) return;
           const upcoming = refs.queue?.upcoming ?? [];
-          const idx = upcoming.findIndex((s) => String(s?.appleId) === newAppleId);
+          const idx = upcoming.findIndex((s) => String(s?.providerTrackId ?? s?.appleId) === newAppleId);
           if (idx < 0 || refs.currentSongId === upcoming[idx]?.id) return;
           const nextSong = upcoming[idx];
           const endedSongId = refs.currentSongId;
@@ -123,8 +124,8 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
             console.warn('[BG_ADVANCE] server sync failed:', e?.message));
         };
 
-        authListener = () => { setIsAuthorized(music.isAuthorized); };
-        music.addEventListener('authorizationStatusDidChange', authListener);
+        authListener = () => { setIsAuthorized(provider.isAuthorized); };
+        provider.addEventListener('authorizationStatusDidChange', authListener);
 
         // DRM / media key error handler — catches EME key session failures
         // that fire asynchronously after setQueue/play() resolve (e.g. Safari
@@ -133,7 +134,7 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
           const err = evt?.error || evt;
           const reason = String(err?.reason || '').toUpperCase();
           const msg = String(err?.message || err?.errorCode || err?.description || '').toLowerCase();
-          console.error('[MUSICKIT_MEDIA_ERROR]', err);
+          console.error('[PLAYBACK_MEDIA_ERROR]', err);
 
           // iOS Safari: MEDIA_SESSION means the audio session couldn't activate
           // (usually the user-gesture chain was broken across an await).
@@ -151,8 +152,8 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
             msg.includes('license') || err?.name === 'TypeError';
 
           if (isDrmKey) {
-            // Stale Music User Token — invalidate so Retry triggers fresh auth
-            music.unauthorize().catch(() => {});
+            // Stale user token — invalidate so Retry triggers fresh auth
+            provider.unauthorize().catch(() => {});
             setIsAuthorized(false);
             updatePlayerState(PLAYER_STATES.IDLE);
             setErrorWithPriority(ERRORS.DRM_KEY);
@@ -160,18 +161,18 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
             setErrorWithPriority(ERRORS.PLAYBACK_FAILED);
           }
         };
-        music.addEventListener('mediaPlaybackError', errorListener);
+        provider.addEventListener('mediaPlaybackError', errorListener);
 
         onVisibilityForAuth = () => {
-          if (!document.hidden) setIsAuthorized(music.isAuthorized);
+          if (!document.hidden) setIsAuthorized(provider.isAuthorized);
         };
         document.addEventListener('visibilitychange', onVisibilityForAuth);
 
-        music.addEventListener('playbackStateDidChange', stateListener);
-        music.addEventListener('playbackTimeDidChange', timeListener);
-        music.addEventListener('nowPlayingItemDidChange', itemListener);
+        provider.addEventListener('playbackStateDidChange', stateListener);
+        provider.addEventListener('playbackTimeDidChange', timeListener);
+        provider.addEventListener('nowPlayingItemDidChange', itemListener);
       } catch (err) {
-        console.error('[APPLE_INIT_FAIL] MusicKit init error:', err);
+        console.error('[PLAYBACK_INIT_FAIL] init error:', err);
         const isNetwork = !navigator.onLine || err?.message?.includes('not defined') || err?.name === 'TypeError';
         setPlayerError(isNetwork ? ERRORS.NO_INTERNET : ERRORS.APPLE_CONNECT);
       }
@@ -179,13 +180,14 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
     init();
 
     return () => {
-      const music = refs.music;
-      if (music) {
-        if (stateListener) music.removeEventListener('playbackStateDidChange', stateListener);
-        if (timeListener) music.removeEventListener('playbackTimeDidChange', timeListener);
-        if (itemListener) music.removeEventListener('nowPlayingItemDidChange', itemListener);
-        if (authListener) music.removeEventListener('authorizationStatusDidChange', authListener);
-        if (errorListener) music.removeEventListener('mediaPlaybackError', errorListener);
+      cancelled = true;
+      const provider = refs.provider;
+      if (provider) {
+        if (stateListener) provider.removeEventListener('playbackStateDidChange', stateListener);
+        if (timeListener) provider.removeEventListener('playbackTimeDidChange', timeListener);
+        if (itemListener) provider.removeEventListener('nowPlayingItemDidChange', itemListener);
+        if (authListener) provider.removeEventListener('authorizationStatusDidChange', authListener);
+        if (errorListener) provider.removeEventListener('mediaPlaybackError', errorListener);
       }
       if (onVisibilityForAuth) document.removeEventListener('visibilitychange', onVisibilityForAuth);
     };
@@ -194,15 +196,15 @@ export function useMusicKitInit(refs, venueCode, { updatePlayerState, setPlayerE
 
   const retryInit = useCallback(async () => {
     setPlayerError(null);
-    // If MusicKit exists but authorization was invalidated (DRM key error),
+    // If the provider exists but authorization was invalidated (DRM key error),
     // re-authorize within this tap's gesture context before re-initializing.
-    const music = refs.music;
-    if (music && !music.isAuthorized) {
+    const provider = refs.provider;
+    if (provider && !provider.isAuthorized) {
       try {
-        await music.authorize();
-        setIsAuthorized(music.isAuthorized);
+        await provider.authorize();
+        setIsAuthorized(provider.isAuthorized);
         // Replay the current song if one was queued
-        if (music.isAuthorized) {
+        if (provider.isAuthorized) {
           updatePlayerState(PLAYER_STATES.IDLE);
           const np = refs.queue?.nowPlaying;
           if (np && refs.playSong) {

@@ -212,7 +212,7 @@ export default function VenuePlayerBar({ venueCode }) {
           {!musicReady && (
             <div className="flex items-center gap-2 text-zinc-500 pr-1">
               <Loader2 className="h-5 w-5 animate-spin text-brand-500" />
-              <span className="text-sm hidden md:inline">Connecting to Apple Music…</span>
+              <span className="text-sm hidden md:inline">Connecting to music service…</span>
             </div>
           )}
           {musicReady && !isAuthorized && (

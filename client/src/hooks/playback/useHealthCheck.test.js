@@ -5,7 +5,7 @@ import { PLAYER_STATES, ERRORS } from './constants';
 
 function createRefs(overrides = {}) {
   return {
-    music: null,
+    provider: null,
     playerState: PLAYER_STATES.IDLE,
     currentSongId: null,
     playLock: false,
@@ -40,8 +40,8 @@ describe('useHealthCheck', () => {
     expect(setErrorWithPriority).not.toHaveBeenCalled();
   });
 
-  it('does nothing when music is null', () => {
-    const refs = createRefs({ music: null });
+  it('does nothing when provider is null', () => {
+    const refs = createRefs({ provider: null });
     const setErrorWithPriority = vi.fn();
     renderHook(() => useHealthCheck(refs, 'V1', { fetchQueue: vi.fn(), setErrorWithPriority }));
 
@@ -51,7 +51,7 @@ describe('useHealthCheck', () => {
 
   it('skips check when player is transitioning', () => {
     const refs = createRefs({
-      music: createMusicMock({ playbackState: 0 }),
+      provider: createMusicMock({ playbackState: 0 }),
       playerState: PLAYER_STATES.TRANSITIONING,
       queue: { nowPlaying: { appleId: 'a1' }, upcoming: [] },
     });
@@ -64,7 +64,7 @@ describe('useHealthCheck', () => {
 
   it('skips check when playLock is held', () => {
     const refs = createRefs({
-      music: createMusicMock({ playbackState: 0 }),
+      provider: createMusicMock({ playbackState: 0 }),
       playLock: true,
       queue: { nowPlaying: { appleId: 'a1' }, upcoming: [] },
     });
@@ -77,7 +77,7 @@ describe('useHealthCheck', () => {
 
   it('detects stuck player (idle >15s with server nowPlaying)', () => {
     const refs = createRefs({
-      music: createMusicMock({ playbackState: 0 }),
+      provider: createMusicMock({ playbackState: 0 }),
       queue: { nowPlaying: { appleId: 'a1' }, upcoming: [] },
     });
     const fetchQueue = vi.fn();
@@ -104,7 +104,7 @@ describe('useHealthCheck', () => {
 
   it('detects track divergence (confirmed on second tick)', () => {
     const refs = createRefs({
-      music: createMusicMock({
+      provider: createMusicMock({
         playbackState: 2,
         nowPlayingItem: { id: 'client_track' },
       }),
@@ -127,7 +127,7 @@ describe('useHealthCheck', () => {
 
   it('clears divergence when tracks match', () => {
     const refs = createRefs({
-      music: createMusicMock({
+      provider: createMusicMock({
         playbackState: 2,
         nowPlayingItem: { id: 'same_track' },
       }),
@@ -144,7 +144,7 @@ describe('useHealthCheck', () => {
 
   it('respects 60s cooldown — same error not re-fired within window', () => {
     const refs = createRefs({
-      music: createMusicMock({
+      provider: createMusicMock({
         playbackState: 2,
         nowPlayingItem: { id: 'client_track' },
       }),
@@ -167,7 +167,7 @@ describe('useHealthCheck', () => {
 
   it('resets stuckSince when player starts playing', () => {
     const refs = createRefs({
-      music: createMusicMock({ playbackState: 0 }),
+      provider: createMusicMock({ playbackState: 0 }),
       queue: { nowPlaying: { appleId: 'a1' }, upcoming: [] },
     });
     renderHook(() => useHealthCheck(refs, 'V1', { fetchQueue: vi.fn(), setErrorWithPriority: vi.fn() }));
@@ -177,15 +177,15 @@ describe('useHealthCheck', () => {
     expect(refs.stuckSince).not.toBeNull();
 
     // Player starts playing before second tick
-    refs.music.playbackState = 2;
-    refs.music.nowPlayingItem = { id: 'a1' };
+    refs.provider.playbackState = 2;
+    refs.provider.nowPlayingItem = { id: 'a1' };
 
     vi.advanceTimersByTime(12000);
     expect(refs.stuckSince).toBeNull(); // cleared
   });
 
   it('cleans up interval on unmount', () => {
-    const refs = createRefs({ music: createMusicMock() });
+    const refs = createRefs({ provider: createMusicMock() });
     const { unmount } = renderHook(() =>
       useHealthCheck(refs, 'V1', { fetchQueue: vi.fn(), setErrorWithPriority: vi.fn() }));
     unmount();

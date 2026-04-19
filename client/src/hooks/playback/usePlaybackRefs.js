@@ -19,8 +19,8 @@ export function usePlaybackRefs() {
   const refs = useRef(null);
   if (refs.current === null) {
     refs.current = {
-      // ── MusicKit instance ──
-      music: null,
+      // ── Active PlaybackProvider (owns the SDK; hooks never touch the SDK directly). ──
+      provider: null,
 
       // ── Player state (synchronous mirror of React state) ──
       playerState: PLAYER_STATES.NOT_READY,

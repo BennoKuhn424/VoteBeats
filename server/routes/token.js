@@ -1,17 +1,25 @@
 const express = require('express');
-const { getDeveloperToken } = require('../utils/appleMusicToken');
+const { getProvider } = require('../providers');
 
 const router = express.Router();
 
-// GET /api/token - returns MusicKit JWT developer token for frontend
+/**
+ * GET /api/token — returns the active provider's client-facing credential.
+ * Response shape is stable across providers:
+ *   { provider: "apple"|"spotify"|..., developerToken: string|null }
+ * Clients read `provider` to pick the matching playback SDK.
+ * 503 when the configured provider has no token (e.g. missing .p8).
+ */
 router.get('/', (req, res) => {
-  const token = getDeveloperToken();
+  const provider = getProvider();
+  const token = provider.getToken();
   if (!token) {
     return res.status(503).json({
-      error: 'Apple Music not configured. Set APPLE_TEAM_ID, APPLE_KEY_ID, and APPLE_MUSIC_KEY_PATH.',
+      provider: provider.name,
+      error: 'Music provider not configured. Check server env for provider credentials.',
     });
   }
-  res.json({ developerToken: token });
+  res.json({ provider: provider.name, developerToken: token });
 });
 
 module.exports = router;

@@ -15,8 +15,8 @@ describe('usePlaybackRefs', () => {
     const { result } = renderHook(() => usePlaybackRefs());
     const r = result.current;
 
-    // MusicKit
-    expect(r.music).toBeNull();
+    // Playback provider
+    expect(r.provider).toBeNull();
 
     // Player state
     expect(r.playerState).toBe(PLAYER_STATES.NOT_READY);

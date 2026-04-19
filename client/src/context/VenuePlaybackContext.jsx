@@ -51,7 +51,7 @@ export function VenuePlaybackProvider({ venueCode, children }) {
 
   // Set initial MusicKit volume when it becomes available
   useEffect(() => {
-    if (refs.music) refs.music.volume = volumeControl.volume / 100;
+    if (refs.provider) refs.provider.setVolume(volumeControl.volume);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [musicKit.isAuthorized]);
 
@@ -100,11 +100,11 @@ export function VenuePlaybackProvider({ venueCode, children }) {
   // ── Periodic position report: keep server anchor accurate ───────────────
   useEffect(() => {
     const interval = setInterval(() => {
-      const music = refs.music;
+      const provider = refs.provider;
       const songId = refs.currentSongId;
-      if (!music || !songId || music.playbackState !== 2) return;
+      if (!provider || !songId || provider.playbackState !== 2) return;
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-      api.reportPlaying(venueCode, songId, music.currentPlaybackTime || 0).catch(() => {});
+      api.reportPlaying(venueCode, songId, provider.currentPlaybackTime || 0).catch(() => {});
     }, 30000);
     return () => clearInterval(interval);
   }, [refs, venueCode]);

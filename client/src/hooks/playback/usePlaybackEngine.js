@@ -15,7 +15,7 @@ import api from '../../utils/api';
  * Core playback engine: state machine, transitions, playSong with locking.
  *
  * Owns: playerState, playbackLoading, playerError, beginTransition/endTransition, playSong.
- * Reads from refs: music, currentSongId, playerState, playLock, queue, pendingQueue.
+ * Reads from refs: provider, currentSongId, playerState, playLock, queue, pendingQueue.
  * Writes to refs: playerState, currentSongId, playLock, pendingQueue, playFailCount, playSong.
  */
 export function usePlaybackEngine(refs, venueCode) {
@@ -59,8 +59,8 @@ export function usePlaybackEngine(refs, venueCode) {
 
   const endTransition = useCallback(() => {
     clearTimeout(refs.transitionWatchdog);
-    const music = refs.music;
-    const mk = music?.playbackState;
+    const provider = refs.provider;
+    const mk = provider?.playbackState;
     const resolved =
       mk === 2 ? PLAYER_STATES.PLAYING :
       mk === 3 ? PLAYER_STATES.PAUSED :
@@ -70,8 +70,8 @@ export function usePlaybackEngine(refs, venueCode) {
 
   // ── playSong ─────────────────────────────────────────────────────────────
   const playSong = useCallback(async (song) => {
-    const music = refs.music;
-    if (!music || !song?.appleId) return;
+    const provider = refs.provider;
+    if (!provider || !(song?.providerTrackId ?? song?.appleId)) return;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     if (refs.playLock) return;
     refs.playLock = true;
@@ -89,7 +89,7 @@ export function usePlaybackEngine(refs, venueCode) {
       // iOS Safari: awaiting authorize() burns the user-gesture chain and
       // causes MKError "MEDIA_SESSION" on the subsequent setQueue. Require the
       // user to Connect first via the authorize button, then tap Play.
-      if (!music.isAuthorized) {
+      if (!provider.isAuthorized) {
         refs.playLock = false;
         setPlaybackLoading(false);
         clearTimeout(lockSafety);
@@ -106,7 +106,7 @@ export function usePlaybackEngine(refs, venueCode) {
       // track atomically. Calling stop() first tears down the audio session,
       // which burns the user-gesture context and causes "The operation was
       // aborted" on every subsequent play attempt in that tap cycle.
-      await runSetQueueThenPlay(music, ids);
+      await runSetQueueThenPlay(provider, ids);
       setPlayerError(null);
       refs.playFailCount = 0;
       refs.lastPlayStartedAt = Date.now();

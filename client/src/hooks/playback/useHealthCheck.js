@@ -24,15 +24,15 @@ export function useHealthCheck(refs, venueCode, { fetchQueue, setErrorWithPriori
     }
 
     const interval = setInterval(() => {
-      const music = refs.music;
-      if (!music) return;
+      const provider = refs.provider;
+      if (!provider) return;
       if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         refs.stuckSince = null;
         refs.divergenceSince = null;
         return;
       }
       const serverNowPlaying = refs.queue?.nowPlaying;
-      const mk = music.playbackState;
+      const mk = provider.playbackState;
 
       if (
         refs.playerState === PLAYER_STATES.TRANSITIONING ||
@@ -46,8 +46,8 @@ export function useHealthCheck(refs, venueCode, { fetchQueue, setErrorWithPriori
 
       if (mk === 2) {
         refs.stuckSince = null;
-        const serverAppleId = String(serverNowPlaying?.appleId || '');
-        const clientAppleId = String(music.nowPlayingItem?.id || '');
+        const serverAppleId = String(serverNowPlaying?.providerTrackId ?? serverNowPlaying?.appleId ?? '');
+        const clientAppleId = String(provider.nowPlayingItem?.id || '');
         if (serverAppleId && clientAppleId && serverAppleId !== clientAppleId) {
           if (!refs.divergenceSince) {
             refs.divergenceSince = Date.now();

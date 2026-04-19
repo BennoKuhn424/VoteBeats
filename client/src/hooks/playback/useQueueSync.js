@@ -9,7 +9,7 @@ import socket from '../../utils/socket';
  * Queue synchronization: state, socket.io, HTTP fetch, autofill.
  *
  * Owns: queue, autofillNotice, handleQueueUpdate, fetchQueue, tryAutofill.
- * Reads from refs: playerState, currentSongId, playLock, autoplayMode, music,
+ * Reads from refs: playerState, currentSongId, playLock, autoplayMode, provider,
  *                  autofill404Until, autofillBackoff, autofillDismissedAt.
  * Writes to refs: queue, pendingQueue, currentSongId, handleQueueUpdate, fetchQueue,
  *                 autofill404Until, autofillBackoff, autofillDismissedAt.
@@ -72,10 +72,10 @@ export function useQueueSync(refs, venueCode, { beginTransition, endTransition, 
 
     if (nowPlaying && nowPlaying.id !== refs.currentSongId &&
         refs.playerState !== PLAYER_STATES.TRANSITIONING) {
-      const currentAppleId = refs.music?.nowPlayingItem?.id;
-      if (currentAppleId && String(currentAppleId) === String(nowPlaying.appleId)) {
+      const currentAppleId = refs.provider?.nowPlayingItem?.id;
+      if (currentAppleId && String(currentAppleId) === String(nowPlaying.providerTrackId ?? nowPlaying.appleId)) {
         refs.currentSongId = nowPlaying.id;
-      } else if (refs.music?.playbackState === 3 && refs.currentSongId) {
+      } else if (refs.provider?.playbackState === 3 && refs.currentSongId) {
         // Paused with a song loaded — don't interrupt
       } else if (!refs.hasUserGesture) {
         updatePlayerState(PLAYER_STATES.WAITING);
@@ -89,7 +89,7 @@ export function useQueueSync(refs, venueCode, { beginTransition, endTransition, 
         // play start — during that window setQueue works without a fresh tap,
         // which is what lets autoplay auto-advance to the next song.
         const SESSION_ACTIVE_WINDOW_MS = 90_000;
-        const mkState = refs.music?.playbackState ?? 0;
+        const mkState = refs.provider?.playbackState ?? 0;
         const isIdle = mkState === 0 || mkState === 4 || mkState === 5;
         const now = Date.now();
         const gestureFresh = now - (refs.lastGestureAt || 0) <= IOS_ACTIVATION_WINDOW_MS;
@@ -113,11 +113,11 @@ export function useQueueSync(refs, venueCode, { beginTransition, endTransition, 
           const r = await api.getQueue(venueCode);
           const np = r.data?.nowPlaying;
           setQueue(r.data);
-          if (np?.appleId && np.id !== refs.currentSongId &&
+          if ((np?.providerTrackId ?? np?.appleId) && np.id !== refs.currentSongId &&
               refs.playerState !== PLAYER_STATES.TRANSITIONING &&
               !refs.playLock) {
             const IOS_ACTIVATION_WINDOW_MS = 4000;
-            const mkState = refs.music?.playbackState ?? 0;
+            const mkState = refs.provider?.playbackState ?? 0;
             const isIdle = mkState === 0 || mkState === 4 || mkState === 5;
             const gestureStale = Date.now() - (refs.lastGestureAt || 0) > IOS_ACTIVATION_WINDOW_MS;
             if (isIdle && gestureStale) {

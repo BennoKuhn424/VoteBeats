@@ -24,15 +24,18 @@ export const STOP_TIMEOUT_MS = 5_000;
 export const POST_STOP_DELAY_MS = 100;
 
 /**
- * Same logic as VenuePlaybackContext playSong — preload current + up to 2 upcoming Apple IDs.
- * @param {{ appleId: string, id: string }} song
- * @param {Array<{ appleId?: string, id?: string }>} [upcoming]
+ * Same logic as VenuePlaybackContext playSong — preload current + up to 2 upcoming provider track IDs.
+ * Reads `providerTrackId` with `appleId` fallback so queue entries written under either name work.
+ * @param {{ providerTrackId?: string, appleId?: string, id: string }} song
+ * @param {Array<{ providerTrackId?: string, appleId?: string, id?: string }>} [upcoming]
  */
 export function buildPreloadAppleIds(song, upcoming = []) {
-  if (!song?.appleId) return [];
-  const others = upcoming.filter((s) => s.appleId && s.id !== song.id);
-  const tail = others.slice(0, 2).map((s) => s.appleId);
-  return [song.appleId, ...tail].filter(Boolean);
+  const trackId = (s) => s?.providerTrackId ?? s?.appleId;
+  const primary = trackId(song);
+  if (!primary) return [];
+  const others = upcoming.filter((s) => trackId(s) && s.id !== song.id);
+  const tail = others.slice(0, 2).map(trackId);
+  return [primary, ...tail].filter(Boolean);
 }
 
 /**

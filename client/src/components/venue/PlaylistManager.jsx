@@ -294,7 +294,7 @@ export default function PlaylistManager({
                         type="text"
                         value={query}
                         onChange={(e) => { setQuery(e.target.value); if (searchError) setSearchError(null); }}
-                        placeholder="Search Apple Music…"
+                        placeholder="Search music…"
                         className={inputCls}
                       />
                       <button

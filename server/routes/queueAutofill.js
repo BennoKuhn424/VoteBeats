@@ -1,5 +1,5 @@
 const db = require('../utils/database');
-const { searchByGenre, pickFromPlaylist } = require('../utils/appleMusicAPI');
+const { getProvider } = require('../providers');
 const broadcast = require('../utils/broadcast');
 const { logEvent } = require('../utils/logEvent');
 const queueRepo = require('../repos/queueRepo');
@@ -30,15 +30,16 @@ async function serverAutofill(venueCode, venue) {
     }
     const playlist = activePl?.songs || venue?.playlist || [];
 
+    const provider = getProvider();
     let song = null;
     if (autoplayMode === 'playlist') {
       // Playlist mode: only play from an existing playlist — never fall through to random
       if (playlist.length > 0) {
-        song = pickFromPlaylist(playlist, venueCode);
+        song = provider.pickFromPlaylist(playlist, venueCode);
       }
       if (!song) return; // no playlist or empty playlist → do nothing
     } else if (autoplayMode === 'random') {
-      song = await searchByGenre(genres, venueCode);
+      song = await provider.searchByGenre(genres, venueCode);
     } else {
       // autoplayMode is 'off' or unknown — should not reach here (caller checks),
       // but guard anyway
@@ -113,14 +114,15 @@ function attachAutofillRoutes(router) {
       }
       const playlist = activePl?.songs || venue.playlist || [];
 
+      const provider = getProvider();
       let song = null;
       if (autoplayMode === 'playlist') {
         if (playlist.length > 0) {
-          song = pickFromPlaylist(playlist, venueCode);
+          song = provider.pickFromPlaylist(playlist, venueCode);
         }
         if (!song) return res.json({ filled: false, reason: 'No playlist songs available' });
       } else if (autoplayMode === 'random') {
-        song = await searchByGenre(genres, venueCode);
+        song = await provider.searchByGenre(genres, venueCode);
       }
       if (!song) {
         return res.json({ filled: false, reason: 'No songs found' });

@@ -419,7 +419,8 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, valida
       return res.status(500).json({ error: 'AI returned no search queries' });
     }
 
-    const { searchAppleMusic } = require('../utils/appleMusicAPI');
+    const { getProvider } = require('../providers');
+    const provider = getProvider();
     const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
     let pl = venue.playlists.find((p) => p.id === resolvedPlaylistId);
     if (!pl) {
@@ -447,7 +448,7 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, valida
       // Taking all 20 caused off-genre songs with the same title to flood the playlist.
       const MAX_PER_QUERY = 3;
       const batchResults = await Promise.all(batch.map(async (query) => {
-        try { return (await searchAppleMusic(String(query))).slice(0, MAX_PER_QUERY); } catch { return []; }
+        try { return (await provider.search(String(query), null)).slice(0, MAX_PER_QUERY); } catch { return []; }
       }));
       for (const songs of batchResults) {
         for (const song of songs) {
