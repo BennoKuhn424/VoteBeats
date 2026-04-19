@@ -32,3 +32,8 @@ dist-ssr
 
 .vercel
 .env*.local
+
+# SQLite database files
+*.db
+*.db-wal
+*.db-shm

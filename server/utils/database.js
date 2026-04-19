@@ -1,426 +1,456 @@
-const fs = require('fs');
-const path = require('path');
+const db = require('./sqlite');
 const paymentCrypto = require('./paymentCrypto');
 
-// Use DATA_DIR env var to point at a Render Persistent Disk (survives redeploys).
-// Falls back to the local ./data folder for development.
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-console.log('[DB] Data directory:', DATA_DIR, process.env.DATA_DIR ? '(persistent)' : '(ephemeral - set DATA_DIR for Render disk)');
+// ── Prepared statements (created once, reused) ──────────────────────────────
 
-// In-memory write-through cache — avoids a readFileSync on every hot-path read.
-// Cache entries are populated on first read and kept in sync on every successful write.
-const cache = {};
+// Venues
+const stmtGetVenue = db.prepare('SELECT * FROM venues WHERE code = ?');
+const stmtGetAllVenues = db.prepare('SELECT * FROM venues');
+const stmtUpsertVenue = db.prepare(`
+  INSERT INTO venues (code, name, location, owner_email, owner_password_hash, settings, playlists, active_playlist_id, created_at)
+  VALUES (@code, @name, @location, @owner_email, @owner_password_hash, @settings, @playlists, @active_playlist_id, @created_at)
+  ON CONFLICT(code) DO UPDATE SET
+    name = @name, location = @location, owner_email = @owner_email,
+    owner_password_hash = @owner_password_hash, settings = @settings,
+    playlists = @playlists, active_playlist_id = @active_playlist_id,
+    created_at = @created_at
+`);
 
-function readJSON(filename) {
-  if (cache[filename] !== undefined) return cache[filename];
-  const filepath = path.join(DATA_DIR, filename);
-  let data;
-  if (fs.existsSync(filepath)) {
-    let raw;
-    try {
-      raw = fs.readFileSync(filepath, 'utf8');
-    } catch (err) {
-      // Disk read failure — log loudly and return empty so server stays up
-      console.error(JSON.stringify({
-        t: new Date().toISOString(),
-        level: 'CRITICAL',
-        msg: 'db-read-failed',
-        file: filename,
-        error: err.message,
-      }));
-      data = {};
-      cache[filename] = data;
-      return data;
-    }
+// Queues
+const stmtGetQueue = db.prepare('SELECT * FROM queues WHERE venue_code = ? ORDER BY position ASC, sort_order ASC');
+const stmtDeleteQueue = db.prepare('DELETE FROM queues WHERE venue_code = ?');
+const stmtInsertQueueSong = db.prepare(`
+  INSERT OR REPLACE INTO queues (venue_code, position, sort_order, song_id, apple_id, provider_track_id,
+    title, artist, album_art, duration, votes, requested_by, requested_at,
+    position_ms, position_anchored_at, is_paused, genre)
+  VALUES (@venue_code, @position, @sort_order, @song_id, @apple_id, @provider_track_id,
+    @title, @artist, @album_art, @duration, @votes, @requested_by, @requested_at,
+    @position_ms, @position_anchored_at, @is_paused, @genre)
+`);
 
-    try {
-      data = JSON.parse(raw);
-      if (data === null || typeof data !== 'object' || Array.isArray(data)) {
-        throw new Error(`Expected a JSON object but got ${Array.isArray(data) ? 'array' : typeof data}`);
-      }
-    } catch (err) {
-      // Save a timestamped backup of the corrupt file before overwriting so
-      // data can be manually recovered — never silently discard it.
-      const backupName = `${filename}.corrupt.${Date.now()}`;
-      const backupPath = path.join(DATA_DIR, backupName);
-      try {
-        fs.writeFileSync(backupPath, raw, 'utf8');
-      } catch (backupErr) {
-        console.error(JSON.stringify({
-          t: new Date().toISOString(),
-          level: 'CRITICAL',
-          msg: 'db-backup-failed',
-          file: filename,
-          backupFile: backupName,
-          error: backupErr.message,
-        }));
-      }
-      console.error(JSON.stringify({
-        t: new Date().toISOString(),
-        level: 'CRITICAL',
-        msg: 'db-corrupt-file',
-        file: filename,
-        backupFile: backupName,
-        error: err.message,
-        action: 'Starting with empty object — check backup file to recover data',
-      }));
-      data = {};
-    }
-  } else {
-    data = {};
-  }
-  cache[filename] = data;
-  return data;
+// Votes
+const stmtGetVote = db.prepare('SELECT value FROM votes WHERE venue_code = ? AND song_id = ? AND device_id = ?');
+const stmtSetVote = db.prepare(`
+  INSERT INTO votes (venue_code, song_id, device_id, value) VALUES (?, ?, ?, ?)
+  ON CONFLICT(venue_code, song_id, device_id) DO UPDATE SET value = excluded.value
+`);
+const stmtRemoveVote = db.prepare('DELETE FROM votes WHERE venue_code = ? AND song_id = ? AND device_id = ?');
+const stmtGetVotesForDevice = db.prepare('SELECT song_id, value FROM votes WHERE venue_code = ? AND device_id = ?');
+const stmtClearVotesForSong = db.prepare('DELETE FROM votes WHERE venue_code = ? AND song_id = ?');
+
+// Pending payments
+const stmtGetPending = db.prepare('SELECT * FROM pending_payments WHERE checkout_id = ?');
+const stmtSetPending = db.prepare(`
+  INSERT OR REPLACE INTO pending_payments (checkout_id, venue_code, song, device_id, amount_cents, created_at)
+  VALUES (@checkout_id, @venue_code, @song, @device_id, @amount_cents, @created_at)
+`);
+const stmtRemovePending = db.prepare('DELETE FROM pending_payments WHERE checkout_id = ?');
+const stmtPurgeStalePending = db.prepare('DELETE FROM pending_payments WHERE created_at < ?');
+
+// Payments
+const stmtAddPayment = db.prepare('INSERT INTO payments (id, venue_code, amount_cents, created_at) VALUES (?, ?, ?, ?)');
+const stmtGetPaymentsForVenueMonth = db.prepare(
+  'SELECT * FROM payments WHERE venue_code = ? AND created_at >= ? AND created_at <= ?'
+);
+const stmtGetPaymentsForMonth = db.prepare(
+  'SELECT * FROM payments WHERE created_at >= ? AND created_at <= ?'
+);
+const stmtGetAllPayments = db.prepare('SELECT * FROM payments');
+const stmtGetRecentPayments = db.prepare('SELECT * FROM payments ORDER BY created_at DESC LIMIT 20');
+
+// Analytics
+const stmtInsertAnalytics = db.prepare(
+  'INSERT INTO analytics (venue_code, data, timestamp) VALUES (?, ?, ?)'
+);
+const stmtGetAnalytics = db.prepare(
+  'SELECT data, timestamp FROM analytics WHERE venue_code = ? ORDER BY timestamp ASC'
+);
+const stmtGetAnalyticsSince = db.prepare(
+  'SELECT data, timestamp FROM analytics WHERE venue_code = ? AND timestamp >= ? ORDER BY timestamp ASC'
+);
+const stmtPruneAnalytics = db.prepare(`
+  DELETE FROM analytics WHERE venue_code = ? AND id NOT IN (
+    SELECT id FROM analytics WHERE venue_code = ? ORDER BY timestamp DESC LIMIT 5000
+  )
+`);
+const stmtCountAnalytics24h = db.prepare(
+  'SELECT COUNT(*) as cnt FROM analytics WHERE timestamp >= ?'
+);
+
+// Player volume
+const stmtGetVolume = db.prepare('SELECT percent, updated_at FROM player_volume WHERE venue_code = ?');
+const stmtSetVolume = db.prepare(`
+  INSERT INTO player_volume (venue_code, percent, updated_at) VALUES (?, ?, ?)
+  ON CONFLICT(venue_code) DO UPDATE SET percent = excluded.percent, updated_at = excluded.updated_at
+`);
+
+// Auth tokens
+const stmtGetAuthToken = db.prepare('SELECT * FROM auth_tokens WHERE token = ?');
+const stmtSaveAuthToken = db.prepare(`
+  INSERT OR REPLACE INTO auth_tokens (token, email, type, expires_at, created_at, venue_code)
+  VALUES (@token, @email, @type, @expires_at, @created_at, @venue_code)
+`);
+const stmtRemoveAuthToken = db.prepare('DELETE FROM auth_tokens WHERE token = ?');
+const stmtRemoveAuthTokensByEmail = db.prepare('DELETE FROM auth_tokens WHERE email = ? AND type = ?');
+const stmtPurgeExpiredTokens = db.prepare('DELETE FROM auth_tokens WHERE expires_at < ?');
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Reconstruct a venue object from a DB row to match the old JSON shape. */
+function rowToVenue(row) {
+  if (!row) return undefined;
+  return {
+    code: row.code,
+    name: row.name,
+    location: row.location || '',
+    owner: {
+      email: row.owner_email,
+      passwordHash: row.owner_password_hash,
+    },
+    settings: safeParseJSON(row.settings, {}),
+    playlists: safeParseJSON(row.playlists, []),
+    activePlaylistId: row.active_playlist_id || undefined,
+    createdAt: row.created_at,
+  };
 }
 
-/**
- * Persist JSON atomically: write to a temp file, then rename (same filesystem).
- * Cache is updated only after a successful write so a failed disk write cannot
- * leave memory and disk inconsistent.
- */
-function writeJSON(filename, data) {
-  const filepath = path.join(DATA_DIR, filename);
-  const json = JSON.stringify(data, null, 2);
-  const tmp = path.join(
-    DATA_DIR,
-    `.${filename}.${process.pid}.${Date.now()}.tmp`
-  );
-  try {
-    fs.writeFileSync(tmp, json, 'utf8');
-    fs.renameSync(tmp, filepath);
-    cache[filename] = data;
-  } catch (err) {
-    try {
-      if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
-    } catch (_) {
-      /* ignore */
-    }
-    throw err;
-  }
+/** Flatten a venue object into DB row params. */
+function venueToRow(code, venue) {
+  return {
+    code,
+    name: venue.name || code,
+    location: venue.location || '',
+    owner_email: venue.owner?.email || '',
+    owner_password_hash: venue.owner?.passwordHash || '',
+    settings: JSON.stringify(venue.settings || {}),
+    playlists: JSON.stringify(venue.playlists || []),
+    active_playlist_id: venue.activePlaylistId || null,
+    created_at: venue.createdAt || new Date().toISOString(),
+  };
 }
 
-// ── Encrypted JSON read/write for sensitive files (payments) ─────────────────
-// Files are stored as { _encrypted: "<base64>" } when encryption is enabled.
-// On read, if the file is plaintext JSON (migration), it's read normally and
-// re-encrypted on the next write. This makes the transition seamless.
-const ENCRYPTED_FILES = new Set(['payments.json', 'pendingPayments.json']);
-
-function readEncryptedJSON(filename) {
-  if (!paymentCrypto.ENABLED || !ENCRYPTED_FILES.has(filename)) {
-    return readJSON(filename);
+/** Reconstruct a queue song object from a DB row. */
+function rowToSong(row) {
+  const song = {
+    id: row.song_id,
+    appleId: row.apple_id || row.provider_track_id || null,
+    title: row.title,
+    artist: row.artist,
+    albumArt: row.album_art || '',
+    duration: row.duration || 0,
+    votes: row.votes || 0,
+    requestedBy: row.requested_by || null,
+    requestedAt: row.requested_at || null,
+    genre: row.genre || '',
+  };
+  if (row.provider_track_id) song.providerTrackId = row.provider_track_id;
+  // nowPlaying-specific fields
+  if (row.position === 'now_playing') {
+    song.positionMs = row.position_ms || 0;
+    song.positionAnchoredAt = row.position_anchored_at || null;
+    song.isPaused = row.is_paused === 1;
   }
-  if (cache[filename] !== undefined) return cache[filename];
-
-  const filepath = path.join(DATA_DIR, filename);
-  if (!fs.existsSync(filepath)) {
-    cache[filename] = {};
-    return {};
-  }
-
-  let raw;
-  try {
-    raw = fs.readFileSync(filepath, 'utf8');
-  } catch (err) {
-    console.error(JSON.stringify({
-      t: new Date().toISOString(), level: 'CRITICAL',
-      msg: 'db-read-failed', file: filename, error: err.message,
-    }));
-    cache[filename] = {};
-    return {};
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    cache[filename] = {};
-    return {};
-  }
-
-  // Already encrypted — decrypt it
-  if (parsed && typeof parsed._encrypted === 'string') {
-    const plaintext = paymentCrypto.decrypt(parsed._encrypted);
-    if (plaintext === null) {
-      console.error(JSON.stringify({
-        t: new Date().toISOString(), level: 'CRITICAL',
-        msg: 'db-decrypt-failed', file: filename,
-        action: 'Check PAYMENT_ENCRYPTION_KEY — returning empty object',
-      }));
-      cache[filename] = {};
-      return {};
-    }
-    try {
-      const data = JSON.parse(plaintext);
-      cache[filename] = data;
-      return data;
-    } catch {
-      cache[filename] = {};
-      return {};
-    }
-  }
-
-  // Plaintext JSON (pre-migration) — read it normally, next write will encrypt
-  if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-    cache[filename] = parsed;
-    return parsed;
-  }
-
-  cache[filename] = {};
-  return {};
+  return song;
 }
 
-function writeEncryptedJSON(filename, data) {
-  if (!paymentCrypto.ENABLED || !ENCRYPTED_FILES.has(filename)) {
-    return writeJSON(filename, data);
-  }
-
-  const plaintext = JSON.stringify(data);
-  const encrypted = paymentCrypto.encrypt(plaintext);
-  const wrapper = { _encrypted: encrypted };
-
-  const filepath = path.join(DATA_DIR, filename);
-  const json = JSON.stringify(wrapper);
-  const tmp = path.join(DATA_DIR, `.${filename}.${process.pid}.${Date.now()}.tmp`);
-  try {
-    fs.writeFileSync(tmp, json, 'utf8');
-    fs.renameSync(tmp, filepath);
-    cache[filename] = data;
-  } catch (err) {
-    try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch (_) {}
-    throw err;
-  }
+/** Flatten a song object into DB row params. */
+function songToRow(venueCode, song, position, sortOrder) {
+  return {
+    venue_code: venueCode,
+    position,
+    sort_order: sortOrder,
+    song_id: song.id,
+    apple_id: song.appleId || null,
+    provider_track_id: song.providerTrackId || song.appleId || null,
+    title: song.title || '',
+    artist: song.artist || '',
+    album_art: song.albumArt || '',
+    duration: song.duration || 0,
+    votes: song.votes || 0,
+    requested_by: song.requestedBy || null,
+    requested_at: song.requestedAt || null,
+    position_ms: song.positionMs || 0,
+    position_anchored_at: song.positionAnchoredAt || null,
+    is_paused: song.isPaused ? 1 : 0,
+    genre: song.genre || '',
+  };
 }
+
+function safeParseJSON(str, fallback) {
+  if (typeof str !== 'string') return str ?? fallback;
+  try { return JSON.parse(str); } catch { return fallback; }
+}
+
+/** Encrypt a string if encryption is enabled, otherwise return as-is. */
+function maybeEncrypt(str) {
+  if (!paymentCrypto.ENABLED) return str;
+  return paymentCrypto.encrypt(str) || str;
+}
+
+/** Decrypt a string if it looks encrypted, otherwise return as-is. */
+function maybeDecrypt(str) {
+  if (!paymentCrypto.ENABLED || !str) return str;
+  // If it's valid JSON as-is, it's plaintext (pre-migration)
+  try { JSON.parse(str); return str; } catch { /* not JSON, try decrypt */ }
+  const decrypted = paymentCrypto.decrypt(str);
+  return decrypted !== null ? decrypted : str;
+}
+
+// ── Transactional helpers ───────────────────────────────────────────────────
+
+const writeQueueTransaction = db.transaction((venueCode, queue) => {
+  stmtDeleteQueue.run(venueCode);
+  if (queue.nowPlaying) {
+    stmtInsertQueueSong.run(songToRow(venueCode, queue.nowPlaying, 'now_playing', 0));
+  }
+  if (Array.isArray(queue.upcoming)) {
+    for (let i = 0; i < queue.upcoming.length; i++) {
+      stmtInsertQueueSong.run(songToRow(venueCode, queue.upcoming[i], 'upcoming', i));
+    }
+  }
+});
+
+// ── Exports (same API as old JSON-based database.js) ────────────────────────
 
 module.exports = {
   // Venues
-  getVenue: (code) => readJSON('venues.json')[code],
-  getAllVenues: () => readJSON('venues.json'),
+  getVenue: (code) => {
+    const row = stmtGetVenue.get(code);
+    return rowToVenue(row);
+  },
+
+  getAllVenues: () => {
+    const rows = stmtGetAllVenues.all();
+    const result = {};
+    for (const row of rows) {
+      result[row.code] = rowToVenue(row);
+    }
+    return result;
+  },
+
   saveVenue: (code, venue) => {
-    const venues = readJSON('venues.json');
-    venues[code] = venue;
-    writeJSON('venues.json', venues);
+    stmtUpsertVenue.run(venueToRow(code, venue));
   },
 
   // Queues
   getQueue: (venueCode) => {
-    const queues = readJSON('queues.json');
-    return queues[venueCode] || { nowPlaying: null, upcoming: [] };
+    const rows = stmtGetQueue.all(venueCode);
+    let nowPlaying = null;
+    const upcoming = [];
+    for (const row of rows) {
+      if (row.position === 'now_playing') {
+        nowPlaying = rowToSong(row);
+      } else {
+        upcoming.push(rowToSong(row));
+      }
+    }
+    return { nowPlaying, upcoming };
   },
-  getQueues: () => readJSON('queues.json'),
+
+  getQueues: () => {
+    const allRows = db.prepare('SELECT * FROM queues ORDER BY venue_code, position ASC, sort_order ASC').all();
+    const result = {};
+    for (const row of allRows) {
+      if (!result[row.venue_code]) result[row.venue_code] = { nowPlaying: null, upcoming: [] };
+      if (row.position === 'now_playing') {
+        result[row.venue_code].nowPlaying = rowToSong(row);
+      } else {
+        result[row.venue_code].upcoming.push(rowToSong(row));
+      }
+    }
+    return result;
+  },
+
   updateQueue: (venueCode, queue) => {
-    const queues = readJSON('queues.json');
-    queues[venueCode] = queue;
-    writeJSON('queues.json', queues);
+    writeQueueTransaction(venueCode, queue);
   },
 
   // Votes
   getVote: (venueCode, songId, deviceId) => {
-    const votes = readJSON('votes.json');
-    return votes[venueCode]?.[songId]?.[deviceId];
+    const row = stmtGetVote.get(venueCode, songId, deviceId);
+    return row ? row.value : undefined;
   },
+
   setVote: (venueCode, songId, deviceId, value) => {
-    const votes = readJSON('votes.json');
-    if (!votes[venueCode]) votes[venueCode] = {};
-    if (!votes[venueCode][songId]) votes[venueCode][songId] = {};
-    votes[venueCode][songId][deviceId] = value;
-    writeJSON('votes.json', votes);
+    stmtSetVote.run(venueCode, songId, deviceId, value);
   },
+
   removeVote: (venueCode, songId, deviceId) => {
-    const votes = readJSON('votes.json');
-    if (votes[venueCode]?.[songId]) {
-      delete votes[venueCode][songId][deviceId];
-      writeJSON('votes.json', votes);
-    }
+    stmtRemoveVote.run(venueCode, songId, deviceId);
   },
+
   getVotesForDevice: (venueCode, deviceId) => {
-    const votes = readJSON('votes.json');
-    const venueVotes = votes[venueCode] || {};
+    const rows = stmtGetVotesForDevice.all(venueCode, deviceId);
     const result = {};
-    for (const [songId, devices] of Object.entries(venueVotes)) {
-      if (devices[deviceId]) result[songId] = devices[deviceId];
+    for (const row of rows) {
+      result[row.song_id] = row.value;
     }
     return result;
   },
+
   clearVotesForSong: (venueCode, songId) => {
-    const votes = readJSON('votes.json');
-    if (votes[venueCode]) {
-      delete votes[venueCode][songId];
-      writeJSON('votes.json', votes);
-    }
+    stmtClearVotesForSong.run(venueCode, songId);
   },
 
-  // Pending payments (Yoco checkoutId -> { venueCode, song, deviceId })
+  // Pending payments
   getPendingPayment: (checkoutId) => {
-    const pending = readEncryptedJSON('pendingPayments.json');
-    return pending[checkoutId] || null;
-  },
-  setPendingPayment: (checkoutId, data) => {
-    const pending = readEncryptedJSON('pendingPayments.json');
-    pending[checkoutId] = { ...data, createdAt: Date.now() };
-    writeEncryptedJSON('pendingPayments.json', pending);
-  },
-  removePendingPayment: (checkoutId) => {
-    const pending = readEncryptedJSON('pendingPayments.json');
-    if (pending[checkoutId]) {
-      delete pending[checkoutId];
-      writeEncryptedJSON('pendingPayments.json', pending);
-    }
-  },
-  /** Remove pending checkout rows older than maxAgeMs (abandoned checkouts). */
-  purgeStalePendingPayments: (maxAgeMs) => {
-    const pending = readEncryptedJSON('pendingPayments.json');
-    const now = Date.now();
-    let removed = 0;
-    for (const [id, row] of Object.entries(pending)) {
-      const created = row?.createdAt || 0;
-      if (now - created > maxAgeMs) {
-        delete pending[id];
-        removed += 1;
-      }
-    }
-    if (removed > 0) writeEncryptedJSON('pendingPayments.json', pending);
-    return removed;
+    const row = stmtGetPending.get(checkoutId);
+    if (!row) return null;
+    const songStr = maybeDecrypt(row.song);
+    const deviceId = maybeDecrypt(row.device_id);
+    return {
+      venueCode: row.venue_code,
+      song: safeParseJSON(songStr, {}),
+      deviceId,
+      amountCents: row.amount_cents,
+      createdAt: row.created_at,
+    };
   },
 
-  // Payments log (for earnings tracking)
-  addPayment: (venueCode, amountCents, checkoutId) => {
-    let payments = readEncryptedJSON('payments.json');
-    if (!payments || typeof payments !== 'object') payments = {};
-    const list = Array.isArray(payments.list) ? payments.list : [];
-    list.push({
-      id: `pay_${Date.now()}_${checkoutId || ''}`.slice(0, 50),
-      venueCode,
-      amountCents,
-      createdAt: Date.now(),
+  setPendingPayment: (checkoutId, data) => {
+    stmtSetPending.run({
+      checkout_id: checkoutId,
+      venue_code: data.venueCode,
+      song: maybeEncrypt(JSON.stringify(data.song || {})),
+      device_id: maybeEncrypt(data.deviceId || ''),
+      amount_cents: data.amountCents || 0,
+      created_at: Date.now(),
     });
-    payments.list = list;
-    writeEncryptedJSON('payments.json', payments);
   },
+
+  removePendingPayment: (checkoutId) => {
+    stmtRemovePending.run(checkoutId);
+  },
+
+  purgeStalePendingPayments: (maxAgeMs) => {
+    const cutoff = Date.now() - maxAgeMs;
+    const result = stmtPurgeStalePending.run(cutoff);
+    return result.changes;
+  },
+
+  // Payments log
+  addPayment: (venueCode, amountCents, checkoutId) => {
+    const id = `pay_${Date.now()}_${checkoutId || ''}`.slice(0, 50);
+    stmtAddPayment.run(id, venueCode, amountCents, Date.now());
+  },
+
   getVenueEarningsForMonth: (venueCode, year, month) => {
-    const payments = readEncryptedJSON('payments.json');
-    const list = Array.isArray(payments.list) ? payments.list : [];
     const start = new Date(year, month - 1, 1).getTime();
     const end = new Date(year, month, 0, 23, 59, 59, 999).getTime();
-    const forVenue = list.filter(
-      (p) => p.venueCode === venueCode && p.createdAt >= start && p.createdAt <= end
-    );
-    const grossCents = forVenue.reduce((sum, p) => sum + (p.amountCents || 0), 0);
-    return { grossCents, count: forVenue.length, payments: forVenue };
-  },
-  // Analytics: track song requests, plays, and votes
-  recordAnalyticsEvent: (venueCode, event) => {
-    let analytics = readJSON('analytics.json');
-    if (!analytics || typeof analytics !== 'object') analytics = {};
-    if (!analytics[venueCode]) analytics[venueCode] = [];
-    analytics[venueCode].push({ ...event, timestamp: Date.now() });
-    // Keep last 5000 events per venue
-    if (analytics[venueCode].length > 5000) {
-      analytics[venueCode] = analytics[venueCode].slice(-5000);
-    }
-    writeJSON('analytics.json', analytics);
-  },
-  getAnalytics: (venueCode, sinceMs) => {
-    const analytics = readJSON('analytics.json');
-    const events = analytics[venueCode] || [];
-    if (sinceMs) return events.filter((e) => e.timestamp >= sinceMs);
-    return events;
+    const rows = stmtGetPaymentsForVenueMonth.all(venueCode, start, end);
+    const grossCents = rows.reduce((sum, p) => sum + (p.amount_cents || 0), 0);
+    return {
+      grossCents,
+      count: rows.length,
+      payments: rows.map((p) => ({
+        id: p.id,
+        venueCode: p.venue_code,
+        amountCents: p.amount_cents,
+        createdAt: p.created_at,
+      })),
+    };
   },
 
-  // Last volume reported by venue player (for customer feedback correlation)
-  getPlayerVolumeReport: (venueCode) => {
-    const data = readJSON('playerVolume.json');
-    const row = data[venueCode];
-    if (!row || typeof row.percent !== 'number') return null;
-    return { percent: row.percent, updatedAt: row.updatedAt || 0 };
+  // Analytics
+  recordAnalyticsEvent: (venueCode, event) => {
+    const data = JSON.stringify({ ...event });
+    const now = Date.now();
+    stmtInsertAnalytics.run(venueCode, data, now);
+    // Prune to keep last 5000 per venue
+    stmtPruneAnalytics.run(venueCode, venueCode);
   },
+
+  getAnalytics: (venueCode, sinceMs) => {
+    const rows = sinceMs
+      ? stmtGetAnalyticsSince.all(venueCode, sinceMs)
+      : stmtGetAnalytics.all(venueCode);
+    return rows.map((r) => {
+      const parsed = safeParseJSON(r.data, {});
+      return { ...parsed, timestamp: r.timestamp };
+    });
+  },
+
+  // Player volume
+  getPlayerVolumeReport: (venueCode) => {
+    const row = stmtGetVolume.get(venueCode);
+    if (!row || typeof row.percent !== 'number') return null;
+    return { percent: row.percent, updatedAt: row.updated_at || 0 };
+  },
+
   setPlayerVolumeReport: (venueCode, percent) => {
     const p = Math.round(Math.max(0, Math.min(100, Number(percent) || 0)));
-    const data = readJSON('playerVolume.json');
-    data[venueCode] = { percent: p, updatedAt: Date.now() };
-    writeJSON('playerVolume.json', data);
+    stmtSetVolume.run(venueCode, p, Date.now());
   },
 
-  // ── Auth tokens (email verification & password reset) ─────────────────────
+  // Auth tokens
   getAuthToken: (token) => {
-    const tokens = readJSON('authTokens.json');
-    return tokens[token] || null;
+    const row = stmtGetAuthToken.get(token);
+    if (!row) return null;
+    return {
+      email: row.email,
+      type: row.type,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at,
+      venueCode: row.venue_code || undefined,
+    };
   },
+
   saveAuthToken: (token, data) => {
-    const tokens = readJSON('authTokens.json');
-    tokens[token] = { ...data, createdAt: Date.now() };
-    writeJSON('authTokens.json', tokens);
+    stmtSaveAuthToken.run({
+      token,
+      email: data.email,
+      type: data.type,
+      expires_at: data.expiresAt,
+      created_at: Date.now(),
+      venue_code: data.venueCode || null,
+    });
   },
+
   removeAuthToken: (token) => {
-    const tokens = readJSON('authTokens.json');
-    if (tokens[token]) {
-      delete tokens[token];
-      writeJSON('authTokens.json', tokens);
-    }
+    stmtRemoveAuthToken.run(token);
   },
-  /** Remove tokens of a given type for an email (e.g. invalidate old reset tokens). */
+
   removeAuthTokensByEmail: (email, type) => {
-    const tokens = readJSON('authTokens.json');
-    let changed = false;
-    for (const [key, val] of Object.entries(tokens)) {
-      if (val.email === email && val.type === type) {
-        delete tokens[key];
-        changed = true;
-      }
-    }
-    if (changed) writeJSON('authTokens.json', tokens);
+    stmtRemoveAuthTokensByEmail.run(email, type);
   },
-  /** Purge expired auth tokens. */
+
   purgeExpiredAuthTokens: () => {
-    const tokens = readJSON('authTokens.json');
-    const now = Date.now();
-    let removed = 0;
-    for (const [key, val] of Object.entries(tokens)) {
-      if (val.expiresAt && val.expiresAt < now) {
-        delete tokens[key];
-        removed += 1;
-      }
-    }
-    if (removed > 0) writeJSON('authTokens.json', tokens);
-    return removed;
+    const result = stmtPurgeExpiredTokens.run(Date.now());
+    return result.changes;
   },
 
   getAllVenueEarningsForMonth: (year, month) => {
-    const payments = readEncryptedJSON('payments.json');
-    const list = Array.isArray(payments.list) ? payments.list : [];
     const start = new Date(year, month - 1, 1).getTime();
     const end = new Date(year, month, 0, 23, 59, 59, 999).getTime();
-    const forMonth = list.filter((p) => p.createdAt >= start && p.createdAt <= end);
+    const rows = stmtGetPaymentsForMonth.all(start, end);
     const byVenue = {};
-    forMonth.forEach((p) => {
-      if (!byVenue[p.venueCode]) byVenue[p.venueCode] = { grossCents: 0, count: 0 };
-      byVenue[p.venueCode].grossCents += p.amountCents || 0;
-      byVenue[p.venueCode].count += 1;
-    });
+    for (const p of rows) {
+      if (!byVenue[p.venue_code]) byVenue[p.venue_code] = { grossCents: 0, count: 0 };
+      byVenue[p.venue_code].grossCents += p.amount_cents || 0;
+      byVenue[p.venue_code].count += 1;
+    }
     return byVenue;
   },
 
-  /** Platform owner dashboard — aggregates across all venues */
   getOwnerOverview: () => {
-    const venues = readJSON('venues.json');
-    const venueList = Object.entries(venues).map(([code, v]) => ({
-      code,
-      name: v.name || code,
+    const venueRows = stmtGetAllVenues.all();
+    const venueList = venueRows.map((v) => ({
+      code: v.code,
+      name: v.name || v.code,
       location: v.location || '',
-      createdAt: v.createdAt || null,
+      createdAt: v.created_at || null,
     }));
 
-    const payments = readEncryptedJSON('payments.json');
-    const list = Array.isArray(payments.list) ? payments.list : [];
-    const allTimeGrossCents = list.reduce((s, p) => s + (p.amountCents || 0), 0);
+    const allPayments = stmtGetAllPayments.all();
+    const allTimeGrossCents = allPayments.reduce((s, p) => s + (p.amount_cents || 0), 0);
 
     const now = new Date();
     const y = now.getFullYear();
     const m = now.getMonth() + 1;
     const start = new Date(y, m - 1, 1).getTime();
     const end = new Date(y, m, 0, 23, 59, 59, 999).getTime();
-    const thisMonth = list.filter((p) => p.createdAt >= start && p.createdAt <= end);
-    const monthGrossCents = thisMonth.reduce((s, p) => s + (p.amountCents || 0), 0);
+    const thisMonth = allPayments.filter((p) => p.created_at >= start && p.created_at <= end);
+    const monthGrossCents = thisMonth.reduce((s, p) => s + (p.amount_cents || 0), 0);
 
     const venueSharePercent = parseInt(process.env.VENUE_EARNINGS_PERCENT, 10);
     const vsp = Number.isFinite(venueSharePercent) && venueSharePercent >= 0 && venueSharePercent <= 100
@@ -435,45 +465,36 @@ module.exports = {
 
     const byVenue = {};
     thisMonth.forEach((p) => {
-      if (!byVenue[p.venueCode]) byVenue[p.venueCode] = { grossCents: 0, count: 0 };
-      byVenue[p.venueCode].grossCents += p.amountCents || 0;
-      byVenue[p.venueCode].count += 1;
+      const vc = p.venue_code;
+      if (!byVenue[vc]) byVenue[vc] = { grossCents: 0, count: 0 };
+      byVenue[vc].grossCents += p.amount_cents || 0;
+      byVenue[vc].count += 1;
     });
+
+    const venues = {};
+    for (const v of venueRows) venues[v.code] = v;
+
     const venueMonthRows = Object.entries(byVenue)
-      .map(([code, data]) => {
-        const v = venues[code];
-        return {
-          venueCode: code,
-          venueName: v?.name || code,
-          grossCents: data.grossCents,
-          grossRand: (data.grossCents / 100).toFixed(2),
-          platformShareRand: ((data.grossCents * platformSharePercent) / 100 / 100).toFixed(2),
-          paymentsCount: data.count,
-        };
-      })
+      .map(([code, data]) => ({
+        venueCode: code,
+        venueName: venues[code]?.name || code,
+        grossCents: data.grossCents,
+        grossRand: (data.grossCents / 100).toFixed(2),
+        platformShareRand: ((data.grossCents * platformSharePercent) / 100 / 100).toFixed(2),
+        paymentsCount: data.count,
+      }))
       .sort((a, b) => b.grossCents - a.grossCents);
 
-    const recentPayments = [...list]
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(0, 20)
-      .map((p) => ({
-        venueCode: p.venueCode,
-        amountCents: p.amountCents,
-        amountRand: ((p.amountCents || 0) / 100).toFixed(2),
-        createdAt: p.createdAt,
-      }));
+    const recentRows = stmtGetRecentPayments.all();
+    const recentPayments = recentRows.map((p) => ({
+      venueCode: p.venue_code,
+      amountCents: p.amount_cents,
+      amountRand: ((p.amount_cents || 0) / 100).toFixed(2),
+      createdAt: p.created_at,
+    }));
 
-    let analyticsEvents24h = 0;
-    try {
-      const analytics = readJSON('analytics.json');
-      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-      for (const events of Object.values(analytics)) {
-        if (!Array.isArray(events)) continue;
-        analyticsEvents24h += events.filter((e) => e.timestamp >= cutoff).length;
-      }
-    } catch (_) {
-      /* ignore */
-    }
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const analyticsEvents24h = stmtCountAnalytics24h.get(cutoff)?.cnt || 0;
 
     return {
       venueCount: venueList.length,
@@ -492,7 +513,7 @@ module.exports = {
       monthVenueRand: (monthVenueCents / 100).toFixed(2),
       venueSharePercent: vsp,
       platformSharePercent,
-      paymentCountAllTime: list.length,
+      paymentCountAllTime: allPayments.length,
       paymentCountMonth: thisMonth.length,
       venueMonthRows,
       recentPayments,
