@@ -1,9 +1,12 @@
 /**
  * SQLite database initialization and connection management.
  *
- * Opens (or creates) DATA_DIR/votebeats.db with WAL mode for better
+ * Opens (or creates) DATA_DIR/speeldit.db with WAL mode for better
  * concurrent read performance. Runs CREATE TABLE IF NOT EXISTS on startup
  * so the schema is always up to date.
+ *
+ * Legacy filename "votebeats.db" is auto-renamed on first boot — see
+ * migrateLegacyDbName below.
  *
  * If the database file is corrupt on open, it's backed up with a timestamp
  * suffix and a fresh database is created (same fail-open philosophy as the
@@ -17,7 +20,31 @@ const fs = require('fs');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-const DB_PATH = path.join(DATA_DIR, 'votebeats.db');
+const DB_PATH = path.join(DATA_DIR, 'speeldit.db');
+const LEGACY_DB_PATH = path.join(DATA_DIR, 'votebeats.db');
+
+/**
+ * One-shot rename of votebeats.db → speeldit.db (+ WAL/SHM sidecars) if an
+ * old-named DB exists and the new-named one doesn't. Idempotent: after the
+ * first boot on a given volume, this is a no-op forever.
+ */
+function migrateLegacyDbName() {
+  if (fs.existsSync(DB_PATH) || !fs.existsSync(LEGACY_DB_PATH)) return;
+  try {
+    fs.renameSync(LEGACY_DB_PATH, DB_PATH);
+    for (const suffix of ['-wal', '-shm']) {
+      if (fs.existsSync(LEGACY_DB_PATH + suffix)) {
+        fs.renameSync(LEGACY_DB_PATH + suffix, DB_PATH + suffix);
+      }
+    }
+    console.log(`[DB] Renamed legacy ${LEGACY_DB_PATH} → ${DB_PATH}`);
+  } catch (err) {
+    // Don't take the server down over this — openDatabase below will just
+    // create a fresh speeldit.db. Operator can rename manually.
+    console.error(`[DB] Legacy rename failed: ${err.message}. Leaving ${LEGACY_DB_PATH} in place.`);
+  }
+}
+migrateLegacyDbName();
 
 function openDatabase() {
   try {
@@ -28,7 +55,7 @@ function openDatabase() {
     return db;
   } catch (err) {
     // Corrupt database — back it up and start fresh
-    const backupName = `votebeats.db.corrupt.${Date.now()}`;
+    const backupName = `speeldit.db.corrupt.${Date.now()}`;
     const backupPath = path.join(DATA_DIR, backupName);
     console.error(JSON.stringify({
       t: new Date().toISOString(),

@@ -297,5 +297,5 @@ if (authTokens && typeof authTokens === 'object') {
 
 console.log(`\n═══════════════════════════════════════════════════`);
 console.log(`  Migration complete: ${totalRows} total rows inserted`);
-console.log(`  Database: ${path.join(DATA_DIR, 'votebeats.db')}`);
+console.log(`  Database: ${path.join(DATA_DIR, 'speeldit.db')}`);
 console.log(`═══════════════════════════════════════════════════`);
