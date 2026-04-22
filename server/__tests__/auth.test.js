@@ -220,3 +220,26 @@ describe('POST /api/auth/login', () => {
     }
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Token endpoints — unusual inputs must not crash findAuthToken
+// ══════════════════════════════════════════════════════════════════════════════
+describe('findAuthToken length safety', () => {
+  test('verify-email with a 200-char token returns 400, not 500', async () => {
+    db.getAuthToken.mockReturnValue(null);
+    const longToken = 'a'.repeat(200);
+    const res = await request(app).get(`/api/auth/verify-email?token=${longToken}`);
+    // Previously crashed because padEnd(64,'0') left the string at 200 chars,
+    // then timingSafeEqual threw on the length mismatch with the 64-byte dummy.
+    expect(res.status).toBe(400);
+  });
+
+  test('reset-password with a 200-char token returns 400, not 500', async () => {
+    db.getAuthToken.mockReturnValue(null);
+    const longToken = 'b'.repeat(200);
+    const res = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: longToken, password: 'new-valid-password-123' });
+    expect(res.status).toBe(400);
+  });
+});

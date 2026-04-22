@@ -67,18 +67,23 @@ function generateSecureToken() {
 }
 
 /**
- * Timing-safe token lookup. Prevents timing attacks by always comparing
- * against every stored token in constant time relative to token count.
+ * Constant-time token lookup. On miss, burns the same HMAC + compare the
+ * hit path runs so "token not found" and "token found but wrong type" take
+ * the same wall time.
+ *
+ * We can't do a timingSafeEqual on the raw user token (variable length — and
+ * padEnd only pads shorter strings, so a 65+ char token crashes with a length
+ * mismatch). Instead we hash into a fixed-size buffer and compare that.
+ *
  * Returns the matching record or null.
  */
+const DUMMY_HASH = crypto.createHash('sha256').update('x').digest();
 function findAuthToken(token, expectedType) {
   const record = db.getAuthToken(token);
   if (!record || record.type !== expectedType) {
-    // Still do a dummy comparison to keep timing consistent
-    crypto.timingSafeEqual(
-      Buffer.from(token.padEnd(64, '0')),
-      Buffer.from(generateSecureToken()),
-    );
+    // Dummy compare so miss and hit share the same HMAC + compare cost.
+    const h = crypto.createHash('sha256').update(String(token)).digest();
+    crypto.timingSafeEqual(h, DUMMY_HASH);
     return null;
   }
   return record;

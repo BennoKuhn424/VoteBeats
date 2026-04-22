@@ -2,8 +2,10 @@
  * Express param middleware that rejects invalid venue codes early,
  * before any database lookup or business logic runs.
  *
- * Venue codes are exactly 6 uppercase alphanumeric characters
- * (letters A-Z excluding I/O, digits 2-9).
+ * Venue codes are exactly 6 uppercase alphanumerics. `generateVenueCode`
+ * in routes/auth.js excludes I/O/0/1 (ambiguous glyphs) when minting new
+ * codes, but the validator stays permissive so existing codes and manual
+ * test codes still work.
  */
 const VENUE_CODE_RE = /^[A-Z0-9]{6}$/;
 
