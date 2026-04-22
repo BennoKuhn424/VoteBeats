@@ -76,7 +76,13 @@ Optional env (full list):
 | `PUBLIC_URL` | Frontend URL for redirects (e.g. `https://yourapp.vercel.app`) |
 | `YOCO_SECRET_KEY` | Yoco API secret for pay-to-play (Bearer token to verify checkouts) |
 | `YOCO_WEBHOOK_SECRET` | Optional `whsec_…` signing secret from Yoco — when set, incoming webhooks must pass HMAC verification (recommended in production) |
-| `VENUE_EARNINGS_PERCENT` | Venue revenue share % (default `80`) |
+| `VENUE_EARNINGS_PERCENT` | Venue revenue share % of Yoco song-request payments (default `70`) |
+| `PAYSTACK_SECRET_KEY` | Paystack secret key (`sk_test_...` or `sk_live_...`) for venue subscriptions |
+| `PAYSTACK_PUBLIC_KEY` | Paystack public key, used client-side in the inline popup |
+| `PAYSTACK_PLAN_CODE` | Plan code from Paystack dashboard (R599 monthly) |
+| `PAYSTACK_WEBHOOK_SECRET` | Webhook signing secret for verifying Paystack webhook events |
+| `PAYSTACK_SUBSCRIPTION_AMOUNT_ZAR` | Monthly subscription price in rand (default `599`) |
+| `PAYSTACK_TRIAL_DAYS` | Free-trial length in days (default `14`) |
 | `ADMIN_SECRET` | Admin API key (header `X-Admin-Key`) |
 | `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_MUSIC_KEY_PATH` | MusicKit token generation (see below) |
 | `SENTRY_DSN` | Optional – [Sentry](https://sentry.io) DSN for API error reporting |

@@ -126,7 +126,7 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
           <p>This month: {paymentsCount} paid requests</p>
           {hasEarnings && (
             <p className="text-zinc-500">
-              Gross: R{grossRand.toFixed(2)} (80% venue share)
+              Gross: R{grossRand.toFixed(2)} (70% venue share)
             </p>
           )}
         </div>
@@ -145,7 +145,7 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
       </p>
       {hasEarnings && (
         <p className="text-xs text-dark-500 mt-2">
-          Gross: R{grossRand.toFixed(2)} (80% venue share)
+          Gross: R{grossRand.toFixed(2)} (70% venue share)
         </p>
       )}
     </div>

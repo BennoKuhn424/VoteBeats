@@ -8,6 +8,8 @@ import VenueLayout from './layouts/VenueLayout';
 import VenueDashboard from './pages/VenueDashboard';
 import VenuePlayer from './pages/VenuePlayer';
 import VenueBrowsePlaylists from './pages/VenueBrowsePlaylists';
+import VenueBilling from './pages/VenueBilling';
+import VenueBillingComplete from './pages/VenueBillingComplete';
 import OwnerDashboard from './pages/OwnerDashboard';
 import VerifyEmail from './pages/VerifyEmail';
 import ForgotPassword from './pages/ForgotPassword';
@@ -68,6 +70,8 @@ export default function App() {
           <Route index element={<Navigate to="/venue/dashboard" replace />} />
           <Route path="dashboard" element={<VenueDashboard />} />
           <Route path="playlists" element={<VenueBrowsePlaylists />} />
+          <Route path="billing" element={<VenueBilling />} />
+          <Route path="billing/complete" element={<VenueBillingComplete />} />
           <Route path="player/:venueCode" element={<VenuePlayer />} />
         </Route>
       </Routes>

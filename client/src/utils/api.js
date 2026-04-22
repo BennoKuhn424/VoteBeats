@@ -150,4 +150,29 @@ export default {
     api.get(`/venue/${venueCode}/analytics`, { params: { days } }),
 
   getOwnerOverview: () => api.get('/owner/overview'),
+
+  // Payouts — venue side
+  getVenueBankDetails: (venueCode) =>
+    api.get(`/payouts/venue/${venueCode}/bank-details`),
+  updateVenueBankDetails: (venueCode, bankDetails) =>
+    api.put(`/payouts/venue/${venueCode}/bank-details`, bankDetails),
+  getVenuePayouts: (venueCode) =>
+    api.get(`/payouts/venue/${venueCode}`),
+
+  // Payouts — owner side
+  generatePayouts: (year, month) =>
+    api.post('/payouts/generate', { year, month }),
+  listPayouts: (params) => api.get('/payouts', { params }),
+  updatePayoutStatus: (id, status, notes) =>
+    api.put(`/payouts/${id}/status`, { status, notes }),
+  markAllPayoutsPaid: (year, month) =>
+    api.post('/payouts/mark-all-paid', { year, month }),
+  getPayoutSummary: () => api.get('/payouts/summary'),
+
+  // Subscriptions (Paystack)
+  getSubscription: () => api.get('/subscriptions/me'),
+  startSubscription: () => api.post('/subscriptions/start'),
+  completeSubscription: (reference) => api.post('/subscriptions/complete', { reference }),
+  getSubscriptionManageLink: () => api.post('/subscriptions/manage-link'),
+  cancelSubscription: () => api.post('/subscriptions/cancel'),
 };

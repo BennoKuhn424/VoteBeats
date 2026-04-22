@@ -26,7 +26,7 @@ router.get('/venue-earnings', adminAuth, (req, res) => {
 
   const byVenue = db.getAllVenueEarningsForMonth(year, month);
   const venues = db.getAllVenues();
-  const venueSharePercent = parseInt(process.env.VENUE_EARNINGS_PERCENT, 10) || 80;
+  const venueSharePercent = parseInt(process.env.VENUE_EARNINGS_PERCENT, 10) || 70;
 
   const result = Object.entries(byVenue).map(([venueCode, data]) => {
     const grossCents = data.grossCents || 0;

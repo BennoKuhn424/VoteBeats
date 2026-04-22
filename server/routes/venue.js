@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../utils/database');
 const venueRepo = require('../repos/venueRepo');
 const authMiddleware = require('../middleware/authMiddleware');
-const { verifyCheckoutWithYoco } = require('../utils/yoco');
+const { getProvider: getPatronPaymentProvider } = require('../providers/payment');
 const validate = require('../middleware/validate');
 const {
   createPlaylistSchema,
@@ -358,12 +358,12 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, valida
   let resolvedPlaylistId = req.params.playlistId;
   let resolvedCount = 100;
 
+  const patronProvider = getPatronPaymentProvider();
   if (!pending) {
-    // Server restarted — fall back to Yoco verification + client-supplied data
+    // Server restarted — fall back to provider verification + client-supplied data
     if (!bodyPrompt?.trim()) return res.status(404).json({ error: 'Payment not found. Please try again.' });
-    const yocoSecret = process.env.YOCO_SECRET_KEY;
-    if (!yocoSecret) return res.status(404).json({ error: 'Payment not found. Please try again.' });
-    const fallbackVerify = await verifyCheckoutWithYoco(checkoutId, yocoSecret);
+    if (!patronProvider.isConfigured()) return res.status(404).json({ error: 'Payment not found. Please try again.' });
+    const fallbackVerify = await patronProvider.verifyCheckout(checkoutId);
     if (!fallbackVerify.verified) {
       return res.status(402).json({ error: 'Payment could not be verified. Please try again.' });
     }
@@ -373,9 +373,8 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, valida
     if (pending.venueCode !== req.params.venueCode) return res.status(403).json({ error: 'Invalid checkout' });
     resolvedPlaylistId = pending.playlistId || req.params.playlistId;
     resolvedCount = pending.count || Math.min(Math.max(Math.round(Number(bodyCount) || 100), 25), 400);
-    const yocoSecret = process.env.YOCO_SECRET_KEY;
-    if (yocoSecret) {
-      const v = await verifyCheckoutWithYoco(checkoutId, yocoSecret);
+    if (patronProvider.isConfigured()) {
+      const v = await patronProvider.verifyCheckout(checkoutId);
       if (!v.verified) return res.status(402).json({ error: 'Payment not completed yet' });
     }
     db.removePendingPayment(checkoutId);
@@ -481,7 +480,7 @@ router.get('/:venueCode/earnings', authMiddleware, (req, res) => {
   const month = parseInt(req.query.month, 10) || now.getMonth() + 1;
 
   const { grossCents, count } = db.getVenueEarningsForMonth(req.params.venueCode, year, month);
-  const venueSharePercent = parseInt(process.env.VENUE_EARNINGS_PERCENT, 10) || 80;
+  const venueSharePercent = parseInt(process.env.VENUE_EARNINGS_PERCENT, 10) || 70;
   const venueShareCents = Math.round(grossCents * (venueSharePercent / 100));
   const platformShareCents = grossCents - venueShareCents;
 

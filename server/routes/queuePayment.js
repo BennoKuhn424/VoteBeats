@@ -2,7 +2,7 @@ const db = require('../utils/database');
 const queueRepo = require('../repos/queueRepo');
 const broadcast = require('../utils/broadcast');
 const { fulfillPaidRequest } = require('../utils/paymentFulfill');
-const { verifyCheckoutWithYoco } = require('../utils/yoco');
+const { getProvider } = require('../providers/payment');
 const E = require('../utils/errorCodes');
 const validate = require('../middleware/validate');
 const { createPaymentSchema } = require('../utils/schemas');
@@ -10,6 +10,9 @@ const { createPaymentSchema } = require('../utils/schemas');
 /**
  * POST /api/queue/:venueCode/create-payment
  * GET /api/queue/:venueCode/request-status
+ *
+ * Provider-agnostic — depends only on the PatronPaymentProvider interface.
+ * Swap checkout vendors via PATRON_PAYMENT_PROVIDER env var.
  */
 function attachPaymentRoutes(router) {
   router.post('/:venueCode/create-payment', validate(createPaymentSchema), async (req, res) => {
@@ -27,8 +30,8 @@ function attachPaymentRoutes(router) {
       return res.status(400).json({ error: 'Invalid request price', code: E.PAYMENT_INVALID_PRICE });
     }
 
-    const yocoSecret = process.env.YOCO_SECRET_KEY;
-    if (!yocoSecret) {
+    const provider = getProvider();
+    if (!provider.isConfigured()) {
       return res.status(503).json({ error: 'Payment integration not configured', code: E.PAYMENT_NOT_CONFIGURED });
     }
 
@@ -48,33 +51,14 @@ function attachPaymentRoutes(router) {
     const failureUrl = cancelUrl;
 
     try {
-      const response = await fetch('https://payments.yoco.com/api/checkouts', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${yocoSecret}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          amount: priceCents,
-          currency: 'ZAR',
-          successUrl,
-          cancelUrl,
-          failureUrl,
-          metadata: { venueCode },
-        }),
+      const { checkoutId, redirectUrl } = await provider.createCheckout({
+        amountCents: priceCents,
+        currency: 'ZAR',
+        successUrl,
+        cancelUrl,
+        failureUrl,
+        metadata: { venueCode },
       });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        return res.status(response.status).json({ error: errData.message || 'Payment creation failed', code: E.PAYMENT_PROVIDER_FAILED });
-      }
-      const data = await response.json();
-
-      const checkoutId = data.id;
-      const redirectUrl = data.redirectUrl;
-      if (!checkoutId || !redirectUrl) {
-        return res.status(500).json({ error: 'Invalid response from payment provider', code: E.PAYMENT_INVALID_RESPONSE });
-      }
 
       db.setPendingPayment(checkoutId, {
         venueCode,
@@ -92,8 +76,12 @@ function attachPaymentRoutes(router) {
 
       res.json({ redirectUrl, checkoutId });
     } catch (err) {
-      console.error('Yoco checkout error:', err);
-      res.status(500).json({ error: 'Could not create payment', code: E.PAYMENT_CREATE_FAILED });
+      console.error(`[${provider.name}] checkout error:`, err.message);
+      const status = err.status && err.status >= 400 && err.status < 500 ? err.status : 500;
+      res.status(status).json({
+        error: err.message || 'Could not create payment',
+        code: err.code || E.PAYMENT_CREATE_FAILED,
+      });
     }
   });
 
@@ -108,10 +96,10 @@ function attachPaymentRoutes(router) {
       return res.status(403).json({ error: 'Invalid checkout', code: E.PAYMENT_CHECKOUT_INVALID });
     }
 
-    const yocoSecret = process.env.YOCO_SECRET_KEY;
-    if (yocoSecret) {
+    const provider = getProvider();
+    if (provider.isConfigured()) {
       try {
-        const { verified, amountCents } = await verifyCheckoutWithYoco(checkoutId, yocoSecret);
+        const { verified, amountCents } = await provider.verifyCheckout(checkoutId);
         if (verified) {
           const amt = amountCents ?? pending.amountCents;
           if (await fulfillPaidRequest(checkoutId, amt)) {
@@ -120,7 +108,7 @@ function attachPaymentRoutes(router) {
           }
         }
       } catch (err) {
-        console.warn('Yoco checkout status fetch failed:', err.message);
+        console.warn(`[${provider.name}] checkout status fetch failed:`, err.message);
       }
     }
 

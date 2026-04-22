@@ -153,8 +153,14 @@ Fill in the form as follows:
 | `APPLE_MUSIC_KEY` | (see below) | Full contents of your .p8 file |
 | `PUBLIC_URL` | Leave empty for now | Add after Vercel deploy |
 | `YOCO_SECRET_KEY` | Your Yoco key | e.g. `sk_test_c7ca76b9DLzaV0k56af446c9eb2d` |
-| `VENUE_EARNINGS_PERCENT` | `80` | |
+| `VENUE_EARNINGS_PERCENT` | `70` | |
 | `ADMIN_SECRET` | Any secret string | e.g. `myAdminPassword123` |
+| `PAYSTACK_SECRET_KEY` | Your Paystack secret key | e.g. `sk_test_abc123...` |
+| `PAYSTACK_PUBLIC_KEY` | Your Paystack public key | e.g. `pk_test_abc123...` |
+| `PAYSTACK_PLAN_CODE` | Plan code from Paystack dashboard | e.g. `PLN_xxxxxxxxxx` |
+| `PAYSTACK_WEBHOOK_SECRET` | Webhook signing secret | set on Paystack dashboard → Settings → Webhooks |
+| `PAYSTACK_SUBSCRIPTION_AMOUNT_ZAR` | `599` | |
+| `PAYSTACK_TRIAL_DAYS` | `14` | |
 
 ### How to add APPLE_MUSIC_KEY
 

@@ -140,7 +140,55 @@ db.exec(`
     venue_code TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_auth_tokens_email_type ON auth_tokens(email, type);
+
+  CREATE TABLE IF NOT EXISTS payouts (
+    id TEXT PRIMARY KEY,
+    venue_code TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    gross_cents INTEGER NOT NULL,
+    venue_share_percent INTEGER NOT NULL DEFAULT 70,
+    venue_amount_cents INTEGER NOT NULL,
+    platform_amount_cents INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'paid', 'failed')),
+    paid_at INTEGER,
+    notes TEXT DEFAULT '',
+    created_at INTEGER NOT NULL,
+    UNIQUE(venue_code, year, month)
+  );
+  CREATE INDEX IF NOT EXISTS idx_payouts_status ON payouts(status);
+  CREATE INDEX IF NOT EXISTS idx_payouts_venue ON payouts(venue_code, year, month);
+
+  CREATE TABLE IF NOT EXISTS subscriptions (
+    venue_code TEXT PRIMARY KEY,
+    stripe_customer_id TEXT,
+    stripe_subscription_id TEXT,
+    status TEXT NOT NULL DEFAULT 'none' CHECK(status IN ('none', 'trialing', 'active', 'past_due', 'canceled', 'incomplete')),
+    trial_ends_at INTEGER,
+    current_period_end INTEGER,
+    cancel_at_period_end INTEGER DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_sub ON subscriptions(stripe_subscription_id);
+  CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
 `);
+
+// Paystack uses the same subscriptions table — the stripe_* columns hold
+// Paystack customer_code / subscription_code respectively. These ALTERs add
+// Paystack-specific fields we need on top (email_token for cancel, auth_code
+// for the saved card, init_reference for correlating the initial transaction).
+// Using IF NOT EXISTS via try/catch because older SQLite versions don't
+// support ALTER TABLE ADD COLUMN IF NOT EXISTS.
+function addColumnIfMissing(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+addColumnIfMissing('subscriptions', 'paystack_email_token', 'TEXT');
+addColumnIfMissing('subscriptions', 'paystack_authorization_code', 'TEXT');
+addColumnIfMissing('subscriptions', 'paystack_init_reference', 'TEXT');
 
 console.log('[DB] SQLite database:', DB_PATH, process.env.DATA_DIR ? '(persistent)' : '(ephemeral - set DATA_DIR for Render disk)');
 

@@ -3,7 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
-const { yocoWebhook } = require('./routes/webhooks');
+const { patronPaymentWebhook } = require('./routes/webhooks');
+const { subscriptionWebhook } = require('./routes/subscriptionWebhooks');
 const { requestLogger } = require('./middleware/requestLogger');
 const { authLimiter, apiLimiter } = require('./middleware/rateLimiters');
 
@@ -84,8 +85,16 @@ app.get('/api/health', (req, res) => {
   res.status(200).json(healthPayload());
 });
 
-// Yoco webhook needs raw body for signature verification (must be before express.json)
-app.post('/api/webhooks/yoco', express.raw({ type: 'application/json' }), yocoWebhook);
+// Patron-payment webhook — raw body for provider signature verification.
+// Generic route delegates to the active PatronPaymentProvider (default: Yoco).
+// Legacy /api/webhooks/yoco is kept as an alias so existing Yoco dashboard config still works.
+app.post('/api/webhooks/payment', express.raw({ type: 'application/json' }), patronPaymentWebhook);
+app.post('/api/webhooks/yoco', express.raw({ type: 'application/json' }), patronPaymentWebhook);
+
+// Subscription webhook — raw body for provider signature verification.
+// Generic route + legacy Paystack alias so existing dashboard config keeps working.
+app.post('/api/webhooks/subscription', express.raw({ type: 'application/json' }), subscriptionWebhook);
+app.post('/api/webhooks/paystack', express.raw({ type: 'application/json' }), subscriptionWebhook);
 
 // 50kb covers all legitimate API payloads (song requests, settings, votes).
 // Rejects oversized bodies before they reach route handlers.
@@ -104,6 +113,8 @@ app.use('/api/music', require('./routes/music'));
 app.use('/api/venue', require('./routes/venue'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/owner', require('./routes/owner'));
+app.use('/api/payouts', require('./routes/payouts'));
+app.use('/api/subscriptions', require('./routes/subscriptions'));
 
 if (process.env.SENTRY_DSN) {
   const Sentry = require('@sentry/node');

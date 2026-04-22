@@ -94,6 +94,49 @@ const stmtRemoveAuthToken = db.prepare('DELETE FROM auth_tokens WHERE token = ?'
 const stmtRemoveAuthTokensByEmail = db.prepare('DELETE FROM auth_tokens WHERE email = ? AND type = ?');
 const stmtPurgeExpiredTokens = db.prepare('DELETE FROM auth_tokens WHERE expires_at < ?');
 
+// Subscriptions
+// Paystack note: the stripe_customer_id / stripe_subscription_id columns hold
+// Paystack customer_code and subscription_code respectively. Column names are
+// legacy — they're opaque string IDs regardless of provider.
+const stmtGetSubscription = db.prepare('SELECT * FROM subscriptions WHERE venue_code = ?');
+const stmtGetSubscriptionByProviderId = db.prepare('SELECT * FROM subscriptions WHERE stripe_subscription_id = ?');
+const stmtGetSubscriptionByReference = db.prepare('SELECT * FROM subscriptions WHERE paystack_init_reference = ?');
+const stmtUpsertSubscription = db.prepare(`
+  INSERT INTO subscriptions (venue_code, stripe_customer_id, stripe_subscription_id, status,
+    trial_ends_at, current_period_end, cancel_at_period_end,
+    paystack_email_token, paystack_authorization_code, paystack_init_reference,
+    created_at, updated_at)
+  VALUES (@venue_code, @stripe_customer_id, @stripe_subscription_id, @status,
+    @trial_ends_at, @current_period_end, @cancel_at_period_end,
+    @paystack_email_token, @paystack_authorization_code, @paystack_init_reference,
+    @created_at, @updated_at)
+  ON CONFLICT(venue_code) DO UPDATE SET
+    stripe_customer_id = COALESCE(excluded.stripe_customer_id, subscriptions.stripe_customer_id),
+    stripe_subscription_id = COALESCE(excluded.stripe_subscription_id, subscriptions.stripe_subscription_id),
+    status = excluded.status,
+    trial_ends_at = excluded.trial_ends_at,
+    current_period_end = excluded.current_period_end,
+    cancel_at_period_end = excluded.cancel_at_period_end,
+    paystack_email_token = COALESCE(excluded.paystack_email_token, subscriptions.paystack_email_token),
+    paystack_authorization_code = COALESCE(excluded.paystack_authorization_code, subscriptions.paystack_authorization_code),
+    paystack_init_reference = COALESCE(excluded.paystack_init_reference, subscriptions.paystack_init_reference),
+    updated_at = excluded.updated_at
+`);
+
+// Payouts
+const stmtGetPayout = db.prepare('SELECT * FROM payouts WHERE venue_code = ? AND year = ? AND month = ?');
+const stmtGetPayoutById = db.prepare('SELECT * FROM payouts WHERE id = ?');
+const stmtGetPayoutsByStatus = db.prepare('SELECT * FROM payouts WHERE status = ? ORDER BY created_at DESC');
+const stmtGetPayoutsForVenue = db.prepare('SELECT * FROM payouts WHERE venue_code = ? ORDER BY year DESC, month DESC');
+const stmtGetAllPayoutsForMonth = db.prepare('SELECT * FROM payouts WHERE year = ? AND month = ? ORDER BY venue_code');
+const stmtInsertPayout = db.prepare(`
+  INSERT OR REPLACE INTO payouts (id, venue_code, year, month, gross_cents, venue_share_percent,
+    venue_amount_cents, platform_amount_cents, status, paid_at, notes, created_at)
+  VALUES (@id, @venue_code, @year, @month, @gross_cents, @venue_share_percent,
+    @venue_amount_cents, @platform_amount_cents, @status, @paid_at, @notes, @created_at)
+`);
+const stmtUpdatePayoutStatus = db.prepare('UPDATE payouts SET status = ?, paid_at = ?, notes = ? WHERE id = ?');
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Reconstruct a venue object from a DB row to match the old JSON shape. */
@@ -173,6 +216,51 @@ function songToRow(venueCode, song, position, sortOrder) {
     position_anchored_at: song.positionAnchoredAt || null,
     is_paused: song.isPaused ? 1 : 0,
     genre: song.genre || '',
+  };
+}
+
+/** Reconstruct a payout object from a DB row. */
+function rowToPayout(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    venueCode: row.venue_code,
+    year: row.year,
+    month: row.month,
+    grossCents: row.gross_cents,
+    venueSharePercent: row.venue_share_percent,
+    venueAmountCents: row.venue_amount_cents,
+    platformAmountCents: row.platform_amount_cents,
+    grossRand: (row.gross_cents / 100).toFixed(2),
+    venueAmountRand: (row.venue_amount_cents / 100).toFixed(2),
+    platformAmountRand: (row.platform_amount_cents / 100).toFixed(2),
+    status: row.status,
+    paidAt: row.paid_at || null,
+    notes: row.notes || '',
+    createdAt: row.created_at,
+    monthLabel: `${row.year}-${String(row.month).padStart(2, '0')}`,
+  };
+}
+
+function rowToSubscription(row) {
+  if (!row) return null;
+  return {
+    venueCode: row.venue_code,
+    // Neutral aliases — the stripe_* columns hold Paystack IDs.
+    providerCustomerId: row.stripe_customer_id || null,
+    providerSubscriptionId: row.stripe_subscription_id || null,
+    // Legacy aliases kept so existing callers don't break.
+    stripeCustomerId: row.stripe_customer_id || null,
+    stripeSubscriptionId: row.stripe_subscription_id || null,
+    status: row.status,
+    trialEndsAt: row.trial_ends_at || null,
+    currentPeriodEnd: row.current_period_end || null,
+    cancelAtPeriodEnd: !!row.cancel_at_period_end,
+    paystackEmailToken: row.paystack_email_token || null,
+    paystackAuthorizationCode: row.paystack_authorization_code || null,
+    paystackInitReference: row.paystack_init_reference || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -455,7 +543,7 @@ module.exports = {
     const venueSharePercent = parseInt(process.env.VENUE_EARNINGS_PERCENT, 10);
     const vsp = Number.isFinite(venueSharePercent) && venueSharePercent >= 0 && venueSharePercent <= 100
       ? venueSharePercent
-      : 80;
+      : 70;
     const platformSharePercent = 100 - vsp;
 
     const allTimePlatformCents = Math.round(allTimeGrossCents * (platformSharePercent / 100));
@@ -520,5 +608,135 @@ module.exports = {
       analyticsEvents24h,
       monthLabel: `${y}-${String(m).padStart(2, '0')}`,
     };
+  },
+
+  // ── Payouts ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Generate payout records for a given month across all venues with revenue.
+   * Skips venues that already have a payout for that month.
+   * @returns {number} Number of new payout records created
+   */
+  generateMonthlyPayouts: (year, month) => {
+    const start = new Date(year, month - 1, 1).getTime();
+    const end = new Date(year, month, 0, 23, 59, 59, 999).getTime();
+    const rows = stmtGetPaymentsForMonth.all(start, end);
+
+    const venueSharePercent = parseInt(process.env.VENUE_EARNINGS_PERCENT, 10);
+    const vsp = Number.isFinite(venueSharePercent) && venueSharePercent >= 0 && venueSharePercent <= 100
+      ? venueSharePercent : 70;
+
+    // Group by venue
+    const byVenue = {};
+    for (const p of rows) {
+      if (!byVenue[p.venue_code]) byVenue[p.venue_code] = 0;
+      byVenue[p.venue_code] += p.amount_cents || 0;
+    }
+
+    let created = 0;
+    for (const [venueCode, grossCents] of Object.entries(byVenue)) {
+      if (grossCents <= 0) continue;
+      // Skip if payout already exists for this venue+month
+      const existing = stmtGetPayout.get(venueCode, year, month);
+      if (existing) continue;
+
+      const venueAmountCents = Math.round(grossCents * (vsp / 100));
+      const platformAmountCents = grossCents - venueAmountCents;
+
+      stmtInsertPayout.run({
+        id: `po_${year}${String(month).padStart(2, '0')}_${venueCode}`,
+        venue_code: venueCode,
+        year,
+        month,
+        gross_cents: grossCents,
+        venue_share_percent: vsp,
+        venue_amount_cents: venueAmountCents,
+        platform_amount_cents: platformAmountCents,
+        status: 'pending',
+        paid_at: null,
+        notes: '',
+        created_at: Date.now(),
+      });
+      created++;
+    }
+    return created;
+  },
+
+  /** Get payout for a specific venue and month. */
+  getPayout: (venueCode, year, month) => {
+    const row = stmtGetPayout.get(venueCode, year, month);
+    return row ? rowToPayout(row) : null;
+  },
+
+  /** Get a payout by its ID. */
+  getPayoutById: (id) => {
+    const row = stmtGetPayoutById.get(id);
+    return row ? rowToPayout(row) : null;
+  },
+
+  /** Get all payouts with a given status ('pending', 'paid', 'failed'). */
+  getPayoutsByStatus: (status) => {
+    return stmtGetPayoutsByStatus.all(status).map(rowToPayout);
+  },
+
+  /** Get all payouts for a venue, newest first. */
+  getPayoutsForVenue: (venueCode) => {
+    return stmtGetPayoutsForVenue.all(venueCode).map(rowToPayout);
+  },
+
+  /** Get all payouts for a specific month. */
+  getAllPayoutsForMonth: (year, month) => {
+    return stmtGetAllPayoutsForMonth.all(year, month).map(rowToPayout);
+  },
+
+  /** Mark a payout as paid, failed, or back to pending. */
+  updatePayoutStatus: (id, status, notes) => {
+    const paidAt = status === 'paid' ? Date.now() : null;
+    stmtUpdatePayoutStatus.run(status, paidAt, notes || '', id);
+  },
+
+  // ── Subscriptions ───────────────────────────────────────────────────────────
+
+  /** Get subscription record for a venue, or null. */
+  getSubscription: (venueCode) => {
+    const row = stmtGetSubscription.get(venueCode);
+    return row ? rowToSubscription(row) : null;
+  },
+
+  /** Find subscription by provider (Paystack) subscription code/ID — used by webhook. */
+  getSubscriptionByProviderId: (providerSubId) => {
+    const row = stmtGetSubscriptionByProviderId.get(providerSubId);
+    return row ? rowToSubscription(row) : null;
+  },
+
+  /** Legacy alias — kept for any stale call sites. */
+  getSubscriptionByStripeId: (id) => {
+    const row = stmtGetSubscriptionByProviderId.get(id);
+    return row ? rowToSubscription(row) : null;
+  },
+
+  /** Look up a subscription by the init transaction reference (post-signup callback). */
+  getSubscriptionByInitReference: (reference) => {
+    const row = stmtGetSubscriptionByReference.get(reference);
+    return row ? rowToSubscription(row) : null;
+  },
+
+  /** Create or update a venue's subscription record. */
+  upsertSubscription: (sub) => {
+    const now = Date.now();
+    stmtUpsertSubscription.run({
+      venue_code: sub.venueCode,
+      stripe_customer_id: sub.providerCustomerId ?? sub.stripeCustomerId ?? null,
+      stripe_subscription_id: sub.providerSubscriptionId ?? sub.stripeSubscriptionId ?? null,
+      status: sub.status || 'none',
+      trial_ends_at: sub.trialEndsAt ?? null,
+      current_period_end: sub.currentPeriodEnd ?? null,
+      cancel_at_period_end: sub.cancelAtPeriodEnd ? 1 : 0,
+      paystack_email_token: sub.paystackEmailToken ?? null,
+      paystack_authorization_code: sub.paystackAuthorizationCode ?? null,
+      paystack_init_reference: sub.paystackInitReference ?? null,
+      created_at: sub.createdAt ?? now,
+      updated_at: now,
+    });
   },
 };

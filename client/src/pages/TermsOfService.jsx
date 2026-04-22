@@ -7,7 +7,7 @@ export default function TermsOfService() {
         <Link to="/" className="text-brand-600 hover:text-brand-700 text-sm mb-8 inline-block">&larr; Back to Home</Link>
 
         <h1 className="text-3xl font-bold mb-2">Terms of Service</h1>
-        <p className="text-zinc-500 text-sm mb-8">Last updated: 11 April 2026</p>
+        <p className="text-zinc-500 text-sm mb-8">Last updated: 21 April 2026</p>
 
         <div className="prose prose-zinc max-w-none space-y-6 text-[15px] leading-relaxed">
           <p>
@@ -67,18 +67,61 @@ export default function TermsOfService() {
             to Apple's terms of service. SpeelDit is not affiliated with or endorsed by Apple Inc.
           </p>
 
-          <h2 className="text-xl font-semibold mt-8">6. Payments and Refunds</h2>
-          <p>When a venue enables paid song requests:</p>
+          <h2 className="text-xl font-semibold mt-8">6. Venue Subscription (Monthly Billing)</h2>
+          <p>
+            Access to the SpeelDit venue dashboard requires a paid monthly subscription
+            of <strong>R599 per month</strong>, billed in advance.
+          </p>
           <ul className="list-disc pl-6 space-y-1">
-            <li>Payments are processed securely by <strong>Yoco</strong>, a licensed payment service provider</li>
-            <li>We do not store credit card or banking details</li>
-            <li>The price per song request is set by the venue owner (R5 &ndash; R50)</li>
-            <li>Revenue is split: 80% to the venue owner, 20% platform fee</li>
-            <li>Refunds may be issued at the venue owner's discretion for songs that were not played</li>
-            <li>To request a refund, contact the venue directly or email us at the address below</li>
+            <li>
+              <strong>Free trial:</strong> New venues receive a <strong>14-day free trial</strong>. Payment
+              card details are captured on signup to enable automatic conversion. No charge is made during the trial.
+            </li>
+            <li>
+              <strong>Auto-renewal:</strong> If you do not cancel before the end of the 14-day trial, your card will
+              be charged R599 on the date the trial ends and on the same calendar day every month thereafter,
+              until you cancel.
+            </li>
+            <li>
+              <strong>How to cancel:</strong> You may cancel at any time from the billing page on your venue dashboard,
+              or by contacting us. Cancellation during the trial results in no charge. Cancellation after the trial
+              stops future renewals; the current paid month remains active until its end date.
+            </li>
+            <li>
+              <strong>Refunds for subscription charges:</strong> Paid monthly subscription fees are non-refundable
+              except where required by the South African Consumer Protection Act.
+            </li>
+            <li>
+              <strong>Payment processor:</strong> Subscriptions are processed by <strong>Paystack</strong> (a Stripe
+              company), a licensed payment service provider. SpeelDit does not store your card details.
+            </li>
+            <li>
+              <strong>Failed payments:</strong> If a renewal charge fails, we will notify you by email and your
+              dashboard access may be suspended until payment is resolved.
+            </li>
           </ul>
 
-          <h2 className="text-xl font-semibold mt-8">7. Acceptable Use</h2>
+          <h2 className="text-xl font-semibold mt-8">7. Song Request Payments &amp; Revenue Share</h2>
+          <p>When a venue enables paid song requests:</p>
+          <ul className="list-disc pl-6 space-y-1">
+            <li>Customer payments are processed by <strong>Yoco</strong>, a licensed payment service provider. These payments are collected by SpeelDit.</li>
+            <li>We do not store credit card or banking details</li>
+            <li>The price per song request is set by the venue owner (R5 &ndash; R50)</li>
+            <li>
+              <strong>Revenue share:</strong> SpeelDit retains all customer song-request payments as platform revenue
+              and pays a <strong>70% monthly revenue share</strong> to each venue based on the payments collected at
+              that venue in the preceding calendar month. Payouts are made by EFT to the bank account supplied by
+              the venue on the dashboard, within 10 business days of month-end.
+            </li>
+            <li>
+              Venues are responsible for supplying correct and current banking details. SpeelDit is not liable for
+              payouts sent to incorrect details supplied by the venue.
+            </li>
+            <li>Refunds for individual song requests may be issued at the venue owner's discretion for songs that were not played</li>
+            <li>To request a song-request refund, contact the venue directly or email us at the address below</li>
+          </ul>
+
+          <h2 className="text-xl font-semibold mt-8">8. Acceptable Use</h2>
           <p>You agree NOT to:</p>
           <ul className="list-disc pl-6 space-y-1">
             <li>Use the Service for any unlawful purpose</li>
@@ -90,7 +133,7 @@ export default function TermsOfService() {
             <li>Interfere with or disrupt the Service or its infrastructure</li>
           </ul>
 
-          <h2 className="text-xl font-semibold mt-8">8. Intellectual Property</h2>
+          <h2 className="text-xl font-semibold mt-8">9. Intellectual Property</h2>
           <p>
             The SpeelDit name, logo, and all software code are the intellectual property of
             SpeelDit. You may not copy, modify, distribute, or create derivative works from
@@ -101,7 +144,7 @@ export default function TermsOfService() {
             the property of their respective rights holders.
           </p>
 
-          <h2 className="text-xl font-semibold mt-8">9. Limitation of Liability</h2>
+          <h2 className="text-xl font-semibold mt-8">10. Limitation of Liability</h2>
           <p>To the maximum extent permitted by South African law:</p>
           <ul className="list-disc pl-6 space-y-1">
             <li>The Service is provided <strong>"as is"</strong> without warranties of any kind</li>
@@ -111,7 +154,7 @@ export default function TermsOfService() {
             <li>We are not responsible for the content of songs, lyrics, or any third-party services</li>
           </ul>
 
-          <h2 className="text-xl font-semibold mt-8">10. Indemnification</h2>
+          <h2 className="text-xl font-semibold mt-8">11. Indemnification</h2>
           <p>
             Venue owners agree to indemnify and hold SpeelDit harmless from any claims, damages,
             or expenses arising from: (a) their failure to obtain proper music licensing, (b) their
@@ -119,21 +162,21 @@ export default function TermsOfService() {
             and its customers.
           </p>
 
-          <h2 className="text-xl font-semibold mt-8">11. Service Availability</h2>
+          <h2 className="text-xl font-semibold mt-8">12. Service Availability</h2>
           <ul className="list-disc pl-6 space-y-1">
             <li>We aim to maintain high availability but do not guarantee 100% uptime</li>
             <li>We may perform maintenance that temporarily disrupts the Service</li>
             <li>We reserve the right to modify, suspend, or discontinue the Service at any time with reasonable notice</li>
           </ul>
 
-          <h2 className="text-xl font-semibold mt-8">12. Termination</h2>
+          <h2 className="text-xl font-semibold mt-8">13. Termination</h2>
           <ul className="list-disc pl-6 space-y-1">
             <li>You may close your account at any time by contacting us</li>
             <li>We may suspend or terminate your account for violation of these Terms</li>
             <li>Upon termination, your venue data will be deleted within 30 days, except where retention is required by law</li>
           </ul>
 
-          <h2 className="text-xl font-semibold mt-8">13. Consumer Protection Act</h2>
+          <h2 className="text-xl font-semibold mt-8">14. Consumer Protection Act</h2>
           <p>
             In accordance with the South African Consumer Protection Act (CPA), electronic
             transactions made through the Service are subject to a 7-day cooling-off period
@@ -141,20 +184,20 @@ export default function TermsOfService() {
             (i.e., a song that has already been played).
           </p>
 
-          <h2 className="text-xl font-semibold mt-8">14. Governing Law</h2>
+          <h2 className="text-xl font-semibold mt-8">15. Governing Law</h2>
           <p>
             These Terms are governed by the laws of the Republic of South Africa. Any disputes
             shall be resolved in the courts of South Africa.
           </p>
 
-          <h2 className="text-xl font-semibold mt-8">15. Changes to These Terms</h2>
+          <h2 className="text-xl font-semibold mt-8">16. Changes to These Terms</h2>
           <p>
             We may update these Terms from time to time. Changes will be posted on this page
             with an updated date. Continued use of the Service after changes constitutes
             acceptance of the updated Terms.
           </p>
 
-          <h2 className="text-xl font-semibold mt-8">16. Contact Us</h2>
+          <h2 className="text-xl font-semibold mt-8">17. Contact Us</h2>
           <p>For questions about these Terms:</p>
           <ul className="list-none pl-0 space-y-1">
             <li><strong>Email:</strong> bennokuhn1@icloud.com</li>
