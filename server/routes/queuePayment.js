@@ -3,6 +3,7 @@ const queueRepo = require('../repos/queueRepo');
 const broadcast = require('../utils/broadcast');
 const { fulfillPaidRequest } = require('../utils/paymentFulfill');
 const { getProvider } = require('../providers/payment');
+const { requireVenueSubscriptionActive } = require('../middleware/requireSubscriptionActive');
 const E = require('../utils/errorCodes');
 const validate = require('../middleware/validate');
 const { createPaymentSchema } = require('../utils/schemas');
@@ -15,7 +16,7 @@ const { createPaymentSchema } = require('../utils/schemas');
  * Swap checkout vendors via PATRON_PAYMENT_PROVIDER env var.
  */
 function attachPaymentRoutes(router) {
-  router.post('/:venueCode/create-payment', validate(createPaymentSchema), async (req, res) => {
+  router.post('/:venueCode/create-payment', requireVenueSubscriptionActive, validate(createPaymentSchema), async (req, res) => {
     const { venueCode } = req.params;
     const { song, deviceId, clientOrigin } = req.body;
 

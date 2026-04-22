@@ -3,6 +3,8 @@ const db = require('../utils/database');
 const E = require('../utils/errorCodes');
 const { v4: uuidv4 } = require('uuid');
 const authMiddleware = require('../middleware/authMiddleware');
+const requireSubscriptionActive = require('../middleware/requireSubscriptionActive');
+const { requireVenueSubscriptionActive } = require('../middleware/requireSubscriptionActive');
 const { advanceToNextSong } = require('../utils/queueAdvance');
 const broadcast = require('../utils/broadcast');
 const { logEvent } = require('../utils/logEvent');
@@ -153,7 +155,7 @@ router.get('/:venueCode', async (req, res) => {
 });
 
 // POST /api/queue/:venueCode/request
-router.post('/:venueCode/request', validate(requestSongSchema), async (req, res) => {
+router.post('/:venueCode/request', requireVenueSubscriptionActive, validate(requestSongSchema), async (req, res) => {
   const { venueCode } = req.params;
   const { song, deviceId } = req.body;
 
@@ -324,7 +326,7 @@ router.post('/:venueCode/advance', validate(songIdSchema), async (req, res) => {
 });
 
 // POST /api/queue/:venueCode/skip (venue owner only)
-router.post('/:venueCode/skip', authMiddleware, validate(songIdSchema), async (req, res) => {
+router.post('/:venueCode/skip', authMiddleware, requireSubscriptionActive, validate(songIdSchema), async (req, res) => {
   try {
     if (req.venue.code !== req.params.venueCode) {
       return res.status(403).json({ error: 'Unauthorized', code: E.QUEUE_SKIP_UNAUTHORIZED });
@@ -358,7 +360,7 @@ router.post('/:venueCode/skip', authMiddleware, validate(songIdSchema), async (r
 });
 
 // DELETE /api/queue/:venueCode/song/:songId (venue owner only)
-router.delete('/:venueCode/song/:songId', authMiddleware, async (req, res) => {
+router.delete('/:venueCode/song/:songId', authMiddleware, requireSubscriptionActive, async (req, res) => {
   try {
     const { venueCode, songId } = req.params;
 

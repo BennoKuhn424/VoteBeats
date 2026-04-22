@@ -11,6 +11,7 @@ import {
   QrCode,
   ListMusic,
   Clock,
+  CreditCard,
 } from 'lucide-react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +24,7 @@ import EarningsCard from '../components/venue/EarningsCard';
 import AnalyticsDashboard from '../components/venue/AnalyticsDashboard';
 import VolumeAlertsCard from '../components/venue/VolumeAlertsCard';
 import RandomAutoplayCard from '../components/venue/RandomAutoplayCard';
+import SubscriptionBanner from '../components/venue/SubscriptionBanner';
 import { buildVotingUrl } from '../utils/publicUrl';
 
 export default function VenueDashboard() {
@@ -158,6 +160,13 @@ export default function VenueDashboard() {
           <div className="flex items-center justify-between">
             <span className="font-bold text-zinc-900 text-lg">Dashboard</span>
             <div className="flex items-center gap-2">
+              <Link
+                to="/venue/billing"
+                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors min-h-[44px]"
+              >
+                <CreditCard className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">Billing</span>
+              </Link>
               <button
                 type="button"
                 onClick={() => setShowSettings(!showSettings)}
@@ -181,6 +190,8 @@ export default function VenueDashboard() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <SubscriptionBanner />
+
         {/* Settings Panel */}
         {showSettings && (
           <div className="mb-8">

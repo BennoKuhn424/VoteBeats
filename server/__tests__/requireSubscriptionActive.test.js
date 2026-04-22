@@ -130,3 +130,62 @@ describe('requireSubscriptionActive', () => {
     expect(next).toHaveBeenCalled();
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Patron-side variant — same logic, but reads venueCode from URL and returns
+// friendlier error copy.
+// ══════════════════════════════════════════════════════════════════════════════
+const { requireVenueSubscriptionActive } = require('../middleware/requireSubscriptionActive');
+
+describe('requireVenueSubscriptionActive (patron-side)', () => {
+  test('active subscription → next()', () => {
+    db.getSubscription.mockReturnValue({ status: 'active' });
+    const req = { params: { venueCode: 'VEN001' } };
+    const res = mockRes();
+    const next = jest.fn();
+    requireVenueSubscriptionActive(req, res, next);
+    expect(next).toHaveBeenCalled();
+  });
+
+  test('canceled subscription → 402 VENUE_SUBSCRIPTION_INACTIVE', () => {
+    db.getSubscription.mockReturnValue({ status: 'canceled' });
+    const req = { params: { venueCode: 'VEN001' } };
+    const res = mockRes();
+    const next = jest.fn();
+    requireVenueSubscriptionActive(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(402);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      code: 'VENUE_SUBSCRIPTION_INACTIVE',
+      subscriptionStatus: 'canceled',
+    }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test('trialing subscription → next()', () => {
+    db.getSubscription.mockReturnValue({ status: 'trialing' });
+    const req = { params: { venueCode: 'VEN001' } };
+    const res = mockRes();
+    const next = jest.fn();
+    requireVenueSubscriptionActive(req, res, next);
+    expect(next).toHaveBeenCalled();
+  });
+
+  test('no venueCode in params → next() (no gating applied)', () => {
+    const req = { params: {} };
+    const res = mockRes();
+    const next = jest.fn();
+    requireVenueSubscriptionActive(req, res, next);
+    expect(next).toHaveBeenCalled();
+  });
+
+  test('past_due → blocks with patron-friendly copy (no billing jargon)', () => {
+    db.getSubscription.mockReturnValue({ status: 'past_due' });
+    const req = { params: { venueCode: 'VEN001' } };
+    const res = mockRes();
+    const next = jest.fn();
+    requireVenueSubscriptionActive(req, res, next);
+    const body = res.json.mock.calls[0][0];
+    expect(body.error).toMatch(/not currently accepting requests/i);
+    expect(body.error).not.toMatch(/subscription|billing|payment/i);
+  });
+});

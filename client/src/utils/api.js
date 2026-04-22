@@ -42,12 +42,23 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Expired or invalid session: clear local auth state and return to login
+// Expired or invalid session: clear local auth state and return to login.
+// 402 with a subscription code → redirect the venue owner to /venue/billing.
 api.interceptors.response.use(
   (res) => res,
   (error) => {
-    if (error.response?.status !== 401) return Promise.reject(error);
+    const status = error.response?.status;
+    const code = error.response?.data?.code;
     const u = String(error.config?.url || '');
+
+    if (status === 402 && (code === 'SUBSCRIPTION_REQUIRED' || code === 'SUBSCRIPTION_INACTIVE')) {
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/venue/billing')) {
+        window.location.assign('/venue/billing');
+      }
+      return Promise.reject(error);
+    }
+
+    if (status !== 401) return Promise.reject(error);
     if (u.includes('auth/login') || u.includes('auth/register') || u.includes('auth/me')) {
       return Promise.reject(error);
     }

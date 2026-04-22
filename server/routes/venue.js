@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../utils/database');
 const venueRepo = require('../repos/venueRepo');
 const authMiddleware = require('../middleware/authMiddleware');
+const requireSubscriptionActive = require('../middleware/requireSubscriptionActive');
 const { getProvider: getPatronPaymentProvider } = require('../providers/payment');
 const validate = require('../middleware/validate');
 const {
@@ -48,7 +49,7 @@ router.get('/:venueCode', authMiddleware, (req, res) => {
 });
 
 // PUT /api/venue/:venueCode/settings
-router.put('/:venueCode/settings', authMiddleware, (req, res) => {
+router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   const {
@@ -172,7 +173,7 @@ router.put('/:venueCode/settings', authMiddleware, (req, res) => {
 // ── Multi-playlist CRUD ──────────────────────────────────────────────────────
 
 // POST /api/venue/:venueCode/playlists – create a new named playlist
-router.post('/:venueCode/playlists', authMiddleware, validate(createPlaylistSchema), (req, res) => {
+router.post('/:venueCode/playlists', authMiddleware, requireSubscriptionActive, validate(createPlaylistSchema), (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
   const { name } = req.body;
 
@@ -185,7 +186,7 @@ router.post('/:venueCode/playlists', authMiddleware, validate(createPlaylistSche
 });
 
 // DELETE /api/venue/:venueCode/playlists/:playlistId – delete a playlist
-router.delete('/:venueCode/playlists/:playlistId', authMiddleware, (req, res) => {
+router.delete('/:venueCode/playlists/:playlistId', authMiddleware, requireSubscriptionActive, (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
@@ -198,7 +199,7 @@ router.delete('/:venueCode/playlists/:playlistId', authMiddleware, (req, res) =>
 });
 
 // PUT /api/venue/:venueCode/playlists/:playlistId/activate – set as active (used by autofill)
-router.put('/:venueCode/playlists/:playlistId/activate', authMiddleware, (req, res) => {
+router.put('/:venueCode/playlists/:playlistId/activate', authMiddleware, requireSubscriptionActive, (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
@@ -211,7 +212,7 @@ router.put('/:venueCode/playlists/:playlistId/activate', authMiddleware, (req, r
 });
 
 // PUT /api/venue/:venueCode/playlists/:playlistId/rename – rename a playlist
-router.put('/:venueCode/playlists/:playlistId/rename', authMiddleware, validate(renamePlaylistSchema), async (req, res) => {
+router.put('/:venueCode/playlists/:playlistId/rename', authMiddleware, requireSubscriptionActive, validate(renamePlaylistSchema), async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
   const { name } = req.body;
 
@@ -230,7 +231,7 @@ router.put('/:venueCode/playlists/:playlistId/rename', authMiddleware, validate(
 // ── Per-playlist song management ─────────────────────────────────────────────
 
 // POST /api/venue/:venueCode/playlists/:playlistId/songs – add a song
-router.post('/:venueCode/playlists/:playlistId/songs', authMiddleware, validate(addSongToPlaylistSchema), async (req, res) => {
+router.post('/:venueCode/playlists/:playlistId/songs', authMiddleware, requireSubscriptionActive, validate(addSongToPlaylistSchema), async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   const { id, appleId, title, artist, albumArt, duration } = req.body;
@@ -253,7 +254,7 @@ router.post('/:venueCode/playlists/:playlistId/songs', authMiddleware, validate(
 });
 
 // DELETE /api/venue/:venueCode/playlists/:playlistId/songs/:appleId – remove a song
-router.delete('/:venueCode/playlists/:playlistId/songs/:appleId', authMiddleware, async (req, res) => {
+router.delete('/:venueCode/playlists/:playlistId/songs/:appleId', authMiddleware, requireSubscriptionActive, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   let resultPlaylist = null;
@@ -272,7 +273,7 @@ router.delete('/:venueCode/playlists/:playlistId/songs/:appleId', authMiddleware
 });
 
 // POST /api/venue/:venueCode/ban-artist – quick-ban an artist from the player
-router.post('/:venueCode/ban-artist', authMiddleware, validate(banArtistSchema), async (req, res) => {
+router.post('/:venueCode/ban-artist', authMiddleware, requireSubscriptionActive, validate(banArtistSchema), async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
   const { artist } = req.body;
 
@@ -293,7 +294,7 @@ router.post('/:venueCode/ban-artist', authMiddleware, validate(banArtistSchema),
 // ── AI Playlist generation (R1 per song, min R25) ────────────────────────────
 
 // POST /api/venue/:venueCode/playlists/:playlistId/generate-checkout
-router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddleware, validate(generateCheckoutSchema), async (req, res) => {
+router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddleware, requireSubscriptionActive, validate(generateCheckoutSchema), async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   const { prompt, count } = req.body;
@@ -347,7 +348,7 @@ router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddlewar
 });
 
 // POST /api/venue/:venueCode/playlists/:playlistId/generate – verify payment, call Claude, add songs
-router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, validate(generatePlaylistSchema), async (req, res) => {
+router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, requireSubscriptionActive, validate(generatePlaylistSchema), async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   const { checkoutId, prompt: bodyPrompt, count: bodyCount } = req.body;
