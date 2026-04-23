@@ -16,12 +16,12 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-carbon-50 text-carbon-800 pb-safe">
+    <div className="min-h-screen bg-carbon-50 dark:bg-dark-950 text-carbon-800 dark:text-zinc-100 pb-safe">
       <Header />
       <div className="container mx-auto px-5 py-12 max-w-lg">
         <div className="text-center mb-12">
           <Logo size="2xl" className="mx-auto mb-4" />
-          <p className="text-carbon-600 text-lg">
+          <p className="text-carbon-600 dark:text-zinc-300 text-lg">
             Be the vibe. Scan the QR at your table or enter the code below.
           </p>
         </div>
@@ -33,26 +33,26 @@ export default function Home() {
             onChange={(e) => setVenueCode(e.target.value.toUpperCase())}
             placeholder="ABC123"
             maxLength={8}
-            className="w-full min-h-touch px-6 py-4 bg-white border border-carbon-200 rounded-xl text-carbon-900 placeholder-carbon-400 focus:outline-none focus:ring-2 focus:ring-amethyst-400 focus:border-transparent text-center text-2xl tracking-[0.3em] uppercase font-bold shadow-card"
+            className="w-full min-h-touch px-6 py-4 bg-white dark:bg-dark-800 border border-carbon-200 dark:border-dark-600 rounded-xl text-carbon-900 dark:text-zinc-100 placeholder-carbon-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-amethyst-400 focus:border-transparent text-center text-2xl tracking-[0.3em] uppercase font-bold shadow-card"
           />
           <Button type="submit" className="w-full !py-4 text-lg">
             Join & vote
           </Button>
         </form>
 
-        <p className="mt-10 text-center text-carbon-500 text-sm">
+        <p className="mt-10 text-center text-carbon-500 dark:text-zinc-400 text-sm">
           Venue owner?{' '}
           <Link
             to="/venue/login"
-            className="text-amethyst-600 hover:text-amethyst-700 font-medium transition-colors"
+            className="text-amethyst-600 dark:text-amethyst-400 hover:text-amethyst-700 dark:hover:text-amethyst-300 font-medium transition-colors"
           >
             Log in to your dashboard
           </Link>
         </p>
 
-        <footer className="mt-12 pt-6 border-t border-carbon-200 text-center text-xs text-carbon-400 space-x-4">
-          <Link to="/privacy" className="hover:text-carbon-600 transition-colors">Privacy Policy</Link>
-          <Link to="/terms" className="hover:text-carbon-600 transition-colors">Terms of Service</Link>
+        <footer className="mt-12 pt-6 border-t border-carbon-200 dark:border-dark-700 text-center text-xs text-carbon-400 dark:text-zinc-500 space-x-4">
+          <Link to="/privacy" className="hover:text-carbon-600 dark:hover:text-zinc-200 transition-colors">Privacy Policy</Link>
+          <Link to="/terms" className="hover:text-carbon-600 dark:hover:text-zinc-200 transition-colors">Terms of Service</Link>
         </footer>
       </div>
     </div>

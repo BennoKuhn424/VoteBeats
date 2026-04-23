@@ -28,9 +28,9 @@ export default function VerifyEmail() {
   }, [token]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900">
       <div className="w-full max-w-md px-4 py-8 sm:px-8">
-        <div className="bg-white rounded-xl shadow-xl border border-zinc-200 p-6 sm:p-8 text-center">
+        <div className="bg-white dark:bg-dark-800 rounded-xl shadow-xl border border-zinc-200 dark:border-dark-600 p-6 sm:p-8 text-center">
           <div className="flex justify-center mb-6">
             <Logo size="xl" />
           </div>
@@ -38,16 +38,16 @@ export default function VerifyEmail() {
           {status === 'loading' && (
             <>
               <Loader2 className="h-12 w-12 text-brand-500 animate-spin mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-zinc-900 mb-2">Verifying your email...</h2>
-              <p className="text-sm text-zinc-500">This will only take a moment.</p>
+              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Verifying your email...</h2>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">This will only take a moment.</p>
             </>
           )}
 
           {status === 'success' && (
             <>
               <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-zinc-900 mb-2">Email verified!</h2>
-              <p className="text-sm text-zinc-600 mb-6">{message}</p>
+              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Email verified!</h2>
+              <p className="text-sm text-zinc-600 dark:text-zinc-300 mb-6">{message}</p>
               <Link
                 to="/venue/login"
                 className="inline-block px-6 py-3 bg-brand-600 text-white rounded-lg font-semibold hover:bg-brand-500 transition-colors"
@@ -60,8 +60,8 @@ export default function VerifyEmail() {
           {status === 'error' && (
             <>
               <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-zinc-900 mb-2">Verification failed</h2>
-              <p className="text-sm text-zinc-600 mb-6">{message}</p>
+              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Verification failed</h2>
+              <p className="text-sm text-zinc-600 dark:text-zinc-300 mb-6">{message}</p>
               <Link
                 to="/venue/login"
                 className="inline-block px-6 py-3 bg-brand-600 text-white rounded-lg font-semibold hover:bg-brand-500 transition-colors"
@@ -73,8 +73,8 @@ export default function VerifyEmail() {
 
           {status === 'no-token' && (
             <>
-              <XCircle className="h-12 w-12 text-zinc-400 mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-zinc-900 mb-2">Invalid link</h2>
+              <XCircle className="h-12 w-12 text-zinc-400 dark:text-zinc-500 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Invalid link</h2>
               <p className="text-sm text-zinc-600 mb-6">This verification link is missing or incomplete.</p>
               <Link
                 to="/venue/login"

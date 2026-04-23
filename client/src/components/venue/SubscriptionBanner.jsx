@@ -73,8 +73,8 @@ export default function SubscriptionBanner() {
 
   const info = map[status] || map.none;
   const tone = info.tone === 'red'
-    ? 'border-red-200 bg-red-50 text-red-800'
-    : 'border-amber-200 bg-amber-50 text-amber-900';
+    ? 'border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-200'
+    : 'border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200';
   const btn = info.tone === 'red'
     ? 'bg-red-600 hover:bg-red-700 text-white'
     : 'bg-amber-600 hover:bg-amber-700 text-white';

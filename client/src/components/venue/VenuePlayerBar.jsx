@@ -172,22 +172,22 @@ export default function VenuePlayerBar({ venueCode }) {
   if (!venueCode) return null;
 
   return (
-    <div className="sticky top-0 z-40 shrink-0 bg-white border-b border-zinc-200 shadow-sm">
+    <div className="sticky top-0 z-40 shrink-0 bg-white dark:bg-dark-800 border-b border-zinc-200 dark:border-dark-600 shadow-sm">
       <div className="px-3 sm:px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2.5">
         {/* Track */}
         <div className="flex items-center gap-3 min-w-0 max-w-[220px] sm:max-w-[280px]">
-          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl shrink-0 overflow-hidden bg-zinc-100 flex items-center justify-center">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl shrink-0 overflow-hidden bg-zinc-100 dark:bg-dark-700 flex items-center justify-center">
             {nowPlaying?.albumArt ? (
               <img src={nowPlaying.albumArt} alt="" className="w-full h-full object-cover" />
             ) : (
-              <Music2 className="h-5 w-5 sm:h-6 sm:w-6 text-zinc-400" />
+              <Music2 className="h-5 w-5 sm:h-6 sm:w-6 text-zinc-400 dark:text-zinc-500" />
             )}
           </div>
           <div className="min-w-0">
-            <p className="text-base font-semibold text-zinc-900 truncate leading-snug">
+            <p className="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate leading-snug">
               {nowPlaying?.title || 'Nothing playing'}
             </p>
-            <p className="text-sm text-zinc-500 truncate leading-snug">
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 truncate leading-snug">
               {nowPlaying?.artist || '—'}
             </p>
           </div>
@@ -195,13 +195,13 @@ export default function VenuePlayerBar({ venueCode }) {
 
         {/* Progress */}
         <div className="flex-1 min-w-[160px] order-last sm:order-none w-full sm:w-auto basis-full sm:basis-auto">
-          <div className="w-full bg-zinc-200 rounded-full h-1.5 sm:h-2 overflow-hidden">
+          <div className="w-full bg-zinc-200 dark:bg-dark-700 rounded-full h-1.5 sm:h-2 overflow-hidden">
             <div
               className="bg-brand-500 h-1.5 sm:h-2 rounded-full transition-all duration-500"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <div className="flex justify-between text-xs text-zinc-400 mt-1 tabular-nums">
+          <div className="flex justify-between text-xs text-zinc-400 dark:text-zinc-500 mt-1 tabular-nums">
             <span>{formatDuration(Math.floor(playbackTime))}</span>
             <span>{formatDuration(Math.floor(playbackDuration))}</span>
           </div>
@@ -210,7 +210,7 @@ export default function VenuePlayerBar({ venueCode }) {
         {/* Status + transport */}
         <div className="flex items-center gap-2.5 shrink-0">
           {!musicReady && (
-            <div className="flex items-center gap-2 text-zinc-500 pr-1">
+            <div className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 pr-1">
               <Loader2 className="h-5 w-5 animate-spin text-brand-500" />
               <span className="text-sm hidden md:inline">Connecting to music service…</span>
             </div>
@@ -231,7 +231,7 @@ export default function VenuePlayerBar({ venueCode }) {
                 type="button"
                 onClick={handleRestart}
                 disabled={busyPlayback}
-                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 disabled:opacity-40"
+                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-dark-700 disabled:opacity-40"
                 aria-label="Back to start"
               >
                 <SkipBack className="h-5 w-5" />
@@ -255,7 +255,7 @@ export default function VenuePlayerBar({ venueCode }) {
                 type="button"
                 onClick={handleSkip}
                 disabled={busyPlayback}
-                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 disabled:opacity-40"
+                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-dark-700 disabled:opacity-40"
                 aria-label="Next"
               >
                 <SkipForward className="h-5 w-5" />
@@ -269,7 +269,7 @@ export default function VenuePlayerBar({ venueCode }) {
 
         {isAuthorized && (
           <div className="flex items-center gap-2 shrink-0 w-32 sm:w-40">
-            <Volume2 className="h-4 w-4 text-zinc-400 shrink-0" />
+            <Volume2 className="h-4 w-4 text-zinc-400 dark:text-zinc-500 shrink-0" />
             <input
               type="range"
               min="0"
@@ -283,7 +283,7 @@ export default function VenuePlayerBar({ venueCode }) {
 
         {/* Autoplay + active playlist label */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <span className="text-xs text-zinc-500 font-medium">Autoplay</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Autoplay</span>
           {AUTOPLAY_OPTIONS.map(({ id, label }) => (
             <button
               key={id}
@@ -292,7 +292,7 @@ export default function VenuePlayerBar({ venueCode }) {
               className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[36px] ${
                 autoplayMode === id
                   ? 'bg-brand-500 text-white'
-                  : 'bg-zinc-100 text-zinc-500 hover:text-zinc-900'
+                  : 'bg-zinc-100 dark:bg-dark-700 text-zinc-500 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100'
               }`}
             >
               {label}
@@ -301,7 +301,7 @@ export default function VenuePlayerBar({ venueCode }) {
           {autoplayMode === 'playlist' && activePlaylistName && (
             <Link
               to="/venue/playlists"
-              className="text-xs text-zinc-700 max-w-[200px] truncate hover:text-brand-600 hover:underline font-medium ml-0.5"
+              className="text-xs text-zinc-700 dark:text-zinc-200 max-w-[200px] truncate hover:text-brand-600 hover:underline font-medium ml-0.5"
               title={activePlaylistName}
             >
               {activePlaylistName}
@@ -311,8 +311,8 @@ export default function VenuePlayerBar({ venueCode }) {
       </div>
 
       {playerError && (
-        <div className="border-t border-red-100 bg-red-50 px-3 py-1.5 flex items-center justify-between gap-2">
-          <p className="text-xs font-medium text-red-700 min-w-0 truncate">{playerError}</p>
+        <div className="border-t border-red-100 dark:border-red-900/40 bg-red-50 dark:bg-red-950/30 px-3 py-1.5 flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-red-700 dark:text-red-300 min-w-0 truncate">{playerError}</p>
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
@@ -321,7 +321,7 @@ export default function VenuePlayerBar({ venueCode }) {
             >
               Retry
             </button>
-            <button type="button" onClick={clearError} className="text-[10px] text-zinc-500 hover:text-zinc-700">
+            <button type="button" onClick={clearError} className="text-[10px] text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">
               Dismiss
             </button>
           </div>
@@ -329,14 +329,14 @@ export default function VenuePlayerBar({ venueCode }) {
       )}
 
       {autofillNotice && (
-        <div className="border-t border-amber-100 bg-amber-50 px-3 py-1.5 flex items-center justify-between gap-2">
-          <p className="text-xs font-medium text-amber-800 min-w-0">
+        <div className="border-t border-amber-100 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-amber-800 dark:text-amber-300 min-w-0">
             No songs for autoplay — add tracks in Playlists
           </p>
           <button
             type="button"
             onClick={dismissAutofillNotice}
-            className="text-[10px] text-zinc-500 hover:text-zinc-700 shrink-0"
+            className="text-[10px] text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 shrink-0"
           >
             Dismiss
           </button>

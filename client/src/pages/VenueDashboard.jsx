@@ -146,23 +146,23 @@ export default function VenueDashboard() {
 
   if (!venue) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 flex justify-center items-center">
+      <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900 flex justify-center items-center">
         <div className="w-10 h-10 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100">
+    <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900">
       {/* Header */}
-      <header className="bg-white border-b border-zinc-200">
+      <header className="bg-white dark:bg-dark-800 border-b border-zinc-200 dark:border-dark-600">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <span className="font-bold text-zinc-900 text-lg">Dashboard</span>
+            <span className="font-bold text-zinc-900 dark:text-zinc-100 text-lg">Dashboard</span>
             <div className="flex items-center gap-2">
               <Link
                 to="/venue/billing"
-                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors min-h-[44px]"
+                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-dark-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-dark-700 transition-colors min-h-[44px]"
               >
                 <CreditCard className="h-4 w-4 shrink-0" />
                 <span className="hidden sm:inline">Billing</span>
@@ -170,7 +170,7 @@ export default function VenueDashboard() {
               <button
                 type="button"
                 onClick={() => setShowSettings(!showSettings)}
-                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors min-h-[44px]"
+                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-dark-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-dark-700 transition-colors min-h-[44px]"
               >
                 <Settings className="h-4 w-4 shrink-0" />
                 <span className="hidden sm:inline">Settings</span>
@@ -178,7 +178,7 @@ export default function VenueDashboard() {
               <button
                 type="button"
                 onClick={handleLogout}
-                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors min-h-[44px]"
+                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-dark-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-dark-700 transition-colors min-h-[44px]"
               >
                 <LogOut className="h-4 w-4 shrink-0" />
                 <span className="hidden sm:inline">Logout</span>
@@ -201,8 +201,8 @@ export default function VenueDashboard() {
 
         {/* Venue Info */}
         <div className="mb-8">
-          <h2 className="text-2xl sm:text-3xl font-semibold text-zinc-900 mb-2">{venue.name}</h2>
-          <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600">
+          <h2 className="text-2xl sm:text-3xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">{venue.name}</h2>
+          <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600 dark:text-zinc-300">
             {venue.location && (
               <div className="flex items-center gap-1.5">
                 <MapPin className="h-4 w-4" />
@@ -217,7 +217,7 @@ export default function VenueDashboard() {
         </div>
 
         {/* Pay-to-Play Earnings */}
-        <div className="mb-6 p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">
+        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
           <EarningsCard
             venueCode={venue.code}
             showPlaceholder={!venue.settings?.requirePaymentForRequest}
@@ -227,25 +227,25 @@ export default function VenueDashboard() {
         </div>
 
         {/* Browse & schedule playlists (Figma-style) */}
-        <div className="mb-6 p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">
+        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-start gap-3">
               <div className="p-2 bg-orange-100 rounded-lg">
                 <ListMusic className="h-5 w-5 text-orange-600" />
               </div>
               <div>
-                <h3 className="text-sm font-medium text-zinc-600 uppercase tracking-wide mb-1">
+                <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 uppercase tracking-wide mb-1">
                   Playlists &amp; schedule
                 </h3>
-                <p className="text-sm text-zinc-500 max-w-xl">
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-xl">
                   Set the active playlist and schedule different playlists by time of day. Autofill shuffles from the
                   playlist that matches the current slot; customer requests are unchanged.
                 </p>
                 {effectiveAutoplayMode === 'playlist' && (
-                  <div className="mt-3 max-w-xl rounded-lg border border-orange-100 bg-orange-50/90 px-3 py-2.5 text-sm">
-                    <span className="text-zinc-600">Autoplay is on </span>
-                    <span className="font-semibold text-zinc-800">playlist</span>
-                    <span className="text-zinc-600"> mode — active library: </span>
+                  <div className="mt-3 max-w-xl rounded-lg border border-orange-100 dark:border-orange-900/40 bg-orange-50/90 dark:bg-orange-950/20 px-3 py-2.5 text-sm">
+                    <span className="text-zinc-600 dark:text-zinc-300">Autoplay is on </span>
+                    <span className="font-semibold text-zinc-800 dark:text-zinc-100">playlist</span>
+                    <span className="text-zinc-600 dark:text-zinc-300"> mode — active library: </span>
                     {activePlaylistName ? (
                       <Link
                         to="/venue/playlists"
@@ -280,54 +280,54 @@ export default function VenueDashboard() {
         <VolumeAlertsCard venueCode={venue.code} variant="light" />
 
         {/* Analytics */}
-        <div className="mb-6 p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">
+        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
           <AnalyticsDashboard venueCode={venue.code} variant="light" />
         </div>
 
         {/* Bottom Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Customer Voting Link */}
-          <div className="p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">
+          <div className="p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
             <div className="flex items-start gap-3 mb-4">
               <div className="p-2 bg-purple-100 rounded-lg">
                 <QrCode className="h-5 w-5 text-purple-600" />
               </div>
               <div className="flex-1">
-                <h3 className="text-sm font-medium text-zinc-600 uppercase tracking-wide mb-1">
+                <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 uppercase tracking-wide mb-1">
                   Customer Voting Link
                 </h3>
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">
                   Scan with your phone to vote on music at {venue.name}
                 </p>
               </div>
             </div>
             <QRCodeDisplay venueCode={venue.code} venueName={venue.name} variant="light" />
             <div className="flex items-center gap-2 mt-4">
-              <code className="flex-1 px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-xs text-zinc-600 font-mono break-all">
+              <code className="flex-1 px-3 py-2 bg-zinc-50 dark:bg-dark-900 border border-zinc-200 dark:border-dark-600 rounded-lg text-xs text-zinc-600 dark:text-zinc-300 font-mono break-all">
                 {votingUrl}
               </code>
               <button
                 type="button"
                 onClick={() => copyToClipboard(votingUrl)}
-                className="p-2 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors shrink-0"
+                className="p-2 border border-zinc-300 dark:border-dark-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-dark-700 transition-colors shrink-0"
               >
                 {copiedVotingUrl ? (
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
                 ) : (
-                  <Copy className="h-4 w-4 text-zinc-600" />
+                  <Copy className="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
                 )}
               </button>
             </div>
           </div>
 
           {/* Queue */}
-          <div className="p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">
+          <div className="p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
             <div className="flex items-start gap-3 mb-4">
               <div className="p-2 bg-green-100 rounded-lg">
                 <ListMusic className="h-5 w-5 text-green-600" />
               </div>
               <div className="flex-1">
-                <h3 className="text-sm font-medium text-zinc-600 uppercase tracking-wide mb-1">
+                <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 uppercase tracking-wide mb-1">
                   Queue
                 </h3>
               </div>

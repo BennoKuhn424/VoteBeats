@@ -44,17 +44,17 @@ export default function ResetPassword() {
   }
 
   const inputClass =
-    'w-full min-h-touch pl-10 pr-10 py-3 bg-white border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-zinc-900 placeholder:text-zinc-400';
+    'w-full min-h-touch pl-10 pr-10 py-3 bg-white dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500';
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900">
         <div className="w-full max-w-md px-4 py-8 sm:px-8">
-          <div className="bg-white rounded-xl shadow-xl border border-zinc-200 p-6 sm:p-8 text-center">
+          <div className="bg-white dark:bg-dark-800 rounded-xl shadow-xl border border-zinc-200 dark:border-dark-600 p-6 sm:p-8 text-center">
             <div className="flex justify-center mb-6"><Logo size="xl" /></div>
-            <XCircle className="h-12 w-12 text-zinc-400 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-zinc-900 mb-2">Invalid link</h2>
-            <p className="text-sm text-zinc-600 mb-6">This reset link is missing or incomplete.</p>
+            <XCircle className="h-12 w-12 text-zinc-400 dark:text-zinc-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Invalid link</h2>
+            <p className="text-sm text-zinc-600 dark:text-zinc-300 mb-6">This reset link is missing or incomplete.</p>
             <Link to="/venue/login" className="inline-block px-6 py-3 bg-brand-600 text-white rounded-lg font-semibold hover:bg-brand-500 transition-colors">
               Back to Login
             </Link>
@@ -67,16 +67,16 @@ export default function ResetPassword() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100">
       <div className="w-full max-w-md px-4 py-8 sm:px-8">
-        <div className="bg-white rounded-xl shadow-xl border border-zinc-200 p-6 sm:p-8">
+        <div className="bg-white dark:bg-dark-800 rounded-xl shadow-xl border border-zinc-200 dark:border-dark-600 p-6 sm:p-8">
           <div className="flex justify-center mb-6">
             <Logo size="xl" />
           </div>
 
           {success ? (
             <div className="text-center">
-              <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-zinc-900 mb-2">Password reset!</h2>
-              <p className="text-sm text-zinc-600 mb-6">You can now log in with your new password.</p>
+              <CheckCircle className="h-12 w-12 text-green-500 dark:text-green-400 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Password reset!</h2>
+              <p className="text-sm text-zinc-600 dark:text-zinc-300 mb-6">You can now log in with your new password.</p>
               <Link
                 to="/venue/login"
                 className="inline-block px-6 py-3 bg-brand-600 text-white rounded-lg font-semibold hover:bg-brand-500 transition-colors"
@@ -87,17 +87,17 @@ export default function ResetPassword() {
           ) : (
             <>
               <div className="mb-6 text-center">
-                <h2 className="text-xl font-semibold text-zinc-900 mb-2">Set a new password</h2>
-                <p className="text-sm text-zinc-600">Choose a strong password for your account.</p>
+                <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Set a new password</h2>
+                <p className="text-sm text-zinc-600 dark:text-zinc-300">Choose a strong password for your account.</p>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="space-y-2">
-                  <label htmlFor="password" className="text-zinc-700 text-sm font-medium block">
+                  <label htmlFor="password" className="text-zinc-700 dark:text-zinc-200 text-sm font-medium block">
                     New Password
                   </label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 pointer-events-none" />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 dark:text-zinc-500 pointer-events-none" />
                     <input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
@@ -114,7 +114,7 @@ export default function ResetPassword() {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-200"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -123,11 +123,11 @@ export default function ResetPassword() {
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="confirmPassword" className="text-zinc-700 text-sm font-medium block">
+                  <label htmlFor="confirmPassword" className="text-zinc-700 dark:text-zinc-200 text-sm font-medium block">
                     Confirm Password
                   </label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 pointer-events-none" />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 dark:text-zinc-500 pointer-events-none" />
                     <input
                       id="confirmPassword"
                       type={showPassword ? 'text' : 'password'}
@@ -143,7 +143,7 @@ export default function ResetPassword() {
                   </div>
                 </div>
 
-                {error && <p className="text-red-500 text-sm">{error}</p>}
+                {error && <p className="text-red-500 dark:text-red-400 text-sm">{error}</p>}
 
                 <Button
                   type="submit"

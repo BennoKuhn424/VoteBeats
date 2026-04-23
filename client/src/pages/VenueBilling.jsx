@@ -94,7 +94,7 @@ export default function VenueBilling() {
   }
 
   if (loading) {
-    return <div className="max-w-2xl mx-auto px-5 py-12 text-zinc-500">Loading billing…</div>;
+    return <div className="max-w-2xl mx-auto px-5 py-12 text-zinc-500 dark:text-zinc-400">Loading billing…</div>;
   }
 
   const status = sub?.status || 'none';
@@ -107,39 +107,39 @@ export default function VenueBilling() {
 
   return (
     <div className="max-w-2xl mx-auto px-5 py-10">
-      <h1 className="text-2xl font-bold mb-1">Billing</h1>
-      <p className="text-zinc-500 text-sm mb-6">Manage your Speeldit subscription.</p>
+      <h1 className="text-2xl font-bold mb-1 text-zinc-900 dark:text-zinc-100">Billing</h1>
+      <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-6">Manage your Speeldit subscription.</p>
 
       {banner && (
         <div className={`mb-6 rounded-lg border p-4 text-sm ${
           banner.tone === 'success'
-            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-            : 'border-red-200 bg-red-50 text-red-800'
+            ? 'border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200'
+            : 'border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-200'
         }`}>
           {banner.text}
         </div>
       )}
 
       {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 text-red-800 p-4 text-sm">
+        <div className="mb-6 rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-200 p-4 text-sm">
           {error}
         </div>
       )}
 
-      <div className="rounded-xl border border-zinc-200 bg-white p-6 mb-6">
+      <div className="rounded-xl border border-zinc-200 dark:border-dark-600 bg-white dark:bg-dark-800 p-6 mb-6">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <div className="text-xs uppercase tracking-wide text-zinc-500">Status</div>
+            <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Status</div>
             <div className={`text-xl font-semibold ${info.color}`}>{info.label}</div>
           </div>
           <div className="text-right">
-            <div className="text-xs uppercase tracking-wide text-zinc-500">Monthly price</div>
-            <div className="text-xl font-semibold text-zinc-900">R{amountZar}</div>
+            <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Monthly price</div>
+            <div className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">R{amountZar}</div>
           </div>
         </div>
 
         {status === 'trialing' && sub?.trialEndsAt && (
-          <div className="rounded-lg bg-zinc-50 p-4 text-sm text-zinc-700 mb-4">
+          <div className="rounded-lg bg-zinc-50 dark:bg-dark-900 p-4 text-sm text-zinc-700 dark:text-zinc-200 mb-4">
             <strong>Your trial ends on {formatDate(sub.trialEndsAt)}.</strong><br />
             On that date we'll charge R{amountZar} to your card and every month after.
             Cancel any time before then and you won't be charged.
@@ -147,20 +147,20 @@ export default function VenueBilling() {
         )}
 
         {status === 'active' && sub?.currentPeriodEnd && (
-          <div className="text-sm text-zinc-600 mb-4">
+          <div className="text-sm text-zinc-600 dark:text-zinc-300 mb-4">
             Next billing date: <strong>{formatDate(sub.currentPeriodEnd)}</strong>
           </div>
         )}
 
         {status === 'past_due' && (
-          <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800 mb-4">
+          <div className="rounded-lg bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-800 dark:text-red-200 mb-4">
             Your last payment failed. Please update your card to keep your dashboard active.
           </div>
         )}
 
         {showStartButton && (
           <>
-            <div className="rounded-lg bg-brand-50 p-4 text-sm text-zinc-800 mb-4">
+            <div className="rounded-lg bg-brand-50 dark:bg-brand-900/20 p-4 text-sm text-zinc-800 dark:text-zinc-200 mb-4">
               <p className="font-semibold mb-2">What you're signing up for:</p>
               <ul className="list-disc pl-5 space-y-1">
                 <li><strong>{trialDays}-day free trial</strong> — no charge during the trial</li>
@@ -172,8 +172,8 @@ export default function VenueBilling() {
                 </li>
               </ul>
             </div>
-            <p className="text-xs text-zinc-500 mb-4">
-              By continuing you accept the <Link to="/terms" className="text-brand-600 hover:underline">Terms of Service</Link>.
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+              By continuing you accept the <Link to="/terms" className="text-brand-600 dark:text-brand-400 hover:underline">Terms of Service</Link>.
             </p>
             <button
               onClick={handleStart}
@@ -189,14 +189,14 @@ export default function VenueBilling() {
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={handleManage}
-              className="flex-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-semibold py-3"
+              className="flex-1 rounded-lg bg-zinc-100 dark:bg-dark-700 hover:bg-zinc-200 dark:hover:bg-dark-600 text-zinc-800 dark:text-zinc-100 font-semibold py-3"
             >
               Update payment method
             </button>
             <button
               onClick={handleCancel}
               disabled={canceling}
-              className="flex-1 rounded-lg bg-white border border-red-300 hover:bg-red-50 text-red-700 font-semibold py-3 disabled:opacity-50"
+              className="flex-1 rounded-lg bg-white dark:bg-dark-800 border border-red-300 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-700 dark:text-red-300 font-semibold py-3 disabled:opacity-50"
             >
               {canceling ? 'Cancelling…' : 'Cancel subscription'}
             </button>
@@ -204,7 +204,7 @@ export default function VenueBilling() {
         )}
       </div>
 
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">
         Payments processed by Paystack. Speeldit never sees or stores your card details.
       </p>
     </div>

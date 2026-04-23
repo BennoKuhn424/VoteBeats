@@ -48,6 +48,22 @@ router.get('/:venueCode', authMiddleware, (req, res) => {
   res.json(out);
 });
 
+// PUT /api/venue/:venueCode/theme  — lightweight, NOT subscription-gated.
+// Venues should be able to pick light/dark before/after their subscription lapses.
+router.put('/:venueCode/theme', authMiddleware, (req, res) => {
+  if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
+  const { theme } = req.body;
+  if (theme !== 'light' && theme !== 'dark') {
+    return res.status(400).json({ error: 'theme must be "light" or "dark"' });
+  }
+  const venue = db.getVenue(req.params.venueCode);
+  if (!venue) return res.status(404).json({ error: 'Venue not found' });
+  if (!venue.settings) venue.settings = {};
+  venue.settings.theme = theme;
+  db.saveVenue(req.params.venueCode, venue);
+  res.json({ theme });
+});
+
 // PUT /api/venue/:venueCode/settings
 router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
@@ -106,6 +122,14 @@ router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, (r
   if (typeof autoplayQueue === 'boolean') venue.settings.autoplayQueue = autoplayQueue;
   if (typeof autoplayMode === 'string' && ['off', 'playlist', 'random'].includes(autoplayMode)) {
     venue.settings.autoplayMode = autoplayMode;
+  }
+  if (req.body.theme !== undefined) {
+    const t = req.body.theme;
+    if (t === 'light' || t === 'dark') {
+      venue.settings.theme = t;
+    } else if (t === null || t === '') {
+      delete venue.settings.theme;
+    }
   }
   if (timezone !== undefined) {
     if (timezone === null || timezone === '') {

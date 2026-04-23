@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
+import { Sun, Moon } from 'lucide-react';
 import api from '../../utils/api';
 import Button from '../shared/Button';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
   const [maxSongsPerUser, setMaxSongsPerUser] = useState(3);
@@ -9,6 +11,7 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
   const [requestPriceCents, setRequestPriceCents] = useState(1000);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     if (!venueCode) return;
@@ -60,6 +63,37 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
         genre/language mix and explicit rules.
       </p>
       <form onSubmit={handleSubmit} className="space-y-5">
+        <div>
+          <label className={`block text-sm font-medium mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>Appearance</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setTheme('light')}
+              className={`flex items-center justify-center gap-2 min-h-touch rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-colors ${
+                theme === 'light'
+                  ? 'border-brand-500 bg-brand-50 text-brand-700'
+                  : isLight
+                    ? 'border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400'
+                    : 'border-dark-600 bg-dark-700 text-dark-200 hover:border-dark-500'
+              }`}
+            >
+              <Sun className="h-4 w-4" /> Light
+            </button>
+            <button
+              type="button"
+              onClick={() => setTheme('dark')}
+              className={`flex items-center justify-center gap-2 min-h-touch rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-colors ${
+                theme === 'dark'
+                  ? 'border-brand-500 bg-brand-500/10 text-brand-400'
+                  : isLight
+                    ? 'border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400'
+                    : 'border-dark-600 bg-dark-700 text-dark-200 hover:border-dark-500'
+              }`}
+            >
+              <Moon className="h-4 w-4" /> Dark
+            </button>
+          </div>
+        </div>
         <div>
           <label className={`block text-sm font-medium mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>Max songs per user</label>
           <input

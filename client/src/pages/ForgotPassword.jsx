@@ -26,31 +26,31 @@ export default function ForgotPassword() {
   }
 
   const inputClass =
-    'w-full min-h-touch pl-10 pr-4 py-3 bg-white border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-zinc-900 placeholder:text-zinc-400';
+    'w-full min-h-touch pl-10 pr-4 py-3 bg-white dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500';
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900">
       <div className="w-full max-w-md px-4 py-8 sm:px-8">
-        <div className="bg-white rounded-xl shadow-xl border border-zinc-200 p-6 sm:p-8">
+        <div className="bg-white dark:bg-dark-800 rounded-xl shadow-xl border border-zinc-200 dark:border-dark-600 p-6 sm:p-8">
           <div className="flex justify-center mb-6">
             <Logo size="xl" />
           </div>
 
           {sent ? (
             <div className="text-center">
-              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Mail className="h-6 w-6 text-green-600" />
+              <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Mail className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
-              <h2 className="text-xl font-semibold text-zinc-900 mb-2">Check your email</h2>
-              <p className="text-sm text-zinc-600 mb-6">
+              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Check your email</h2>
+              <p className="text-sm text-zinc-600 dark:text-zinc-300 mb-6">
                 If an account exists with <strong>{email}</strong>, we've sent a password reset link. It expires in 1 hour.
               </p>
-              <p className="text-xs text-zinc-500 mb-6">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-6">
                 Don't see it? Check your spam folder.
               </p>
               <Link
                 to="/venue/login"
-                className="inline-flex items-center gap-1.5 text-sm text-brand-600 hover:text-brand-700 font-medium"
+                className="inline-flex items-center gap-1.5 text-sm text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 font-medium"
               >
                 <ArrowLeft className="h-4 w-4" />
                 Back to Login
@@ -59,19 +59,19 @@ export default function ForgotPassword() {
           ) : (
             <>
               <div className="mb-6 text-center">
-                <h2 className="text-xl font-semibold text-zinc-900 mb-2">Forgot your password?</h2>
-                <p className="text-sm text-zinc-600">
+                <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Forgot your password?</h2>
+                <p className="text-sm text-zinc-600 dark:text-zinc-300">
                   Enter your email and we'll send you a link to reset your password.
                 </p>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="space-y-2">
-                  <label htmlFor="email" className="text-zinc-700 text-sm font-medium block">
+                  <label htmlFor="email" className="text-zinc-700 dark:text-zinc-200 text-sm font-medium block">
                     Email Address
                   </label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 pointer-events-none" />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 dark:text-zinc-500 pointer-events-none" />
                     <input
                       id="email"
                       type="email"
@@ -87,7 +87,7 @@ export default function ForgotPassword() {
                   </div>
                 </div>
 
-                {error && <p className="text-red-500 text-sm">{error}</p>}
+                {error && <p className="text-red-500 dark:text-red-400 text-sm">{error}</p>}
 
                 <Button
                   type="submit"
@@ -101,7 +101,7 @@ export default function ForgotPassword() {
               <div className="mt-6 text-center">
                 <Link
                   to="/venue/login"
-                  className="inline-flex items-center gap-1.5 text-sm text-zinc-600 hover:text-zinc-900"
+                  className="inline-flex items-center gap-1.5 text-sm text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100"
                 >
                   <ArrowLeft className="h-4 w-4" />
                   Back to Login

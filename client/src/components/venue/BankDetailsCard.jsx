@@ -68,31 +68,31 @@ export default function BankDetailsCard({ venueCode }) {
   }
 
   const inputClass =
-    'w-full px-3 py-2.5 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent';
+    'w-full px-3 py-2.5 border border-zinc-300 dark:border-dark-600 bg-white dark:bg-dark-700 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent';
 
   return (
-    <div className="mb-6 p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">
+    <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
       <div className="flex items-start gap-3 mb-4">
-        <div className="p-2 bg-blue-100 rounded-lg">
-          <Landmark className="h-5 w-5 text-blue-600" />
+        <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+          <Landmark className="h-5 w-5 text-blue-600 dark:text-blue-400" />
         </div>
         <div className="flex-1">
-          <h3 className="text-sm font-medium text-zinc-600 uppercase tracking-wide mb-1">
+          <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 uppercase tracking-wide mb-1">
             Payout bank details
           </h3>
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
             Where we send your monthly 70% share. Updates take effect on the next payout run.
           </p>
         </div>
       </div>
 
       {loading ? (
-        <div className="h-48 bg-zinc-50 rounded-lg animate-pulse" />
+        <div className="h-48 bg-zinc-50 dark:bg-dark-900 rounded-lg animate-pulse" />
       ) : (
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-zinc-600 mb-1">Bank name</label>
+              <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Bank name</label>
               <input
                 type="text"
                 value={details.bankName}
@@ -104,7 +104,7 @@ export default function BankDetailsCard({ venueCode }) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-zinc-600 mb-1">Account holder</label>
+              <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Account holder</label>
               <input
                 type="text"
                 value={details.accountHolder}
@@ -116,7 +116,7 @@ export default function BankDetailsCard({ venueCode }) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-zinc-600 mb-1">Account number</label>
+              <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Account number</label>
               <input
                 type="text"
                 inputMode="numeric"
@@ -129,7 +129,7 @@ export default function BankDetailsCard({ venueCode }) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-zinc-600 mb-1">Branch code</label>
+              <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Branch code</label>
               <input
                 type="text"
                 inputMode="numeric"
@@ -142,7 +142,7 @@ export default function BankDetailsCard({ venueCode }) {
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-zinc-600 mb-1">Account type</label>
+              <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">Account type</label>
               <select
                 value={details.accountType}
                 onChange={(e) => update('accountType', e.target.value)}
@@ -156,9 +156,9 @@ export default function BankDetailsCard({ venueCode }) {
           </div>
 
           {error && (
-            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700">{error}</p>
+            <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-lg">
+              <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
             </div>
           )}
 
@@ -171,7 +171,7 @@ export default function BankDetailsCard({ venueCode }) {
               {saving ? 'Saving…' : hasExisting ? 'Update bank details' : 'Save bank details'}
             </button>
             {saved && (
-              <span className="inline-flex items-center gap-1.5 text-sm text-green-700">
+              <span className="inline-flex items-center gap-1.5 text-sm text-green-700 dark:text-green-400">
                 <Check className="h-4 w-4" /> Saved
               </span>
             )}

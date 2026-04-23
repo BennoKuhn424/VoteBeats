@@ -39,8 +39,8 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
       <div className={cardClass}>
         {isLight && (
           <div className="flex items-start gap-3 mb-4">
-            <div className="p-2 bg-orange-100 rounded-lg">
-              <DollarSign className="h-5 w-5 text-brand-600" />
+            <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
+              <DollarSign className="h-5 w-5 text-brand-600 dark:text-brand-400" />
             </div>
             <div className="flex-1">
               <div className="h-4 bg-zinc-200 rounded w-32 mb-2" />
@@ -61,7 +61,7 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
   if (fetchError && !earnings) {
     return (
       <div className={cardClass}>
-        <p className={`text-sm ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>
+        <p className={`text-sm ${isLight ? 'text-zinc-500 dark:text-zinc-400' : 'text-dark-400'}`}>
           Could not load earnings.{' '}
           <button onClick={fetchEarnings} className="text-brand-500 hover:text-brand-400 underline">
             Retry
@@ -76,14 +76,14 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
       <div className={cardClass}>
         {isLight && (
           <div className="flex items-start gap-3 mb-4">
-            <div className="p-2 bg-orange-100 rounded-lg">
-              <DollarSign className="h-5 w-5 text-brand-600" />
+            <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
+              <DollarSign className="h-5 w-5 text-brand-600 dark:text-brand-400" />
             </div>
             <div className="flex-1">
-              <h3 className="text-sm font-medium text-zinc-600 uppercase tracking-wide mb-1">
+              <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 uppercase tracking-wide mb-1">
                 Pay-to-play earnings
               </h3>
-              <p className="text-sm text-zinc-500">
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
                 Enable &quot;Require payment to suggest a song&quot; in Settings to track earnings.
               </p>
             </div>
@@ -119,13 +119,13 @@ export default function EarningsCard({ venueCode, showPlaceholder, variant = 'da
             <h3 className="text-sm font-medium text-zinc-600 uppercase tracking-wide mb-1">
               Pay-to-play earnings
             </h3>
-            <p className="text-3xl font-bold text-brand-600">R {venueShareRand.toFixed(2)}</p>
+            <p className="text-3xl font-bold text-brand-600 dark:text-brand-400">R {venueShareRand.toFixed(2)}</p>
           </div>
         </div>
-        <div className="text-sm text-zinc-600 space-y-1">
+        <div className="text-sm text-zinc-600 dark:text-zinc-300 space-y-1">
           <p>This month: {paymentsCount} paid requests</p>
           {hasEarnings && (
-            <p className="text-zinc-500">
+            <p className="text-zinc-500 dark:text-zinc-400">
               Gross: R{grossRand.toFixed(2)} (70% venue share)
             </p>
           )}

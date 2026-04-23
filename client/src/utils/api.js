@@ -153,6 +153,12 @@ export default {
     api.post(`/venue/${venueCode}/playlists/${playlistId}/generate`, { checkoutId, prompt, count }, { timeout: 60000 }),
   updateSettings: (venueCode, settings) =>
     api.put(`/venue/${venueCode}/settings`, settings),
+  setVenueTheme: (theme) => {
+    // Read venue code lazily so this works even before full auth hydration.
+    const code = (typeof localStorage !== 'undefined' && localStorage.getItem('speeldit_venue_code')) || '';
+    if (!code) return Promise.reject(new Error('No venue code for theme write'));
+    return api.put(`/venue/${code}/theme`, { theme });
+  },
   banArtist: (venueCode, artist) =>
     api.post(`/venue/${venueCode}/ban-artist`, { artist }),
   getVenueEarnings: (venueCode, year, month) =>

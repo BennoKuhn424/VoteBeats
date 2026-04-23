@@ -43,8 +43,8 @@ export default function VenueBillingComplete() {
   }, [reference, navigate]);
 
   return (
-    <div className="max-w-md mx-auto px-5 py-16 text-center text-zinc-600">
-      <div className="animate-pulse mb-4 text-zinc-400">•••</div>
+    <div className="max-w-md mx-auto px-5 py-16 text-center text-zinc-600 dark:text-zinc-300">
+      <div className="animate-pulse mb-4 text-zinc-400 dark:text-zinc-500">•••</div>
       <p>{message}</p>
     </div>
   );

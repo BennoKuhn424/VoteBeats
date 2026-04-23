@@ -6,19 +6,33 @@ export default function QueueManager({ queue, onSkip, onRemove, onBan, variant =
   const orderedUpcoming = upcoming || [];
   const isLight = variant === 'light';
 
-  const cardClass = isLight ? 'bg-zinc-50 border border-zinc-200 rounded-lg' : 'bg-dark-700/50 rounded-xl';
+  const cardClass = isLight
+    ? 'bg-zinc-50 dark:bg-dark-700/50 border border-zinc-200 dark:border-dark-600 rounded-lg'
+    : 'bg-dark-700/50 rounded-xl';
   const nowPlayingCardClass = isLight
-    ? 'mb-6 p-4 bg-brand-50 rounded-xl border border-brand-200'
+    ? 'mb-6 p-4 bg-brand-50 dark:bg-brand-500/20 rounded-xl border border-brand-200 dark:border-brand-500/30'
     : 'mb-6 p-4 bg-brand-500/20 rounded-xl border border-brand-500/30';
-  const titleClass = isLight ? 'text-xs text-brand-700 font-semibold mb-2' : 'text-xs text-brand-300 font-semibold mb-2';
-  const songTitleClass = isLight ? 'font-semibold text-zinc-900 line-clamp-2 break-words' : 'font-semibold text-white line-clamp-2 break-words';
-  const artistClass = isLight ? 'text-sm text-zinc-600 line-clamp-1 break-words' : 'text-sm text-dark-300 line-clamp-1 break-words';
-  const emptyClass = isLight ? 'text-zinc-500 text-sm' : 'text-dark-400 text-sm';
-  const upcomingLabelClass = isLight ? 'font-semibold text-zinc-600 mb-2' : 'font-semibold text-dark-300 mb-2';
-  const upcomingItemClass = isLight ? 'p-3 bg-zinc-100 rounded-xl' : 'p-3 bg-dark-700/50 rounded-xl';
-  const upcomingSongClass = isLight ? 'font-semibold text-sm text-zinc-900' : 'font-semibold text-sm text-white';
-  const upcomingArtistClass = isLight ? 'text-xs text-zinc-500' : 'text-xs text-dark-300';
-  const indexClass = isLight ? 'text-zinc-500 text-sm' : 'text-dark-400 text-sm';
+  const titleClass = isLight
+    ? 'text-xs text-brand-700 dark:text-brand-300 font-semibold mb-2'
+    : 'text-xs text-brand-300 font-semibold mb-2';
+  const songTitleClass = isLight
+    ? 'font-semibold text-zinc-900 dark:text-zinc-100 line-clamp-2 break-words'
+    : 'font-semibold text-white line-clamp-2 break-words';
+  const artistClass = isLight
+    ? 'text-sm text-zinc-600 dark:text-zinc-300 line-clamp-1 break-words'
+    : 'text-sm text-dark-300 line-clamp-1 break-words';
+  const emptyClass = isLight ? 'text-zinc-500 dark:text-zinc-400 text-sm' : 'text-dark-400 text-sm';
+  const upcomingLabelClass = isLight
+    ? 'font-semibold text-zinc-600 dark:text-zinc-300 mb-2'
+    : 'font-semibold text-dark-300 mb-2';
+  const upcomingItemClass = isLight
+    ? 'p-3 bg-zinc-100 dark:bg-dark-700/50 rounded-xl'
+    : 'p-3 bg-dark-700/50 rounded-xl';
+  const upcomingSongClass = isLight
+    ? 'font-semibold text-sm text-zinc-900 dark:text-zinc-100'
+    : 'font-semibold text-sm text-white';
+  const upcomingArtistClass = isLight ? 'text-xs text-zinc-500 dark:text-zinc-400' : 'text-xs text-dark-300';
+  const indexClass = isLight ? 'text-zinc-500 dark:text-zinc-400 text-sm' : 'text-dark-400 text-sm';
 
   return (
     <div className={isLight ? '' : 'bg-dark-800 rounded-2xl border border-dark-600 p-6'}>
@@ -34,7 +48,7 @@ export default function QueueManager({ queue, onSkip, onRemove, onBan, variant =
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             ) : (
-              <div className="w-14 h-14 rounded-xl bg-zinc-200 shrink-0" />
+              <div className="w-14 h-14 rounded-xl bg-zinc-200 dark:bg-dark-700 shrink-0" />
             )}
             <div className="flex-1 min-w-0">
               <p className={songTitleClass}>{nowPlaying.title}</p>
@@ -48,7 +62,7 @@ export default function QueueManager({ queue, onSkip, onRemove, onBan, variant =
                   title={`Ban ${nowPlaying.artist}`}
                   className={`p-2.5 rounded-lg transition-colors ${
                     isLight
-                      ? 'text-zinc-400 hover:text-red-600 hover:bg-red-50'
+                      ? 'text-zinc-400 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30'
                       : 'text-dark-400 hover:text-red-400 hover:bg-dark-600'
                   }`}
                 >
@@ -90,7 +104,7 @@ export default function QueueManager({ queue, onSkip, onRemove, onBan, variant =
                     onError={(e) => { e.currentTarget.style.display = 'none'; }}
                   />
                 ) : (
-                  <div className="w-10 h-10 rounded-lg bg-zinc-200 shrink-0" />
+                  <div className="w-10 h-10 rounded-lg bg-zinc-200 dark:bg-dark-700 shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
                   <p className={upcomingSongClass}>{song.title || 'Unknown'}</p>
@@ -105,7 +119,7 @@ export default function QueueManager({ queue, onSkip, onRemove, onBan, variant =
                     title={`Ban ${song.artist}`}
                     className={`p-2.5 rounded-lg transition-colors text-xs ${
                       isLight
-                        ? 'text-zinc-400 hover:text-red-600 hover:bg-red-50'
+                        ? 'text-zinc-400 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30'
                         : 'text-dark-400 hover:text-red-400 hover:bg-dark-600'
                     }`}
                   >
@@ -114,7 +128,7 @@ export default function QueueManager({ queue, onSkip, onRemove, onBan, variant =
                 )}
                 <Button
                   variant="secondary"
-                  className={`!py-2.5 !px-4 text-xs shrink-0 ${isLight ? '!bg-zinc-200 !text-zinc-800 hover:!bg-zinc-300 !border-zinc-300' : ''}`}
+                  className={`!py-2.5 !px-4 text-xs shrink-0 ${isLight ? '!bg-zinc-200 dark:!bg-dark-700 !text-zinc-800 dark:!text-zinc-200 hover:!bg-zinc-300 dark:hover:!bg-dark-600 !border-zinc-300 dark:!border-dark-600' : ''}`}
                   onClick={() => onRemove(song.id)}
                 >
                   Remove
