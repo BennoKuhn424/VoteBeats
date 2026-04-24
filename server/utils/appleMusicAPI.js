@@ -28,6 +28,11 @@ const LANGUAGE_GENRES = new Set([
 // Prevents the same song from being picked twice in a row during autofill.
 const recentlyPlayedByVenue = new Map();
 
+function isMockCatalogEnabled() {
+  if (String(process.env.ALLOW_MOCK_CATALOG || '').toLowerCase() === 'true') return true;
+  return process.env.NODE_ENV !== 'production';
+}
+
 function getRecentPool(venueCode) {
   if (!recentlyPlayedByVenue.has(venueCode)) recentlyPlayedByVenue.set(venueCode, []);
   return recentlyPlayedByVenue.get(venueCode);
@@ -701,7 +706,8 @@ async function filterByVenueSettingsAsync(songs, venue) {
 /**
  * Search Apple Music catalog for songs matching a query string.
  * Applies venue-level filters (explicit content, blocked artists, genre).
- * Falls back to a mock catalog when no Apple developer token is configured.
+ * Falls back to a mock catalog only outside production (or when
+ * ALLOW_MOCK_CATALOG=true). Fake IDs should never silently reach production.
  * @param {string} query - Free-text search term
  * @param {string|null} [venueCode] - Optional venue code for filter context
  * @returns {Promise<object[]>} Array of song objects { appleId, title, artist, albumArt, duration, genre, isExplicit }
@@ -744,11 +750,13 @@ async function searchAppleMusic(query, venueCode) {
       return filterByVenueSettingsAsync(songs, venue);
     } catch (err) {
       console.error('Apple Music API error:', err);
-      return mockSearch(query, venue);
+      if (isMockCatalogEnabled()) return mockSearch(query, venue);
+      throw err;
     }
   }
 
-  return mockSearch(query, venue);
+  if (isMockCatalogEnabled()) return mockSearch(query, venue);
+  throw new Error('Apple Music provider is not configured');
 }
 
 async function mockSearch(query, venue) {
@@ -868,10 +876,11 @@ async function searchByGenre(genres, venueCode) {
     }
   }
 
-  // Mock catalog fallback — only used when no real Apple Music token is configured
-  // (i.e. development mode). Mock song IDs like "song_117" are fake and MusicKit
-  // will throw NOT_FOUND if we try to play them with a real subscription.
+  // Mock catalog fallback — only used outside production or when explicitly enabled.
+  // Mock song IDs like "song_117" are fake and MusicKit will throw NOT_FOUND if
+  // we try to play them with a real subscription.
   if (token) return null;
+  if (!isMockCatalogEnabled()) return null;
 
   const matched = MOCK_CATALOG.filter((s) => songMatchesGenreRules(s, languageGenres, regularGenres));
   if (matched.length === 0) return null;
@@ -914,6 +923,7 @@ module.exports = {
   searchAppleMusic,
   searchByGenre,
   pickFromPlaylist,
+  isMockCatalogEnabled,
   // Exported for direct unit testing of the filter pipeline.
   filterByVenueSettings,
   filterByVenueSettingsAsync,

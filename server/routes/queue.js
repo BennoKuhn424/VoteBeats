@@ -107,25 +107,8 @@ router.get('/:venueCode', async (req, res) => {
   try {
     const { venueCode } = req.params;
     const { deviceId } = req.query;
-    let queue = queueRepo.get(venueCode);
+    const queue = queueRepo.get(venueCode);
     const venue = db.getVenue(venueCode);
-
-    const np = queue.nowPlaying;
-    if (np && !np.isPaused && !np.pausedAt) {
-      let durationMs = (np.duration || 0) * 1000;
-      if (durationMs < 30000) durationMs = 600000;
-      const currentPos = getCurrentPositionMs(np);
-      if (currentPos >= durationMs + 10000) {
-        queue = await advanceToNextSong(venueCode, np.id);
-        broadcast.broadcastQueue(venueCode, queue);
-        if (!queue.nowPlaying) {
-          const s = venue?.settings;
-          if (s?.autoplayMode !== 'off' && s?.autoplayQueue !== false) {
-            serverAutofill(venueCode, venue).catch((err) => console.error('Autofill error:', err));
-          }
-        }
-      }
-    }
 
     let myVotes = {};
     if (deviceId) {

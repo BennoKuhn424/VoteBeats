@@ -23,6 +23,7 @@ jest.mock('../utils/yoco', () => ({
 jest.mock('../utils/appleMusicToken', () => ({ getToken: jest.fn().mockResolvedValue('mock-token') }));
 
 const request = require('supertest');
+const jwt = require('jsonwebtoken');
 const db = require('../utils/database');
 const queueRepo = require('../repos/queueRepo');
 const { app } = require('../app');
@@ -30,6 +31,7 @@ const { app } = require('../app');
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 const VENUE_CODE = 'TSTV01';
 const DEVICE_ID = 'device_test_abc123';
+const JWT_SECRET = process.env.JWT_SECRET || 'speeldit-dev-secret-change-in-production';
 
 const TEST_VENUE = {
   code: VENUE_CODE,
@@ -55,10 +57,22 @@ function makeSong(overrides = {}) {
   };
 }
 
+function venueJwt(venueCode, csrf = 'csrf-test') {
+  return jwt.sign({ venueCode, csrf, jti: `jti-${venueCode}` }, JWT_SECRET, { expiresIn: '7d' });
+}
+
+function authedPost(path) {
+  return request(app)
+    .post(path)
+    .set('Cookie', `auth_token=${venueJwt(VENUE_CODE)}`)
+    .set('X-CSRF-Token', 'csrf-test');
+}
+
 beforeEach(() => {
   jest.resetAllMocks();
   db.getVenue.mockReturnValue(TEST_VENUE);
   db.getAllVenues.mockReturnValue({ [VENUE_CODE]: TEST_VENUE });
+  db.getSubscription.mockReturnValue({ status: 'active' });
   db.getVotesForDevice.mockReturnValue({});
   db.getPlayerVolumeReport.mockReturnValue(null);
   db.recordAnalyticsEvent.mockImplementation(() => {});
@@ -79,6 +93,18 @@ describe('GET /api/queue/:venueCode', () => {
     expect(res.status).toBe(200);
     expect(res.body.nowPlaying).toBeNull();
     expect(res.body.upcoming).toEqual([]);
+  });
+
+  test('does not mutate queue state from a read request', async () => {
+    queueRepo.get.mockReturnValue({
+      nowPlaying: { id: 'old', appleId: 'old', title: 'Old Song', duration: 1, positionMs: 120000, positionAnchoredAt: Date.now() - 120000 },
+      upcoming: [{ id: 'next', appleId: 'next', title: 'Next Song' }],
+    });
+    const res = await request(app).get(`/api/queue/${VENUE_CODE}`);
+    expect(res.status).toBe(200);
+    expect(queueRepo.update).not.toHaveBeenCalled();
+    expect(require('../utils/broadcast').broadcastQueue).not.toHaveBeenCalled();
+    expect(require('../routes/queueAutofill').serverAutofill).not.toHaveBeenCalled();
   });
 
   test('includes requestSettings in response', async () => {
@@ -269,8 +295,7 @@ describe('POST /api/queue/:venueCode/request — queue mutation', () => {
 // ══════════════════════════════════════════════════════════════════════════════
 describe('POST /api/queue/:venueCode/advance', () => {
   test('400 when songId is missing', async () => {
-    const res = await request(app)
-      .post(`/api/queue/${VENUE_CODE}/advance`)
+    const res = await authedPost(`/api/queue/${VENUE_CODE}/advance`)
       .send({});
     expect(res.status).toBe(400);
   });
@@ -280,8 +305,7 @@ describe('POST /api/queue/:venueCode/advance', () => {
       nowPlaying: { id: 's2', appleId: 'ap2', title: 'New song' },
       upcoming: [],
     });
-    const res = await request(app)
-      .post(`/api/queue/${VENUE_CODE}/advance`)
+    const res = await authedPost(`/api/queue/${VENUE_CODE}/advance`)
       .send({ songId: 's1' }); // stale — server is already on s2
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -290,8 +314,7 @@ describe('POST /api/queue/:venueCode/advance', () => {
   test('500 on unexpected error', async () => {
     queueRepo.get.mockReturnValue({ nowPlaying: { id: 'target' }, upcoming: [] });
     queueRepo.update.mockRejectedValue(new Error('mutex error'));
-    const res = await request(app)
-      .post(`/api/queue/${VENUE_CODE}/advance`)
+    const res = await authedPost(`/api/queue/${VENUE_CODE}/advance`)
       .send({ songId: 'target' });
     expect(res.status).toBe(500);
   });
@@ -306,8 +329,7 @@ describe('POST /api/queue/:venueCode/playing', () => {
       nowPlaying: { id: 's1', appleId: 'ap1', title: 'Song' },
       upcoming: [],
     });
-    const res = await request(app)
-      .post(`/api/queue/${VENUE_CODE}/playing`)
+    const res = await authedPost(`/api/queue/${VENUE_CODE}/playing`)
       .send({ songId: 's1', positionSeconds: 30 });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -315,8 +337,7 @@ describe('POST /api/queue/:venueCode/playing', () => {
 
   test('500 on unexpected queueRepo error', async () => {
     queueRepo.update.mockRejectedValue(new Error('boom'));
-    const res = await request(app)
-      .post(`/api/queue/${VENUE_CODE}/playing`)
+    const res = await authedPost(`/api/queue/${VENUE_CODE}/playing`)
       .send({ songId: 's1', positionSeconds: 30 });
     expect(res.status).toBe(500);
     expect(res.body.error).toMatch(/could not update playback/i);
@@ -329,16 +350,14 @@ describe('POST /api/queue/:venueCode/pause', () => {
       nowPlaying: { id: 's1', appleId: 'ap1', title: 'Song', positionMs: 0, positionAnchoredAt: Date.now(), isPaused: false },
       upcoming: [],
     });
-    const res = await request(app)
-      .post(`/api/queue/${VENUE_CODE}/pause`)
+    const res = await authedPost(`/api/queue/${VENUE_CODE}/pause`)
       .send({ songId: 's1' });
     expect(res.status).toBe(200);
   });
 
   test('500 on unexpected queueRepo error', async () => {
     queueRepo.update.mockRejectedValue(new Error('boom'));
-    const res = await request(app)
-      .post(`/api/queue/${VENUE_CODE}/pause`)
+    const res = await authedPost(`/api/queue/${VENUE_CODE}/pause`)
       .send({ songId: 's1' });
     expect(res.status).toBe(500);
     expect(res.body.error).toMatch(/could not pause/i);
