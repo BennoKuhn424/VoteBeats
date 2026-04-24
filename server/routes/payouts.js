@@ -10,8 +10,33 @@ const db = require('../utils/database');
 const ownerAuthMiddleware = require('../middleware/ownerAuthMiddleware');
 const authMiddleware = require('../middleware/authMiddleware');
 const E = require('../utils/errorCodes');
+const paymentCrypto = require('../utils/paymentCrypto');
 
 const router = express.Router();
+
+const BANK_DETAIL_SECRET_FIELDS = ['accountHolder', 'accountNumber', 'branchCode'];
+
+function encryptBankDetails(details) {
+  const out = { ...details };
+  if (!paymentCrypto.ENABLED) return out;
+  for (const field of BANK_DETAIL_SECRET_FIELDS) {
+    if (out[field]) out[field] = paymentCrypto.encrypt(String(out[field])) || String(out[field]);
+  }
+  out._encrypted = true;
+  return out;
+}
+
+function decryptBankDetails(details) {
+  if (!details) return null;
+  const out = { ...details };
+  for (const field of BANK_DETAIL_SECRET_FIELDS) {
+    if (!out[field]) continue;
+    const decrypted = paymentCrypto.decrypt(String(out[field]));
+    out[field] = decrypted !== null ? decrypted : out[field];
+  }
+  delete out._encrypted;
+  return out;
+}
 
 // ── Owner routes (platform admin) ───────────────────────────────────────────
 
@@ -77,7 +102,7 @@ router.get('/', ownerAuthMiddleware, (req, res) => {
       return {
         ...p,
         venueName: venue?.name || p.venueCode,
-        bankDetails: venue?.settings?.bankDetails || null,
+        bankDetails: decryptBankDetails(venue?.settings?.bankDetails),
       };
     });
 
@@ -222,18 +247,18 @@ router.put('/venue/:venueCode/bank-details', authMiddleware, (req, res) => {
     if (!venue) return res.status(404).json({ error: 'Venue not found' });
 
     if (!venue.settings) venue.settings = {};
-    venue.settings.bankDetails = {
+    venue.settings.bankDetails = encryptBankDetails({
       bankName: bankName.trim(),
       accountHolder: accountHolder.trim(),
       accountNumber: cleanAccNum,
       branchCode: cleanBranch,
       accountType: accountType || 'cheque',
       updatedAt: Date.now(),
-    };
+    });
 
     db.saveVenue(req.params.venueCode, venue);
 
-    res.json({ message: 'Bank details updated', bankDetails: venue.settings.bankDetails });
+    res.json({ message: 'Bank details updated', bankDetails: decryptBankDetails(venue.settings.bankDetails) });
   } catch (err) {
     console.error('Bank details update error:', err);
     res.status(500).json({ error: 'Failed to update bank details' });
@@ -252,7 +277,7 @@ router.get('/venue/:venueCode/bank-details', authMiddleware, (req, res) => {
     const venue = db.getVenue(req.params.venueCode);
     if (!venue) return res.status(404).json({ error: 'Venue not found' });
 
-    res.json({ bankDetails: venue.settings?.bankDetails || null });
+    res.json({ bankDetails: decryptBankDetails(venue.settings?.bankDetails) });
   } catch (err) {
     console.error('Bank details read error:', err);
     res.status(500).json({ error: 'Failed to load bank details' });

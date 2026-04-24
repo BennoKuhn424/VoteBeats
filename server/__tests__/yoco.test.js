@@ -57,9 +57,9 @@ describe('verifyYocoWebhookSignature', () => {
     jest.resetModules();
   });
 
-  test('skips verification when YOCO_WEBHOOK_SECRET is unset', () => {
+  test('fails verification when YOCO_WEBHOOK_SECRET is unset', () => {
     delete process.env.YOCO_WEBHOOK_SECRET;
     const { verifyYocoWebhookSignature } = require('../utils/yoco');
-    expect(verifyYocoWebhookSignature(Buffer.from('{}'), {})).toBe(true);
+    expect(verifyYocoWebhookSignature(Buffer.from('{}'), {})).toBe(false);
   });
 });

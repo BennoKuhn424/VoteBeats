@@ -41,8 +41,15 @@ const VOLUME_FEEDBACK_MAX_ENTRIES = 10_000;
 const VOLUME_FEEDBACK_COOLDOWN_MS = 90 * 1000;
 const VOLUME_REPORT_MAX_AGE_MS = 30 * 60 * 1000;
 
+function requireSameVenue(req, res, next) {
+  if (req.venue?.code !== req.params.venueCode) {
+    return res.status(403).json({ error: 'Unauthorized', code: E.QUEUE_SKIP_UNAUTHORIZED });
+  }
+  next();
+}
+
 // POST /api/queue/:venueCode/report-volume — venue player reports slider level (0–100)
-router.post('/:venueCode/report-volume', validate(volumeReportSchema), (req, res) => {
+router.post('/:venueCode/report-volume', authMiddleware, requireSubscriptionActive, requireSameVenue, validate(volumeReportSchema), (req, res) => {
   const { venueCode } = req.params;
   if (!db.getVenue(venueCode)) return res.status(404).json({ error: 'Venue not found', code: E.QUEUE_VENUE_NOT_FOUND });
   db.setPlayerVolumeReport(venueCode, req.body.volumePercent);
@@ -227,7 +234,7 @@ router.post('/:venueCode/request', requireVenueSubscriptionActive, validate(requ
 attachVoteRoutes(router);
 
 // POST /api/queue/:venueCode/playing
-router.post('/:venueCode/playing', validate(playingSchema), async (req, res) => {
+router.post('/:venueCode/playing', authMiddleware, requireSubscriptionActive, requireSameVenue, validate(playingSchema), async (req, res) => {
   try {
     const { venueCode } = req.params;
     const { songId, positionSeconds } = req.body;
@@ -260,7 +267,7 @@ router.post('/:venueCode/playing', validate(playingSchema), async (req, res) => 
 });
 
 // POST /api/queue/:venueCode/pause
-router.post('/:venueCode/pause', validate(songIdSchema), async (req, res) => {
+router.post('/:venueCode/pause', authMiddleware, requireSubscriptionActive, requireSameVenue, validate(songIdSchema), async (req, res) => {
   try {
     const { venueCode } = req.params;
     const { songId } = req.body;
@@ -295,7 +302,7 @@ router.post('/:venueCode/pause', validate(songIdSchema), async (req, res) => {
 });
 
 // POST /api/queue/:venueCode/advance
-router.post('/:venueCode/advance', validate(songIdSchema), async (req, res) => {
+router.post('/:venueCode/advance', authMiddleware, requireSubscriptionActive, requireSameVenue, validate(songIdSchema), async (req, res) => {
   try {
     const { venueCode } = req.params;
     const { songId } = req.body;

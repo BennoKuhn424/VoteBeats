@@ -7,7 +7,10 @@ const crypto = require('crypto');
  */
 function verifyYocoWebhookSignature(rawBodyBuf, headers) {
   const secret = process.env.YOCO_WEBHOOK_SECRET;
-  if (!secret) return true;
+  if (!secret) {
+    console.warn('Webhook: YOCO_WEBHOOK_SECRET is not configured');
+    return false;
+  }
 
   const webhookId = headers['webhook-id'];
   const webhookTs = headers['webhook-timestamp'];

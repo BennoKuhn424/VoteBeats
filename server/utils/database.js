@@ -269,6 +269,28 @@ function safeParseJSON(str, fallback) {
   try { return JSON.parse(str); } catch { return fallback; }
 }
 
+function normalizePendingPayload(parsed) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { song: {} };
+  }
+
+  const isWrapped =
+    Object.prototype.hasOwnProperty.call(parsed, 'song') ||
+    Object.prototype.hasOwnProperty.call(parsed, 'kind') ||
+    Object.prototype.hasOwnProperty.call(parsed, 'playlistId') ||
+    Object.prototype.hasOwnProperty.call(parsed, 'prompt') ||
+    Object.prototype.hasOwnProperty.call(parsed, 'count');
+
+  if (!isWrapped) return { song: parsed };
+  return {
+    kind: parsed.kind,
+    song: parsed.song || {},
+    playlistId: parsed.playlistId || undefined,
+    prompt: typeof parsed.prompt === 'string' ? parsed.prompt : undefined,
+    count: Number.isFinite(Number(parsed.count)) ? Number(parsed.count) : undefined,
+  };
+}
+
 /** Encrypt a string if encryption is enabled, otherwise return as-is. */
 function maybeEncrypt(str) {
   if (!paymentCrypto.ENABLED) return str;
@@ -386,9 +408,14 @@ module.exports = {
     if (!row) return null;
     const songStr = maybeDecrypt(row.song);
     const deviceId = maybeDecrypt(row.device_id);
+    const pendingPayload = normalizePendingPayload(safeParseJSON(songStr, {}));
     return {
       venueCode: row.venue_code,
-      song: safeParseJSON(songStr, {}),
+      kind: pendingPayload.kind,
+      song: pendingPayload.song,
+      playlistId: pendingPayload.playlistId,
+      prompt: pendingPayload.prompt,
+      count: pendingPayload.count,
       deviceId,
       amountCents: row.amount_cents,
       createdAt: row.created_at,
@@ -396,10 +423,17 @@ module.exports = {
   },
 
   setPendingPayment: (checkoutId, data) => {
+    const payload = {
+      kind: data.kind || (data.playlistId || data.prompt ? 'playlist_generation' : 'song_request'),
+      song: data.song || {},
+      ...(data.playlistId ? { playlistId: data.playlistId } : {}),
+      ...(typeof data.prompt === 'string' ? { prompt: data.prompt } : {}),
+      ...(data.count !== undefined ? { count: data.count } : {}),
+    };
     stmtSetPending.run({
       checkout_id: checkoutId,
       venue_code: data.venueCode,
-      song: maybeEncrypt(JSON.stringify(data.song || {})),
+      song: maybeEncrypt(JSON.stringify(payload)),
       device_id: maybeEncrypt(data.deviceId || ''),
       amount_cents: data.amountCents || 0,
       created_at: Date.now(),

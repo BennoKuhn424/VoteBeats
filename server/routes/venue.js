@@ -401,6 +401,7 @@ router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddlewar
     if (!checkoutId || !redirectUrl) return res.status(500).json({ error: 'Invalid payment response' });
 
     db.setPendingPayment(checkoutId, {
+      kind: 'playlist_generation',
       venueCode,
       playlistId: req.params.playlistId,
       amountCents: count * 100,
@@ -439,8 +440,10 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, requir
     resolvedCount = Math.min(Math.max(Math.round(Number(bodyCount) || 100), 25), 400);
   } else {
     if (pending.venueCode !== req.params.venueCode) return res.status(403).json({ error: 'Invalid checkout' });
+    if (pending.kind && pending.kind !== 'playlist_generation') return res.status(400).json({ error: 'Invalid checkout type' });
     resolvedPlaylistId = pending.playlistId || req.params.playlistId;
     resolvedCount = pending.count || Math.min(Math.max(Math.round(Number(bodyCount) || 100), 25), 400);
+    if (!pending.prompt?.trim()) return res.status(400).json({ error: 'Payment metadata missing. Please try again.' });
     if (patronProvider.isConfigured()) {
       const v = await patronProvider.verifyCheckout(checkoutId);
       if (!v.verified) return res.status(402).json({ error: 'Payment not completed yet' });
