@@ -6,6 +6,9 @@
  */
 
 const { getDeveloperToken } = require('./appleMusicToken');
+const { fetchPlainLyrics } = require('./lyricsFetch');
+const { countProfanity } = require('./profanityFilter');
+const lyricsCache = require('./lyricsCache');
 const APPLE_MUSIC_DEVELOPER_TOKEN = process.env.APPLE_MUSIC_DEVELOPER_TOKEN;
 
 function getToken() {
@@ -624,6 +627,78 @@ function filterByVenueSettings(songs, venue) {
 }
 
 /**
+ * Async filter that scans each song's lyrics (via LRCLIB, cached) and drops
+ * songs whose profanity hit count meets or exceeds the venue threshold.
+ *
+ * Behaviour:
+ *   - Disabled unless venue.settings.lyricsFilter === true.
+ *   - Threshold: venue.settings.lyricsThreshold (default 1).
+ *   - Languages:  venue.settings.lyricsLanguages (default ['en']).
+ *   - Parallel fetch for all songs, bounded by a concurrency limit so we
+ *     don't slam LRCLIB on big result sets.
+ *   - When lyrics can't be found, the song is KEPT by default. If the venue
+ *     also has strictExplicit on, unknown-lyrics songs are dropped too
+ *     (same "unknown = risky" semantics as the contentRating check).
+ *   - Cached for 24h per (appleId, languages).
+ */
+async function applyLyricsFilter(songs, venue) {
+  if (!Array.isArray(songs) || songs.length === 0) return songs;
+  if (!venue?.settings || venue.settings.lyricsFilter !== true) return songs;
+
+  const threshold = Math.max(1, Number(venue.settings.lyricsThreshold) || 1);
+  const languages = Array.isArray(venue.settings.lyricsLanguages) && venue.settings.lyricsLanguages.length > 0
+    ? venue.settings.lyricsLanguages
+    : ['en'];
+  const strict = venue.settings.strictExplicit === true;
+
+  // Pool-based concurrency to avoid hammering LRCLIB on 25+ results.
+  const concurrency = 6;
+  const results = new Map(); // appleId -> { hitCount, lyricsFound }
+  let i = 0;
+
+  async function worker() {
+    while (i < songs.length) {
+      const idx = i++;
+      const song = songs[idx];
+      if (!song || !song.appleId) continue;
+      const cached = lyricsCache.get(song.appleId, languages);
+      if (cached) {
+        results.set(song.appleId, cached);
+        continue;
+      }
+      const lyrics = await fetchPlainLyrics({
+        title: song.title,
+        artist: song.artist,
+        duration: song.duration,
+      });
+      const entry = lyrics
+        ? { hitCount: countProfanity(lyrics, languages), lyricsFound: true }
+        : { hitCount: 0, lyricsFound: false };
+      lyricsCache.set(song.appleId, languages, entry);
+      results.set(song.appleId, entry);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, songs.length) }, worker));
+
+  return songs.filter((s) => {
+    const r = results.get(s.appleId);
+    if (!r) return true; // couldn't scan (edge case) — keep
+    if (r.lyricsFound) return r.hitCount < threshold;
+    // Lyrics not found: drop only when strict mode is on.
+    return !strict;
+  });
+}
+
+/**
+ * Compose the sync + async filters in one call. Use this at search time.
+ */
+async function filterByVenueSettingsAsync(songs, venue) {
+  const synced = filterByVenueSettings(songs, venue);
+  return applyLyricsFilter(synced, venue);
+}
+
+/**
  * Search Apple Music catalog for songs matching a query string.
  * Applies venue-level filters (explicit content, blocked artists, genre).
  * Falls back to a mock catalog when no Apple developer token is configured.
@@ -666,7 +741,7 @@ async function searchAppleMusic(query, venueCode) {
             ? false
             : null,
       }));
-      return filterByVenueSettings(songs, venue);
+      return filterByVenueSettingsAsync(songs, venue);
     } catch (err) {
       console.error('Apple Music API error:', err);
       return mockSearch(query, venue);
@@ -676,7 +751,7 @@ async function searchAppleMusic(query, venueCode) {
   return mockSearch(query, venue);
 }
 
-function mockSearch(query, venue) {
+async function mockSearch(query, venue) {
   const q = (query || '').toLowerCase();
   const matched = MOCK_CATALOG.filter(
     (s) =>
@@ -684,7 +759,7 @@ function mockSearch(query, venue) {
       s.artist.toLowerCase().includes(q) ||
       s.genre.toLowerCase().includes(q)
   );
-  return filterByVenueSettings(matched.length ? matched : MOCK_CATALOG.slice(0, 5), venue);
+  return filterByVenueSettingsAsync(matched.length ? matched : MOCK_CATALOG.slice(0, 5), venue);
 }
 
 /**
@@ -841,6 +916,8 @@ module.exports = {
   pickFromPlaylist,
   // Exported for direct unit testing of the filter pipeline.
   filterByVenueSettings,
+  filterByVenueSettingsAsync,
+  applyLyricsFilter,
   shouldDropForExplicit,
   haystackContainsWord,
   getVenueLocalHour,

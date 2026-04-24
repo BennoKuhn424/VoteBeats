@@ -76,6 +76,9 @@ router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, (r
     genreFilters,
     blockedArtists,
     blockedTitleWords,
+    lyricsFilter,
+    lyricsThreshold,
+    lyricsLanguages,
     requirePaymentForRequest,
     requestPriceCents,
     autoplayQueue,
@@ -118,6 +121,23 @@ router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, (r
     venue.settings.blockedArtists = blockedArtists;
   }
   if (typeof strictExplicit === 'boolean') venue.settings.strictExplicit = strictExplicit;
+  if (typeof lyricsFilter === 'boolean') venue.settings.lyricsFilter = lyricsFilter;
+  if (lyricsThreshold !== undefined) {
+    const n = Number(lyricsThreshold);
+    if (Number.isFinite(n) && n >= 1 && n <= 20) {
+      venue.settings.lyricsThreshold = Math.floor(n);
+    }
+  }
+  if (Array.isArray(lyricsLanguages)) {
+    const allowed = new Set(['en', 'af']);
+    const cleaned = [...new Set(
+      lyricsLanguages
+        .filter((l) => typeof l === 'string')
+        .map((l) => l.toLowerCase().trim())
+        .filter((l) => allowed.has(l)),
+    )];
+    venue.settings.lyricsLanguages = cleaned;
+  }
   if (Array.isArray(blockedTitleWords)) {
     if (blockedTitleWords.length > 200) {
       return res.status(400).json({ error: 'blockedTitleWords cannot exceed 200 entries' });

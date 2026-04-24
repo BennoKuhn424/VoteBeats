@@ -151,3 +151,54 @@ describe('PUT /api/venue/:venueCode/settings — blockedTitleWords', () => {
     expect(saved.settings.blockedTitleWords).toEqual(['hate']);
   });
 });
+
+describe('PUT /api/venue/:venueCode/settings — lyrics filter settings', () => {
+  test('saves lyricsFilter boolean', async () => {
+    db.getVenue.mockReturnValue({ code: 'TSTV01', settings: {} });
+    db.saveVenue.mockImplementation(() => {});
+
+    const res = await authedPut('TSTV01', { lyricsFilter: true });
+    expect(res.status).toBe(200);
+    const saved = db.saveVenue.mock.calls[0][1];
+    expect(saved.settings.lyricsFilter).toBe(true);
+  });
+
+  test('saves lyricsThreshold within 1..20', async () => {
+    db.getVenue.mockReturnValue({ code: 'TSTV01', settings: {} });
+    db.saveVenue.mockImplementation(() => {});
+    const res = await authedPut('TSTV01', { lyricsThreshold: 5 });
+    expect(res.status).toBe(200);
+    const saved = db.saveVenue.mock.calls[0][1];
+    expect(saved.settings.lyricsThreshold).toBe(5);
+  });
+
+  test('rejects out-of-range lyricsThreshold (silently ignored)', async () => {
+    const existing = { code: 'TSTV01', settings: { lyricsThreshold: 3 } };
+    db.getVenue.mockReturnValue(existing);
+    db.saveVenue.mockImplementation(() => {});
+    const res = await authedPut('TSTV01', { lyricsThreshold: 50 });
+    expect(res.status).toBe(200);
+    // existing value preserved
+    expect(existing.settings.lyricsThreshold).toBe(3);
+  });
+
+  test('saves lyricsLanguages, filtering to allowed codes', async () => {
+    db.getVenue.mockReturnValue({ code: 'TSTV01', settings: {} });
+    db.saveVenue.mockImplementation(() => {});
+    const res = await authedPut('TSTV01', {
+      lyricsLanguages: ['en', 'AF', 'zz', 'en'],
+    });
+    expect(res.status).toBe(200);
+    const saved = db.saveVenue.mock.calls[0][1];
+    expect(saved.settings.lyricsLanguages).toEqual(['en', 'af']);
+  });
+
+  test('empty lyricsLanguages clears the list', async () => {
+    db.getVenue.mockReturnValue({ code: 'TSTV01', settings: { lyricsLanguages: ['en'] } });
+    db.saveVenue.mockImplementation(() => {});
+    const res = await authedPut('TSTV01', { lyricsLanguages: [] });
+    expect(res.status).toBe(200);
+    const saved = db.saveVenue.mock.calls[0][1];
+    expect(saved.settings.lyricsLanguages).toEqual([]);
+  });
+});

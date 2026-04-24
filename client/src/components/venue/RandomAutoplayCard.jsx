@@ -58,6 +58,9 @@ export default function RandomAutoplayCard({
   const [strictExplicit, setStrictExplicit] = useState(false);
   const [blockedTitleWords, setBlockedTitleWords] = useState([]);
   const [wordInput, setWordInput] = useState('');
+  const [lyricsFilter, setLyricsFilter] = useState(false);
+  const [lyricsThreshold, setLyricsThreshold] = useState(1);
+  const [lyricsLanguages, setLyricsLanguages] = useState(['en']);
   const [autoplayGenres, setAutoplayGenres] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -79,6 +82,9 @@ export default function RandomAutoplayCard({
         }
         setStrictExplicit(s.strictExplicit === true);
         setBlockedTitleWords(Array.isArray(s.blockedTitleWords) ? s.blockedTitleWords : []);
+        setLyricsFilter(s.lyricsFilter === true);
+        setLyricsThreshold(Number.isFinite(s.lyricsThreshold) ? s.lyricsThreshold : 1);
+        setLyricsLanguages(Array.isArray(s.lyricsLanguages) && s.lyricsLanguages.length > 0 ? s.lyricsLanguages : ['en']);
         const ag = s.autoplayGenre;
         setAutoplayGenres(Array.isArray(ag) ? ag : (ag ? [ag] : []));
       })
@@ -127,6 +133,9 @@ export default function RandomAutoplayCard({
         explicitAfterHour: explicitMode === 'scheduled' ? explicitAfterHour : null,
         strictExplicit,
         blockedTitleWords,
+        lyricsFilter,
+        lyricsThreshold,
+        lyricsLanguages,
         autoplayGenre: autoplayGenres.length > 0 ? autoplayGenres : null,
       });
       setSavedFlash(true);
@@ -182,6 +191,14 @@ export default function RandomAutoplayCard({
                     <dt className="text-zinc-500 dark:text-zinc-400 shrink-0">Blocked words</dt>
                     <dd className="text-zinc-800 dark:text-zinc-100 font-medium">
                       {blockedTitleWords.length} {blockedTitleWords.length === 1 ? 'word' : 'words'}
+                    </dd>
+                  </div>
+                )}
+                {lyricsFilter && (
+                  <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                    <dt className="text-zinc-500 dark:text-zinc-400 shrink-0">Lyric scan</dt>
+                    <dd className="text-zinc-800 dark:text-zinc-100 font-medium">
+                      {lyricsThreshold}+ hit{lyricsThreshold === 1 ? '' : 's'} · {lyricsLanguages.map((l) => l.toUpperCase()).join('+') || 'EN'}
                     </dd>
                   </div>
                 )}
@@ -329,6 +346,87 @@ export default function RandomAutoplayCard({
                 Add
               </button>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-zinc-200 dark:border-dark-600 bg-zinc-50/60 dark:bg-dark-900/40 p-4">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={lyricsFilter}
+                onChange={(e) => setLyricsFilter(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-zinc-300 dark:border-dark-500 text-violet-600 focus:ring-violet-500"
+              />
+              <span className="text-sm text-zinc-700 dark:text-zinc-200">
+                <strong className="text-zinc-900 dark:text-zinc-100">Scan lyrics for profanity</strong>
+                <span className="block text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  Search results are filtered against a profanity wordlist (lyrics fetched from LRCLIB).
+                  Adds ~1&nbsp;second to the first search for a song; cached after that.
+                </span>
+              </span>
+            </label>
+            {lyricsFilter && (
+              <div className="mt-3 pl-6 space-y-3">
+                <div>
+                  <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 mb-1.5">
+                    Drop a song when it has…
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { v: 1, label: '1+ profanities' },
+                      { v: 3, label: '3+ profanities' },
+                      { v: 5, label: '5+ profanities' },
+                    ].map(({ v, label }) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setLyricsThreshold(v)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[36px] ${
+                          lyricsThreshold === v
+                            ? 'bg-violet-600 text-white'
+                            : 'bg-white dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 text-zinc-600 dark:text-zinc-300 hover:border-violet-500'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 mb-1.5">
+                    Language packs
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: 'en', label: 'English' },
+                      { id: 'af', label: 'Afrikaans' },
+                    ].map(({ id, label }) => {
+                      const on = lyricsLanguages.includes(id);
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => {
+                            setLyricsLanguages((prev) => (
+                              prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+                            ));
+                          }}
+                          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[36px] ${
+                            on
+                              ? 'bg-violet-600 text-white'
+                              : 'bg-white dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 text-zinc-600 dark:text-zinc-300 hover:border-violet-500'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1.5">
+                    Coverage depends on LRCLIB having lyrics — missing lyrics are kept by default, or dropped when strict mode is on.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
