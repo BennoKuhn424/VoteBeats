@@ -1,6 +1,7 @@
 /**
  * @jest-environment node
  */
+const crypto = require('crypto');
 
 describe('verifyCheckoutWithYoco', () => {
   const originalFetch = global.fetch;
@@ -61,5 +62,41 @@ describe('verifyYocoWebhookSignature', () => {
     delete process.env.YOCO_WEBHOOK_SECRET;
     const { verifyYocoWebhookSignature } = require('../utils/yoco');
     expect(verifyYocoWebhookSignature(Buffer.from('{}'), {})).toBe(false);
+  });
+
+  test('accepts a valid signed webhook body', () => {
+    const secretBytes = Buffer.from('webhook-test-secret');
+    process.env.YOCO_WEBHOOK_SECRET = `whsec_${secretBytes.toString('base64')}`;
+    const raw = Buffer.from(JSON.stringify({ type: 'payment.succeeded' }));
+    const webhookId = 'evt_123';
+    const webhookTs = String(Math.floor(Date.now() / 1000));
+    const signedContent = `${webhookId}.${webhookTs}.${raw.toString('utf8')}`;
+    const sig = crypto.createHmac('sha256', secretBytes).update(signedContent).digest('base64');
+
+    const { verifyYocoWebhookSignature } = require('../utils/yoco');
+    expect(verifyYocoWebhookSignature(raw, {
+      'webhook-id': webhookId,
+      'webhook-timestamp': webhookTs,
+      'webhook-signature': `v1,${sig}`,
+    })).toBe(true);
+  });
+
+  test('rejects malformed or stale signed webhooks', () => {
+    const secretBytes = Buffer.from('webhook-test-secret');
+    process.env.YOCO_WEBHOOK_SECRET = `whsec_${secretBytes.toString('base64')}`;
+    const raw = Buffer.from('{}');
+    const { verifyYocoWebhookSignature } = require('../utils/yoco');
+
+    expect(verifyYocoWebhookSignature(raw, {
+      'webhook-id': 'evt_123',
+      'webhook-timestamp': String(Math.floor(Date.now() / 1000)),
+      'webhook-signature': 'v1,invalid',
+    })).toBe(false);
+
+    expect(verifyYocoWebhookSignature(raw, {
+      'webhook-id': 'evt_123',
+      'webhook-timestamp': String(Math.floor(Date.now() / 1000) - 181),
+      'webhook-signature': 'v1,invalid',
+    })).toBe(false);
   });
 });
