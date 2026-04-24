@@ -360,6 +360,9 @@ router.post('/:venueCode/skip', authMiddleware, requireSubscriptionActive, valid
 });
 
 // DELETE /api/queue/:venueCode/song/:songId (venue owner only)
+// Removes a song from the queue. If the targeted song is currently playing,
+// advances the queue to the next song (same effect as Skip, but triggered
+// from the Remove button on the now-playing row).
 router.delete('/:venueCode/song/:songId', authMiddleware, requireSubscriptionActive, async (req, res) => {
   try {
     const { venueCode, songId } = req.params;
@@ -368,10 +371,24 @@ router.delete('/:venueCode/song/:songId', authMiddleware, requireSubscriptionAct
       return res.status(403).json({ error: 'Unauthorized', code: E.QUEUE_REMOVE_UNAUTHORIZED });
     }
 
-    const updated = await queueRepo.update(venueCode, (queue) => ({
-      ...queue,
-      upcoming: (queue.upcoming || []).filter((s) => s.id !== songId),
-    }));
+    const currentSongId = queueRepo.get(venueCode).nowPlaying?.id;
+    let updated;
+    if (currentSongId && currentSongId === songId) {
+      updated = await advanceToNextSong(venueCode, songId);
+      if (!updated.nowPlaying && (!updated.upcoming || updated.upcoming.length === 0)) {
+        const venue = db.getVenue(venueCode);
+        const s = venue?.settings;
+        if (s?.autoplayMode !== 'off' && s?.autoplayQueue !== false) {
+          await serverAutofill(venueCode, venue).catch((err) => console.error('Autofill error:', err));
+          updated = queueRepo.get(venueCode);
+        }
+      }
+    } else {
+      updated = await queueRepo.update(venueCode, (queue) => ({
+        ...queue,
+        upcoming: (queue.upcoming || []).filter((s) => s.id !== songId),
+      }));
+    }
     broadcast.broadcastQueue(venueCode, updated);
     res.json({ success: true });
   } catch (err) {

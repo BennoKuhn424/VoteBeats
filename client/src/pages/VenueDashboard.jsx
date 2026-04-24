@@ -93,16 +93,6 @@ export default function VenueDashboard() {
     };
   }, [venue?.code, fetchVenue]);
 
-  async function handleSkip() {
-    if (!venue) return;
-    try {
-      await api.skipSong(venue.code);
-      fetchQueue(venue.code);
-    } catch (err) {
-      console.error('Error skipping:', err);
-    }
-  }
-
   async function handleRemove(songId) {
     if (!venue) return;
     try {
@@ -227,13 +217,12 @@ export default function VenueDashboard() {
                 Queue
               </h3>
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                Now playing + upcoming songs. Tap skip to move to the next track.
+                Now playing + upcoming songs. Use the player bar to skip; the buttons here remove songs.
               </p>
             </div>
           </div>
           <QueueManager
             queue={queue}
-            onSkip={handleSkip}
             onRemove={handleRemove}
             onBan={handleBanArtist}
             variant="light"

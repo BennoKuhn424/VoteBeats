@@ -1,7 +1,7 @@
 import { Ban } from 'lucide-react';
 import Button from '../shared/Button';
 
-export default function QueueManager({ queue, onSkip, onRemove, onBan, variant = 'dark' }) {
+export default function QueueManager({ queue, onRemove, onBan, variant = 'dark' }) {
   const { nowPlaying, upcoming } = queue || {};
   const orderedUpcoming = upcoming || [];
   const isLight = variant === 'light';
@@ -69,8 +69,12 @@ export default function QueueManager({ queue, onSkip, onRemove, onBan, variant =
                   <Ban className="h-4 w-4" />
                 </button>
               )}
-              <Button variant="danger" onClick={onSkip} className="!py-2.5 !px-4">
-                Skip
+              <Button
+                variant="danger"
+                onClick={() => onRemove(nowPlaying.id)}
+                className="!py-2.5 !px-4"
+              >
+                Remove
               </Button>
             </div>
           </div>
