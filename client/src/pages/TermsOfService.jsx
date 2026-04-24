@@ -2,14 +2,14 @@ import { Link } from 'react-router-dom';
 
 export default function TermsOfService() {
   return (
-    <div className="min-h-screen bg-white text-zinc-800">
+    <div className="min-h-screen bg-white dark:bg-dark-950 text-zinc-800 dark:text-zinc-200">
       <div className="max-w-3xl mx-auto px-5 py-12">
-        <Link to="/" className="text-brand-600 hover:text-brand-700 text-sm mb-8 inline-block">&larr; Back to Home</Link>
+        <Link to="/" className="text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 text-sm mb-8 inline-block">&larr; Back to Home</Link>
 
-        <h1 className="text-3xl font-bold mb-2">Terms of Service</h1>
-        <p className="text-zinc-500 text-sm mb-8">Last updated: 21 April 2026</p>
+        <h1 className="text-3xl font-bold mb-2 text-zinc-900 dark:text-zinc-100">Terms of Service</h1>
+        <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-8">Last updated: 21 April 2026</p>
 
-        <div className="prose prose-zinc max-w-none space-y-6 text-[15px] leading-relaxed">
+        <div className="prose prose-zinc dark:prose-invert max-w-none space-y-6 text-[15px] leading-relaxed">
           <p>
             These Terms of Service ("Terms") govern your use of the SpeelDit web application
             operated at speeldit.com ("Service"). By accessing or using the Service, you agree
@@ -42,7 +42,7 @@ export default function TermsOfService() {
           </ul>
 
           <h2 className="text-xl font-semibold mt-8">4. Music Licensing &mdash; Venue Responsibility</h2>
-          <p className="font-semibold text-zinc-900">
+          <p className="font-semibold text-zinc-900 dark:text-zinc-100">
             Venue owners are solely responsible for obtaining and maintaining all necessary music
             performance licenses required by South African law to play music publicly at their
             establishment.

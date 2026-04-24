@@ -114,71 +114,71 @@ export default function PlaylistScheduleModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between z-10">
+      <div className="bg-white dark:bg-dark-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white dark:bg-dark-800 border-b border-zinc-200 dark:border-dark-600 px-6 py-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-3 min-w-0">
             <Clock className="w-5 h-5 text-brand-500 shrink-0" />
             <div className="min-w-0">
-              <h2 className="text-zinc-900 text-lg font-semibold truncate">Schedule playlist</h2>
-              <p className="text-zinc-500 text-sm truncate">{playlistName}</p>
+              <h2 className="text-zinc-900 dark:text-zinc-100 text-lg font-semibold truncate">Schedule playlist</h2>
+              <p className="text-zinc-500 dark:text-zinc-400 text-sm truncate">{playlistName}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 hover:bg-zinc-100 rounded-lg transition-colors shrink-0"
+            className="p-2 hover:bg-zinc-100 dark:hover:bg-dark-700 rounded-lg transition-colors shrink-0"
             aria-label="Close"
           >
-            <X className="w-5 h-5 text-zinc-600" />
+            <X className="w-5 h-5 text-zinc-600 dark:text-zinc-300" />
           </button>
         </div>
 
         <div className="p-6">
-          <p className="text-zinc-600 mb-4 text-sm">
+          <p className="text-zinc-600 dark:text-zinc-300 mb-4 text-sm">
             When the clock is inside a slot, autoplay picks <strong>random</strong> songs from this playlist. Customer
             requests still work as usual.
           </p>
 
           <div className="space-y-4 mb-6">
             {timeSlots.map((slot, index) => (
-              <div key={slot.id} className="bg-zinc-50 rounded-lg p-4 border border-zinc-200">
+              <div key={slot.id} className="bg-zinc-50 dark:bg-dark-900 rounded-lg p-4 border border-zinc-200 dark:border-dark-600">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-zinc-900 font-medium text-sm">Time slot {index + 1}</h3>
+                  <h3 className="text-zinc-900 dark:text-zinc-100 font-medium text-sm">Time slot {index + 1}</h3>
                   {timeSlots.length > 1 && (
                     <button
                       type="button"
                       onClick={() => removeTimeSlot(slot.id)}
-                      className="p-1.5 hover:bg-zinc-200 rounded transition-colors"
+                      className="p-1.5 hover:bg-zinc-200 dark:hover:bg-dark-700 rounded transition-colors"
                       aria-label="Remove time slot"
                     >
-                      <Trash2 className="w-4 h-4 text-red-600" />
+                      <Trash2 className="w-4 h-4 text-red-600 dark:text-red-400" />
                     </button>
                   )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div>
-                    <label className="block text-xs text-zinc-600 mb-1">Start</label>
+                    <label className="block text-xs text-zinc-600 dark:text-zinc-300 mb-1">Start</label>
                     <input
                       type="time"
                       value={slot.startTime}
                       onChange={(e) => updateTimeSlot(slot.id, 'startTime', e.target.value)}
-                      className="w-full px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      className="w-full px-3 py-2 border border-zinc-300 dark:border-dark-600 bg-white dark:bg-dark-700 text-zinc-900 dark:text-zinc-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-zinc-600 mb-1">End</label>
+                    <label className="block text-xs text-zinc-600 dark:text-zinc-300 mb-1">End</label>
                     <input
                       type="time"
                       value={slot.endTime}
                       onChange={(e) => updateTimeSlot(slot.id, 'endTime', e.target.value)}
-                      className="w-full px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      className="w-full px-3 py-2 border border-zinc-300 dark:border-dark-600 bg-white dark:bg-dark-700 text-zinc-900 dark:text-zinc-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs text-zinc-600 mb-2">Days (empty = every day)</label>
+                  <label className="block text-xs text-zinc-600 dark:text-zinc-300 mb-2">Days (empty = every day)</label>
                   <div className="flex flex-wrap gap-2">
                     {DAY_LABELS.map((day) => (
                       <button
@@ -188,7 +188,7 @@ export default function PlaylistScheduleModal({
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all min-h-[36px] ${
                           slot.days.includes(day)
                             ? 'bg-brand-500 text-white'
-                            : 'bg-white border border-zinc-300 text-zinc-700 hover:border-brand-500'
+                            : 'bg-white dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 text-zinc-700 dark:text-zinc-200 hover:border-brand-500'
                         }`}
                       >
                         {day}
@@ -203,7 +203,7 @@ export default function PlaylistScheduleModal({
           <button
             type="button"
             onClick={addTimeSlot}
-            className="w-full py-3 px-4 border-2 border-dashed border-zinc-300 rounded-lg text-zinc-600 hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-2 min-h-[44px]"
+            className="w-full py-3 px-4 border-2 border-dashed border-zinc-300 dark:border-dark-600 rounded-lg text-zinc-600 dark:text-zinc-300 hover:border-brand-500 hover:text-brand-600 dark:hover:text-brand-400 transition-all flex items-center justify-center gap-2 min-h-[44px]"
           >
             <Plus className="w-4 h-4" />
             Add another time slot
@@ -215,17 +215,17 @@ export default function PlaylistScheduleModal({
               onSave([]);
               onClose();
             }}
-            className="w-full mt-4 text-sm text-red-600 hover:text-red-700 font-medium py-2"
+            className="w-full mt-4 text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 font-medium py-2"
           >
             Remove all scheduled times for this playlist
           </button>
         </div>
 
-        <div className="sticky bottom-0 bg-white border-t border-zinc-200 px-6 py-4 flex gap-3">
+        <div className="sticky bottom-0 bg-white dark:bg-dark-800 border-t border-zinc-200 dark:border-dark-600 px-6 py-4 flex gap-3">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-4 py-3 border border-zinc-300 rounded-lg text-zinc-700 hover:bg-zinc-50 transition-colors min-h-[44px]"
+            className="flex-1 px-4 py-3 border border-zinc-300 dark:border-dark-600 rounded-lg text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-dark-700 transition-colors min-h-[44px]"
           >
             Cancel
           </button>

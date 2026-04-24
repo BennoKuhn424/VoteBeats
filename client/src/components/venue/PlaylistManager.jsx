@@ -173,29 +173,29 @@ export default function PlaylistManager({
 
   // ── Styles ──
   const card = isLight
-    ? 'bg-white rounded-xl border border-zinc-200 shadow-sm p-5'
+    ? 'bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm p-5'
     : 'bg-dark-800 rounded-2xl border border-dark-600 p-5';
-  const headingCls = isLight ? 'font-semibold text-zinc-900' : 'font-semibold text-white';
-  const subCls = isLight ? 'text-xs text-zinc-500' : 'text-xs text-dark-400';
+  const headingCls = isLight ? 'font-semibold text-zinc-900 dark:text-zinc-100' : 'font-semibold text-white';
+  const subCls = isLight ? 'text-xs text-zinc-500 dark:text-zinc-400' : 'text-xs text-dark-400';
   const inputCls = isLight
-    ? 'flex-1 px-3 py-2 bg-zinc-50 border border-zinc-300 rounded-lg text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm'
+    ? 'flex-1 px-3 py-2 bg-zinc-50 dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm'
     : 'flex-1 px-3 py-2 bg-dark-700 border border-dark-500 rounded-lg text-white placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm';
   const songRowEditCls = isLight
-    ? 'flex items-center gap-3 px-3 py-2.5 bg-white group hover:bg-zinc-50/90'
+    ? 'flex items-center gap-3 px-3 py-2.5 bg-white dark:bg-dark-800 group hover:bg-zinc-50/90 dark:hover:bg-dark-700/80'
     : 'flex items-center gap-3 px-3 py-2.5 group hover:bg-dark-700/80';
   const resultRowEditCls = isLight
-    ? 'flex items-center gap-3 px-3 py-2.5 bg-white group hover:bg-zinc-50/90'
+    ? 'flex items-center gap-3 px-3 py-2.5 bg-white dark:bg-dark-800 group hover:bg-zinc-50/90 dark:hover:bg-dark-700/80'
     : 'flex items-center gap-3 px-3 py-2.5 group hover:bg-dark-700/80';
-  const songTitleCls = isLight ? 'font-medium text-sm text-zinc-900 line-clamp-1' : 'font-medium text-sm text-white line-clamp-1';
-  const songArtistCls = isLight ? 'text-xs text-zinc-500 line-clamp-1' : 'text-xs text-dark-400 line-clamp-1';
+  const songTitleCls = isLight ? 'font-medium text-sm text-zinc-900 dark:text-zinc-100 line-clamp-1' : 'font-medium text-sm text-white line-clamp-1';
+  const songArtistCls = isLight ? 'text-xs text-zinc-500 dark:text-zinc-400 line-clamp-1' : 'text-xs text-dark-400 line-clamp-1';
   const removeBtnCls = isLight
-    ? 'sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-8 h-8 flex items-center justify-center rounded-full bg-zinc-200 text-zinc-500 hover:bg-red-100 hover:text-red-500 shrink-0'
+    ? 'sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-8 h-8 flex items-center justify-center rounded-full bg-zinc-200 dark:bg-dark-600 text-zinc-500 dark:text-zinc-300 hover:bg-red-100 dark:hover:bg-red-500/20 hover:text-red-500 dark:hover:text-red-400 shrink-0'
     : 'sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-8 h-8 flex items-center justify-center rounded-full bg-dark-600 text-dark-300 hover:bg-red-500/20 hover:text-red-400 shrink-0';
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className={`h-6 w-6 animate-spin ${isLight ? 'text-zinc-400' : 'text-dark-400'}`} />
+        <Loader2 className={`h-6 w-6 animate-spin ${isLight ? 'text-zinc-400 dark:text-zinc-500' : 'text-dark-400'}`} />
       </div>
     );
   }
@@ -210,26 +210,26 @@ export default function PlaylistManager({
       )}
       {playlists.length === 0 && !isEditing && (
         <div className={`${card} flex flex-col items-center text-center`}>
-          <ListMusic className={`h-8 w-8 mb-2 ${isLight ? 'text-zinc-300' : 'text-dark-500'}`} />
+          <ListMusic className={`h-8 w-8 mb-2 ${isLight ? 'text-zinc-300 dark:text-zinc-600' : 'text-dark-500'}`} />
           <p className={subCls}>
-            No playlists yet. Use <strong className={isLight ? 'text-zinc-700' : 'text-white'}>Add new playlist</strong> at the top of this page.
+            No playlists yet. Use <strong className={isLight ? 'text-zinc-700 dark:text-zinc-200' : 'text-white'}>Add new playlist</strong> at the top of this page.
           </p>
         </div>
       )}
 
       {/* ── Editor: only when editing (from grid card / pencil) ── */}
       {selectedPlaylist && isEditing && (
-        <div className={`rounded-xl border overflow-hidden ${isLight ? 'border-zinc-200 bg-zinc-50/80' : 'border-dark-600 bg-dark-800/50'}`}>
-                <div className={`flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between border-b ${isLight ? 'border-zinc-200 bg-white' : 'border-dark-600 bg-dark-800'}`}>
+        <div className={`rounded-xl border overflow-hidden ${isLight ? 'border-zinc-200 dark:border-dark-600 bg-zinc-50/80 dark:bg-dark-800/50' : 'border-dark-600 bg-dark-800/50'}`}>
+                <div className={`flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between border-b ${isLight ? 'border-zinc-200 dark:border-dark-600 bg-white dark:bg-dark-800' : 'border-dark-600 bg-dark-800'}`}>
                   <div className="min-w-0">
-                    <p className={`text-xs font-semibold uppercase tracking-wide ${isLight ? 'text-zinc-400' : 'text-dark-500'}`}>Editing playlist</p>
-                    <p className={`font-semibold truncate ${isLight ? 'text-zinc-900' : 'text-white'}`}>{selectedPlaylist.name}</p>
+                    <p className={`text-xs font-semibold uppercase tracking-wide ${isLight ? 'text-zinc-400 dark:text-zinc-500' : 'text-dark-500'}`}>Editing playlist</p>
+                    <p className={`font-semibold truncate ${isLight ? 'text-zinc-900 dark:text-zinc-100' : 'text-white'}`}>{selectedPlaylist.name}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
                     <button
                       type="button"
                       onClick={() => handleDelete(selectedPlaylist.id)}
-                      className={`text-xs px-3 py-2 rounded-lg min-h-[40px] ${isLight ? 'text-red-600 hover:bg-red-50' : 'text-red-400 hover:bg-red-500/10'}`}
+                      className={`text-xs px-3 py-2 rounded-lg min-h-[40px] ${isLight ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10' : 'text-red-400 hover:bg-red-500/10'}`}
                     >
                       Delete playlist
                     </button>
@@ -244,7 +244,7 @@ export default function PlaylistManager({
                         setGeneratePrompt('');
                         setGenerateError(null);
                       }}
-                      className={`text-sm font-semibold px-4 py-2 rounded-lg min-h-[40px] ${isLight ? 'bg-zinc-900 text-white hover:bg-zinc-800' : 'bg-white text-zinc-900 hover:bg-zinc-100'}`}
+                      className={`text-sm font-semibold px-4 py-2 rounded-lg min-h-[40px] ${isLight ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-white' : 'bg-white text-zinc-900 hover:bg-zinc-100'}`}
                     >
                       Done
                     </button>
@@ -256,16 +256,16 @@ export default function PlaylistManager({
                   <div>
                     <h4 className={`${headingCls} text-sm mb-3`}>Songs in playlist</h4>
                     {selectedPlaylist.songs?.length > 0 ? (
-                      <div className={`rounded-xl border max-h-[min(50vh,420px)] overflow-y-auto ${isLight ? 'border-zinc-200 bg-white' : 'border-dark-600'}`}>
-                        <ul className={`list-none m-0 p-0 divide-y ${isLight ? 'divide-zinc-100' : 'divide-dark-600'}`}>
+                      <div className={`rounded-xl border max-h-[min(50vh,420px)] overflow-y-auto ${isLight ? 'border-zinc-200 dark:border-dark-600 bg-white dark:bg-dark-800' : 'border-dark-600'}`}>
+                        <ul className={`list-none m-0 p-0 divide-y ${isLight ? 'divide-zinc-100 dark:divide-dark-600' : 'divide-dark-600'}`}>
                           {selectedPlaylist.songs.map((song, i) => (
                             <li key={song.appleId} className={songRowEditCls}>
-                              <span className={`text-xs font-semibold w-7 text-right tabular-nums shrink-0 ${isLight ? 'text-zinc-400' : 'text-dark-500'}`}>{i + 1}</span>
+                              <span className={`text-xs font-semibold w-7 text-right tabular-nums shrink-0 ${isLight ? 'text-zinc-400 dark:text-zinc-500' : 'text-dark-500'}`}>{i + 1}</span>
                               {song.albumArt ? (
                                 <img src={song.albumArt} alt="" className="w-10 h-10 rounded-md object-cover shrink-0" />
                               ) : (
-                                <div className={`w-10 h-10 rounded-md shrink-0 flex items-center justify-center ${isLight ? 'bg-zinc-100' : 'bg-dark-600'}`}>
-                                  <ListMusic className={`h-4 w-4 ${isLight ? 'text-zinc-400' : 'text-dark-400'}`} />
+                                <div className={`w-10 h-10 rounded-md shrink-0 flex items-center justify-center ${isLight ? 'bg-zinc-100 dark:bg-dark-700' : 'bg-dark-600'}`}>
+                                  <ListMusic className={`h-4 w-4 ${isLight ? 'text-zinc-400 dark:text-zinc-500' : 'text-dark-400'}`} />
                                 </div>
                               )}
                               <div className="flex-1 min-w-0">
@@ -280,14 +280,14 @@ export default function PlaylistManager({
                         </ul>
                       </div>
                     ) : (
-                      <p className={`text-sm py-6 text-center rounded-xl border border-dashed ${isLight ? 'border-zinc-200 text-zinc-500 bg-white' : 'border-dark-600 text-dark-400'}`}>
+                      <p className={`text-sm py-6 text-center rounded-xl border border-dashed ${isLight ? 'border-zinc-200 dark:border-dark-600 text-zinc-500 dark:text-zinc-400 bg-white dark:bg-dark-800' : 'border-dark-600 text-dark-400'}`}>
                         No songs yet — search below or generate with AI.
                       </p>
                     )}
                   </div>
 
                   {/* Add songs */}
-                  <div className={`rounded-xl border p-4 ${isLight ? 'border-zinc-200 bg-white' : 'border-dark-600'}`}>
+                  <div className={`rounded-xl border p-4 ${isLight ? 'border-zinc-200 dark:border-dark-600 bg-white dark:bg-dark-800' : 'border-dark-600'}`}>
                     <h4 className={`${headingCls} text-sm mb-3`}>Add songs</h4>
                     <form onSubmit={handleSearch} className="flex flex-col gap-2 sm:flex-row sm:gap-2 mb-3">
                       <input
@@ -307,17 +307,17 @@ export default function PlaylistManager({
                       </button>
                     </form>
                     {searchError && (
-                      <p className={`text-sm py-2 ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>{searchError}</p>
+                      <p className={`text-sm py-2 ${isLight ? 'text-zinc-500 dark:text-zinc-400' : 'text-dark-400'}`}>{searchError}</p>
                     )}
                     {results.length > 0 && (
-                      <div className={`rounded-lg border max-h-[min(40vh,360px)] overflow-y-auto ${isLight ? 'border-zinc-100' : 'border-dark-600'}`}>
-                        <ul className={`list-none m-0 p-0 divide-y ${isLight ? 'divide-zinc-100' : 'divide-dark-600'}`}>
+                      <div className={`rounded-lg border max-h-[min(40vh,360px)] overflow-y-auto ${isLight ? 'border-zinc-100 dark:border-dark-600' : 'border-dark-600'}`}>
+                        <ul className={`list-none m-0 p-0 divide-y ${isLight ? 'divide-zinc-100 dark:divide-dark-600' : 'divide-dark-600'}`}>
                           {results.map((item) => {
                             const appleId = item.songId ?? item.appleId;
                             const inPlaylist = (selectedPlaylist.songs || []).some((s) => s.appleId === appleId) || addedIds.has(appleId);
                             return (
                               <li key={appleId} className={resultRowEditCls}>
-                                <img src={item.artwork || item.albumArt || ''} alt="" className="w-10 h-10 rounded-md object-cover shrink-0 bg-zinc-100" />
+                                <img src={item.artwork || item.albumArt || ''} alt="" className="w-10 h-10 rounded-md object-cover shrink-0 bg-zinc-100 dark:bg-dark-700" />
                                 <div className="flex-1 min-w-0">
                                   <p className={songTitleCls}>{item.trackName ?? item.title}</p>
                                   <p className={songArtistCls}>{item.artistName ?? item.artist}</p>
@@ -328,7 +328,7 @@ export default function PlaylistManager({
                                   onClick={() => handleAdd(item)}
                                   className={`shrink-0 flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[40px] ${
                                     inPlaylist
-                                      ? isLight ? 'bg-zinc-100 text-zinc-400 cursor-default' : 'bg-dark-600 text-dark-400 cursor-default'
+                                      ? isLight ? 'bg-zinc-100 dark:bg-dark-700 text-zinc-400 dark:text-zinc-500 cursor-default' : 'bg-dark-600 text-dark-400 cursor-default'
                                       : 'bg-brand-500 text-white hover:bg-brand-600'
                                   }`}
                                 >
@@ -343,13 +343,13 @@ export default function PlaylistManager({
                   </div>
 
                   {/* AI */}
-                  <div className={`rounded-xl border p-4 ${isLight ? 'border-zinc-200 bg-white' : 'border-dark-600'}`}>
+                  <div className={`rounded-xl border p-4 ${isLight ? 'border-zinc-200 dark:border-dark-600 bg-white dark:bg-dark-800' : 'border-dark-600'}`}>
                     <div className="flex items-center justify-between gap-2 mb-3">
                       <h4 className={`${headingCls} text-sm flex items-center gap-2`}>
                         <Sparkles className="h-4 w-4 text-brand-500" />
                         Add songs with AI
                       </h4>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${isLight ? 'bg-brand-100 text-brand-700' : 'bg-brand-500/20 text-brand-400'}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${isLight ? 'bg-brand-100 dark:bg-brand-500/20 text-brand-700 dark:text-brand-400' : 'bg-brand-500/20 text-brand-400'}`}>
                         R{generateCount}
                       </span>
                     </div>
@@ -364,11 +364,11 @@ export default function PlaylistManager({
                       </button>
                     ) : (
                       <form onSubmit={handleGenerateCheckout} className="space-y-4">
-                        <p className={`text-sm ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>
-                          Describe the vibe. Matching tracks are added to <strong className={isLight ? 'text-zinc-800' : 'text-white'}>{selectedPlaylist.name}</strong> after payment.
+                        <p className={`text-sm ${isLight ? 'text-zinc-500 dark:text-zinc-400' : 'text-dark-400'}`}>
+                          Describe the vibe. Matching tracks are added to <strong className={isLight ? 'text-zinc-800 dark:text-zinc-100' : 'text-white'}>{selectedPlaylist.name}</strong> after payment.
                         </p>
                         <div>
-                          <p className={`text-xs font-semibold mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-300'}`}>How many songs?</p>
+                          <p className={`text-xs font-semibold mb-2 ${isLight ? 'text-zinc-600 dark:text-zinc-300' : 'text-dark-300'}`}>How many songs?</p>
                           <div className="flex flex-wrap gap-2">
                             {[25, 50, 100, 150, 200, 300, 400].map((n) => (
                               <button
@@ -378,7 +378,7 @@ export default function PlaylistManager({
                                 className={`px-3 py-2 rounded-full text-xs font-semibold transition-colors ${
                                   generateCount === n
                                     ? 'bg-brand-500 text-white'
-                                    : isLight ? 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200' : 'bg-dark-700 text-dark-300 hover:bg-dark-600'
+                                    : isLight ? 'bg-zinc-100 dark:bg-dark-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-dark-600' : 'bg-dark-700 text-dark-300 hover:bg-dark-600'
                                 }`}
                               >
                                 {n} · R{n}
@@ -391,14 +391,14 @@ export default function PlaylistManager({
                           onChange={(e) => { setGeneratePrompt(e.target.value); setGenerateError(null); }}
                           placeholder='e.g. "Afrikaans hits", "2000s pop", "Friday night dancehall"…'
                           rows={3}
-                          className={`w-full px-3 py-2.5 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 ${isLight ? 'bg-zinc-50 border border-zinc-300 text-zinc-900 placeholder-zinc-400' : 'bg-dark-700 border border-dark-500 text-white placeholder-dark-400'}`}
+                          className={`w-full px-3 py-2.5 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 ${isLight ? 'bg-zinc-50 dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500' : 'bg-dark-700 border border-dark-500 text-white placeholder-dark-400'}`}
                         />
                         {generateError && <p className="text-red-500 text-xs">{generateError}</p>}
                         <div className="flex flex-col-reverse sm:flex-row gap-2">
                           <button
                             type="button"
                             onClick={() => { setShowGenerate(false); setGeneratePrompt(''); setGenerateError(null); }}
-                            className={`px-4 py-2.5 rounded-lg text-sm font-medium min-h-[44px] ${isLight ? 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200' : 'bg-dark-700 text-dark-300 hover:bg-dark-600'}`}
+                            className={`px-4 py-2.5 rounded-lg text-sm font-medium min-h-[44px] ${isLight ? 'bg-zinc-100 dark:bg-dark-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-dark-600' : 'bg-dark-700 text-dark-300 hover:bg-dark-600'}`}
                           >
                             Cancel
                           </button>

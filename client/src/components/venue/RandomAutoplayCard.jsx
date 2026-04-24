@@ -6,13 +6,13 @@ import { AUTOPLAY_GENRE_SECTIONS } from '../../data/autoplayGenreSections';
 function GenreSection({ label, selectedCount, items, autoplayGenres, onToggle }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="mb-2 border border-zinc-200 rounded-lg overflow-hidden">
+    <div className="mb-2 border border-zinc-200 dark:border-dark-600 rounded-lg overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-3 py-2.5 bg-zinc-50 hover:bg-zinc-100 transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2.5 bg-zinc-50 dark:bg-dark-900 hover:bg-zinc-100 dark:hover:bg-dark-700 transition-colors"
       >
-        <span className="text-xs font-semibold uppercase tracking-wide text-zinc-600">
+        <span className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">
           {label}
           {selectedCount > 0 && (
             <span className="ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-violet-600 text-white text-[10px] font-bold leading-none normal-case">
@@ -20,7 +20,7 @@ function GenreSection({ label, selectedCount, items, autoplayGenres, onToggle })
             </span>
           )}
         </span>
-        <ChevronDown className={`w-4 h-4 text-zinc-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-4 h-4 text-zinc-400 dark:text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div className="max-h-44 overflow-y-auto p-2 grid grid-cols-3 sm:grid-cols-4 gap-1.5">
@@ -32,7 +32,7 @@ function GenreSection({ label, selectedCount, items, autoplayGenres, onToggle })
               className={`px-2 py-1.5 rounded-lg text-xs font-medium border transition-colors text-center truncate ${
                 autoplayGenres.includes(g)
                   ? 'bg-violet-600 text-white border-violet-600'
-                  : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                  : 'bg-white dark:bg-dark-700 text-zinc-700 dark:text-zinc-200 border-zinc-200 dark:border-dark-600 hover:bg-zinc-100 dark:hover:bg-dark-600'
               }`}
             >
               {g}
@@ -119,37 +119,37 @@ export default function RandomAutoplayCard({
   }
 
   return (
-    <div className="mb-6 p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">
+    <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-3 min-w-0 flex-1">
-          <div className="p-2 bg-violet-100 rounded-lg shrink-0">
-            <Shuffle className="h-5 w-5 text-violet-600" />
+          <div className="p-2 bg-violet-100 dark:bg-violet-500/20 rounded-lg shrink-0">
+            <Shuffle className="h-5 w-5 text-violet-600 dark:text-violet-400" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-sm font-medium text-zinc-600 uppercase tracking-wide mb-1">
+            <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 uppercase tracking-wide mb-1">
               Play random
             </h3>
-            <p className="text-sm text-zinc-500 max-w-xl">
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-xl">
               Choose genres and languages for random autofill, and set explicit rules for what can play and
-              appear in search. Use the top player bar to switch autoplay to <strong className="text-zinc-700">Random</strong>.
+              appear in search. Use the top player bar to switch autoplay to <strong className="text-zinc-700 dark:text-zinc-100">Random</strong>.
             </p>
             {effectiveAutoplayMode === 'random' && (
-              <div className="mt-3 max-w-xl rounded-lg border border-violet-100 bg-violet-50/90 px-3 py-2.5 text-sm">
-                <span className="text-zinc-600">Autoplay is on </span>
-                <span className="font-semibold text-zinc-800">random</span>
-                <span className="text-zinc-600"> — mix: </span>
-                <span className="font-medium text-violet-800">{summaryGenres}</span>
+              <div className="mt-3 max-w-xl rounded-lg border border-violet-100 dark:border-violet-900/40 bg-violet-50/90 dark:bg-violet-950/30 px-3 py-2.5 text-sm">
+                <span className="text-zinc-600 dark:text-zinc-300">Autoplay is on </span>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-100">random</span>
+                <span className="text-zinc-600 dark:text-zinc-300"> — mix: </span>
+                <span className="font-medium text-violet-800 dark:text-violet-300">{summaryGenres}</span>
               </div>
             )}
             {!loading && !isEditing && (
               <dl className="mt-3 max-w-xl text-sm space-y-1">
                 <div className="flex flex-wrap gap-x-2 gap-y-0.5">
-                  <dt className="text-zinc-500 shrink-0">Explicit</dt>
-                  <dd className="text-zinc-800 font-medium">{explicitSummary}</dd>
+                  <dt className="text-zinc-500 dark:text-zinc-400 shrink-0">Explicit</dt>
+                  <dd className="text-zinc-800 dark:text-zinc-100 font-medium">{explicitSummary}</dd>
                 </div>
                 <div className="flex flex-wrap gap-x-2 gap-y-0.5">
-                  <dt className="text-zinc-500 shrink-0">Mix</dt>
-                  <dd className="text-zinc-800 font-medium">{summaryGenres}</dd>
+                  <dt className="text-zinc-500 dark:text-zinc-400 shrink-0">Mix</dt>
+                  <dd className="text-zinc-800 dark:text-zinc-100 font-medium">{summaryGenres}</dd>
                 </div>
               </dl>
             )}
@@ -163,7 +163,7 @@ export default function RandomAutoplayCard({
               <button
                 type="button"
                 onClick={() => setIsEditing(false)}
-                className="inline-flex items-center justify-center text-sm font-semibold px-4 py-2.5 rounded-lg border border-zinc-300 text-zinc-700 hover:bg-zinc-50 transition-colors min-h-[44px]"
+                className="inline-flex items-center justify-center text-sm font-semibold px-4 py-2.5 rounded-lg border border-zinc-300 dark:border-dark-600 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-dark-700 transition-colors min-h-[44px]"
               >
                 Done
               </button>
@@ -191,9 +191,9 @@ export default function RandomAutoplayCard({
       </div>
 
       {!loading && isEditing && (
-        <form id="random-autoplay-form" onSubmit={handleSave} className="mt-6 pt-6 border-t border-zinc-100 space-y-6">
+        <form id="random-autoplay-form" onSubmit={handleSave} className="mt-6 pt-6 border-t border-zinc-100 dark:border-dark-600 space-y-6">
           <div>
-            <label className="block text-sm font-medium text-zinc-600 mb-2">Explicit content</label>
+            <label className="block text-sm font-medium text-zinc-600 dark:text-zinc-300 mb-2">Explicit content</label>
             <div className="flex flex-wrap gap-2 mb-2">
               {[
                 { id: 'off', label: 'Never' },
@@ -207,7 +207,7 @@ export default function RandomAutoplayCard({
                   className={`px-4 py-2 rounded-full text-xs font-semibold transition-colors min-h-[36px] ${
                     explicitMode === id
                       ? 'bg-violet-600 text-white'
-                      : 'bg-zinc-100 text-zinc-500 hover:text-zinc-900'
+                      : 'bg-zinc-100 dark:bg-dark-700 text-zinc-500 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white'
                   }`}
                 >
                   {label}
@@ -216,11 +216,11 @@ export default function RandomAutoplayCard({
             </div>
             {explicitMode === 'scheduled' && (
               <div className="flex items-center gap-2 mt-2">
-                <span className="text-sm text-zinc-600">Allow after</span>
+                <span className="text-sm text-zinc-600 dark:text-zinc-300">Allow after</span>
                 <select
                   value={explicitAfterHour}
                   onChange={(e) => setExplicitAfterHour(Number(e.target.value))}
-                  className="min-h-touch px-3 py-2 rounded-lg border border-zinc-300 bg-white text-zinc-900 focus:ring-2 focus:ring-violet-500"
+                  className="min-h-touch px-3 py-2 rounded-lg border border-zinc-300 dark:border-dark-600 bg-white dark:bg-dark-700 text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-violet-500"
                 >
                   {Array.from({ length: 24 }, (_, i) => (
                     <option key={i} value={i}>{`${i.toString().padStart(2, '0')}:00`}</option>
@@ -228,7 +228,7 @@ export default function RandomAutoplayCard({
                 </select>
               </div>
             )}
-            <p className="text-xs mt-1 text-zinc-400">
+            <p className="text-xs mt-1 text-zinc-400 dark:text-zinc-500">
               {explicitMode === 'off' && 'No explicit songs in random autofill or customer search.'}
               {explicitMode === 'always' && 'Explicit allowed at all times.'}
               {explicitMode === 'scheduled' && `Clean before ${explicitAfterHour}:00, explicit after.`}
@@ -236,8 +236,8 @@ export default function RandomAutoplayCard({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-zinc-600 mb-1">Genres &amp; languages</label>
-            <p className="text-xs text-zinc-400 mb-3">
+            <label className="block text-sm font-medium text-zinc-600 dark:text-zinc-300 mb-1">Genres &amp; languages</label>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-3">
               Random autoplay picks from these tags. Leave empty for a wide variety. Does not limit what customers can request
               (use Settings &rarr; request genre filter for that).
             </p>

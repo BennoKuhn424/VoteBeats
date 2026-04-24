@@ -2,14 +2,14 @@ import { Link } from 'react-router-dom';
 
 export default function PrivacyPolicy() {
   return (
-    <div className="min-h-screen bg-white text-zinc-800">
+    <div className="min-h-screen bg-white dark:bg-dark-950 text-zinc-800 dark:text-zinc-200">
       <div className="max-w-3xl mx-auto px-5 py-12">
-        <Link to="/" className="text-brand-600 hover:text-brand-700 text-sm mb-8 inline-block">&larr; Back to Home</Link>
+        <Link to="/" className="text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 text-sm mb-8 inline-block">&larr; Back to Home</Link>
 
-        <h1 className="text-3xl font-bold mb-2">Privacy Policy</h1>
-        <p className="text-zinc-500 text-sm mb-8">Last updated: 11 April 2026</p>
+        <h1 className="text-3xl font-bold mb-2 text-zinc-900 dark:text-zinc-100">Privacy Policy</h1>
+        <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-8">Last updated: 11 April 2026</p>
 
-        <div className="prose prose-zinc max-w-none space-y-6 text-[15px] leading-relaxed">
+        <div className="prose prose-zinc dark:prose-invert max-w-none space-y-6 text-[15px] leading-relaxed">
           <p>
             SpeelDit ("we", "us", "our") operates the SpeelDit web application at speeldit.com.
             This Privacy Policy explains how we collect, use, and protect your personal information
@@ -69,7 +69,7 @@ export default function PrivacyPolicy() {
           <h2 className="text-xl font-semibold mt-8">5. Third-Party Services</h2>
           <p>We share data with the following third parties only as necessary to operate the service:</p>
           <ul className="list-disc pl-6 space-y-1">
-            <li><strong>Yoco</strong> (payments) &mdash; processes card payments for paid song requests. Subject to <a href="https://www.yoco.com/za/legal/privacy-policy/" target="_blank" rel="noopener noreferrer" className="text-brand-600 underline">Yoco's Privacy Policy</a>.</li>
+            <li><strong>Yoco</strong> (payments) &mdash; processes card payments for paid song requests. Subject to <a href="https://www.yoco.com/za/legal/privacy-policy/" target="_blank" rel="noopener noreferrer" className="text-brand-600 dark:text-brand-400 underline">Yoco's Privacy Policy</a>.</li>
             <li><strong>Apple Music</strong> &mdash; provides song search results and music playback. No personal data is shared with Apple.</li>
             <li><strong>LRCLIB</strong> &mdash; provides song lyrics. No personal data is shared.</li>
             <li><strong>Vercel</strong> (hosting) &mdash; hosts the frontend application.</li>
@@ -129,7 +129,7 @@ export default function PrivacyPolicy() {
           </p>
           <ul className="list-none pl-0 space-y-1">
             <li><strong>Email:</strong> bennokuhn1@icloud.com</li>
-            <li><strong>Information Regulator (South Africa):</strong> <a href="https://inforegulator.org.za" target="_blank" rel="noopener noreferrer" className="text-brand-600 underline">inforegulator.org.za</a></li>
+            <li><strong>Information Regulator (South Africa):</strong> <a href="https://inforegulator.org.za" target="_blank" rel="noopener noreferrer" className="text-brand-600 dark:text-brand-400 underline">inforegulator.org.za</a></li>
           </ul>
         </div>
       </div>

@@ -15,7 +15,7 @@ function CategoryPill({ label, isActive, onClick }) {
       type="button"
       onClick={onClick}
       className={`px-4 py-2 rounded-full font-medium text-sm whitespace-nowrap transition-all min-h-[44px] ${
-        isActive ? 'bg-brand-500 text-white shadow-md' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 active:scale-95'
+        isActive ? 'bg-brand-500 text-white shadow-md' : 'bg-zinc-100 dark:bg-dark-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-dark-600 active:scale-95'
       }`}
     >
       {label}
@@ -26,12 +26,12 @@ function CategoryPill({ label, isActive, onClick }) {
 function PlaylistCard({ playlist, songCount, coverUrl, isActive, isScheduled, isLoading, onSelect, onSchedule, onOpen, onEdit }) {
   return (
     <div
-      className={`group relative bg-white rounded-xl border shadow-sm overflow-hidden transition-all duration-300 hover:scale-[1.01] hover:shadow-lg cursor-pointer ${
-        isActive ? 'border-brand-500 ring-2 ring-brand-500 ring-offset-2' : 'border-zinc-200'
+      className={`group relative bg-white dark:bg-dark-800 rounded-xl border shadow-sm overflow-hidden transition-all duration-300 hover:scale-[1.01] hover:shadow-lg cursor-pointer ${
+        isActive ? 'border-brand-500 ring-2 ring-brand-500 ring-offset-2 ring-offset-white dark:ring-offset-dark-950' : 'border-zinc-200 dark:border-dark-600'
       }`}
       onClick={() => onOpen(playlist.id)}
     >
-      <div className="relative w-full aspect-square overflow-hidden bg-gradient-to-br from-zinc-200 to-zinc-400">
+      <div className="relative w-full aspect-square overflow-hidden bg-gradient-to-br from-zinc-200 to-zinc-400 dark:from-dark-700 dark:to-dark-900">
         {coverUrl ? (
           <img
             src={coverUrl}
@@ -39,7 +39,7 @@ function PlaylistCard({ playlist, songCount, coverUrl, isActive, isScheduled, is
             className="absolute inset-0 h-full w-full object-cover object-center transition-transform duration-300 group-hover:scale-[1.03]"
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-zinc-500">
+          <div className="absolute inset-0 flex items-center justify-center text-zinc-500 dark:text-zinc-400">
             <ListMusic className="w-16 h-16 opacity-40" />
           </div>
         )}
@@ -59,8 +59,8 @@ function PlaylistCard({ playlist, songCount, coverUrl, isActive, isScheduled, is
         </div>
       </div>
       <div className="p-3">
-        <h3 className="text-zinc-900 mb-1 line-clamp-1 text-sm font-semibold">{playlist.name}</h3>
-        <p className="text-zinc-400 mb-3 text-xs">{songCount} songs</p>
+        <h3 className="text-zinc-900 dark:text-zinc-100 mb-1 line-clamp-1 text-sm font-semibold">{playlist.name}</h3>
+        <p className="text-zinc-400 dark:text-zinc-500 mb-3 text-xs">{songCount} songs</p>
         <div className="flex flex-col gap-1.5">
           <button
             type="button"
@@ -88,7 +88,7 @@ function PlaylistCard({ playlist, songCount, coverUrl, isActive, isScheduled, is
                 e.stopPropagation();
                 onEdit(playlist.id);
               }}
-              className="p-2 border border-zinc-300 rounded-lg hover:border-brand-500 hover:bg-orange-50 transition-all min-h-[36px] flex items-center justify-center gap-1.5 text-zinc-600 hover:text-brand-600 text-xs"
+              className="p-2 border border-zinc-300 dark:border-dark-600 rounded-lg hover:border-brand-500 hover:bg-orange-50 dark:hover:bg-brand-500/10 transition-all min-h-[36px] flex items-center justify-center gap-1.5 text-zinc-600 dark:text-zinc-300 hover:text-brand-600 dark:hover:text-brand-400 text-xs"
               aria-label="Edit playlist"
               title="Edit songs"
             >
@@ -101,8 +101,8 @@ function PlaylistCard({ playlist, songCount, coverUrl, isActive, isScheduled, is
                 e.stopPropagation();
                 onSchedule(playlist.id);
               }}
-              className={`p-2 border rounded-lg hover:border-brand-500 hover:bg-orange-50 transition-all min-h-[36px] flex items-center justify-center gap-1.5 text-xs ${
-                isScheduled ? 'border-brand-500 bg-orange-50 text-brand-600' : 'border-zinc-300 text-zinc-600'
+              className={`p-2 border rounded-lg hover:border-brand-500 hover:bg-orange-50 dark:hover:bg-brand-500/10 transition-all min-h-[36px] flex items-center justify-center gap-1.5 text-xs ${
+                isScheduled ? 'border-brand-500 bg-orange-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400' : 'border-zinc-300 dark:border-dark-600 text-zinc-600 dark:text-zinc-300'
               }`}
               aria-label="Schedule playlist"
               title="Schedule by time of day"
@@ -269,66 +269,66 @@ export default function VenueBrowsePlaylists() {
 
   if (loadError) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 flex items-center justify-center p-6">
-        <p className="text-zinc-600">{loadError}</p>
+      <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900 flex items-center justify-center p-6">
+        <p className="text-zinc-600 dark:text-zinc-300">{loadError}</p>
       </div>
     );
   }
 
   if (!venue) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900 flex items-center justify-center">
         <Loader2 className="w-10 h-10 text-brand-500 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100">
-      <header className="sticky top-0 z-10 bg-white border-b border-zinc-200 shadow-sm">
+    <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900">
+      <header className="sticky top-0 z-10 bg-white dark:bg-dark-800 border-b border-zinc-200 dark:border-dark-600 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-2">
             <div className="flex items-center gap-3 min-w-0">
               <button
                 type="button"
                 onClick={() => navigate('/venue/dashboard')}
-                className="p-2 hover:bg-zinc-100 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
+                className="p-2 hover:bg-zinc-100 dark:hover:bg-dark-700 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
                 aria-label="Back"
               >
-                <ArrowLeft className="w-5 h-5 text-zinc-700" />
+                <ArrowLeft className="w-5 h-5 text-zinc-700 dark:text-zinc-200" />
               </button>
-              <h1 className="text-zinc-900 font-bold text-lg truncate">Playlists</h1>
+              <h1 className="text-zinc-900 dark:text-zinc-100 font-bold text-lg truncate">Playlists</h1>
             </div>
             <div className="flex items-center gap-2">
-              <div className="hidden sm:flex items-center border border-zinc-200 rounded-lg px-2 bg-zinc-50">
-                <Search className="w-4 h-4 text-zinc-400 shrink-0" />
+              <div className="hidden sm:flex items-center border border-zinc-200 dark:border-dark-600 rounded-lg px-2 bg-zinc-50 dark:bg-dark-900">
+                <Search className="w-4 h-4 text-zinc-400 dark:text-zinc-500 shrink-0" />
                 <input
                   type="search"
                   placeholder="Search…"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  className="bg-transparent border-0 text-sm py-2 px-2 w-40 lg:w-56 focus:outline-none focus:ring-0"
+                  className="bg-transparent border-0 text-sm py-2 px-2 w-40 lg:w-56 focus:outline-none focus:ring-0 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500"
                 />
               </div>
             </div>
           </div>
-          <div className="sm:hidden pb-3 flex items-center border-t border-zinc-100 pt-2">
-            <Search className="w-4 h-4 text-zinc-400 ml-2" />
+          <div className="sm:hidden pb-3 flex items-center border-t border-zinc-100 dark:border-dark-700 pt-2">
+            <Search className="w-4 h-4 text-zinc-400 dark:text-zinc-500 ml-2" />
             <input
               type="search"
               placeholder="Search playlists…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="flex-1 bg-transparent border-0 text-sm py-2 px-2 focus:outline-none"
+              className="flex-1 bg-transparent border-0 text-sm py-2 px-2 focus:outline-none text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500"
             />
           </div>
         </div>
       </header>
 
       {generateStatus && (
-        <div className={`border-b border-zinc-200 ${generateStatus === 'generating' ? 'bg-blue-50' : generateStatus.error ? 'bg-red-50' : 'bg-green-50'}`}>
+        <div className={`border-b border-zinc-200 dark:border-dark-600 ${generateStatus === 'generating' ? 'bg-blue-50 dark:bg-blue-950/30' : generateStatus.error ? 'bg-red-50 dark:bg-red-950/30' : 'bg-green-50 dark:bg-green-950/30'}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-between gap-3">
-            <p className={`text-sm font-medium ${generateStatus === 'generating' ? 'text-blue-700' : generateStatus.error ? 'text-red-700' : 'text-green-700'}`}>
+            <p className={`text-sm font-medium ${generateStatus === 'generating' ? 'text-blue-700 dark:text-blue-300' : generateStatus.error ? 'text-red-700 dark:text-red-300' : 'text-green-700 dark:text-green-300'}`}>
               {generateStatus === 'generating'
                 ? 'Generating your AI playlist… this takes ~30 seconds'
                 : generateStatus.error
@@ -336,7 +336,7 @@ export default function VenueBrowsePlaylists() {
                   : `Added ${generateStatus.added} songs to your playlist!`}
             </p>
             {generateStatus !== 'generating' && (
-              <button type="button" onClick={() => setGenerateStatus(null)} className="text-xs text-zinc-400 hover:text-zinc-600 shrink-0">Dismiss</button>
+              <button type="button" onClick={() => setGenerateStatus(null)} className="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 shrink-0">Dismiss</button>
             )}
           </div>
         </div>
@@ -344,9 +344,9 @@ export default function VenueBrowsePlaylists() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {actionError && (
-          <div className="mb-4 flex items-center justify-between gap-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          <div className="mb-4 flex items-center justify-between gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-lg text-red-700 dark:text-red-300 text-sm">
             <span>{actionError}</span>
-            <button onClick={() => setActionError('')} className="shrink-0 text-red-400 hover:text-red-600">&times;</button>
+            <button onClick={() => setActionError('')} className="shrink-0 text-red-400 dark:text-red-500 hover:text-red-600 dark:hover:text-red-300">&times;</button>
           </div>
         )}
         <div className="mb-6 sm:mb-8">
@@ -361,8 +361,8 @@ export default function VenueBrowsePlaylists() {
             </button>
           </div>
           {showCreatePlaylist && (
-            <div className="mt-4 p-5 bg-white rounded-xl border border-zinc-200 shadow-sm">
-              <h4 className="font-semibold text-zinc-900 text-sm mb-3">Name your playlist</h4>
+            <div className="mt-4 p-5 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
+              <h4 className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm mb-3">Name your playlist</h4>
               <form onSubmit={handleCreatePlaylist} className="flex flex-col sm:flex-row gap-2">
                 <input
                   autoFocus
@@ -370,7 +370,7 @@ export default function VenueBrowsePlaylists() {
                   value={newPlaylistName}
                   onChange={(e) => setNewPlaylistName(e.target.value)}
                   placeholder="e.g. Valentine's Day, New Year's Eve…"
-                  className="flex-1 px-3 py-2 bg-zinc-50 border border-zinc-300 rounded-lg text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm"
+                  className="flex-1 px-3 py-2 bg-zinc-50 dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm"
                 />
                 <button
                   type="submit"
@@ -382,7 +382,7 @@ export default function VenueBrowsePlaylists() {
                 <button
                   type="button"
                   onClick={() => { setShowCreatePlaylist(false); setNewPlaylistName(''); }}
-                  className="px-3 py-2 rounded-lg text-sm min-h-[44px] bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                  className="px-3 py-2 rounded-lg text-sm min-h-[44px] bg-zinc-100 dark:bg-dark-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-dark-600"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -406,8 +406,8 @@ export default function VenueBrowsePlaylists() {
 
         {selectedCategory === 'All' && !query && featured && (
           <div className="mb-8 sm:mb-10">
-            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Now playing pool</p>
-            <div className="rounded-xl overflow-hidden shadow-lg ring-1 ring-zinc-200 bg-black">
+            <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-2">Now playing pool</p>
+            <div className="rounded-xl overflow-hidden shadow-lg ring-1 ring-zinc-200 dark:ring-dark-600 bg-black">
               <div className="min-h-[140px] sm:min-h-[168px] w-full flex flex-col justify-end p-4 sm:p-6">
                 <h2 className="text-white text-xl sm:text-2xl font-bold">{featured.name}</h2>
                 <p className="text-white/80 text-sm mt-1">
@@ -419,7 +419,7 @@ export default function VenueBrowsePlaylists() {
         )}
 
         {filtered.length === 0 ? (
-          <p className="text-center text-zinc-500 py-16">No playlists match.</p>
+          <p className="text-center text-zinc-500 dark:text-zinc-400 py-16">No playlists match.</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
             {filtered.map((pl) => (
@@ -445,7 +445,7 @@ export default function VenueBrowsePlaylists() {
 
         {/* ── Playlist Manager: summary by default; Edit opens songs / search / AI ── */}
         <div id="playlist-manager" className="mt-10 max-w-3xl mx-auto">
-          <p className="text-sm text-zinc-500 mb-3">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-3">
             Tap a card to edit songs. Set active and schedule use the buttons on each card.
           </p>
           <PlaylistManager

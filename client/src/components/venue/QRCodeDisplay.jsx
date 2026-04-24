@@ -10,8 +10,11 @@ export default function QRCodeDisplay({ venueCode, venueName, variant = 'dark' }
     : 'flex justify-center p-5 bg-dark-950 rounded-xl';
 
   if (isLight) {
+    // QR codes must stay on a light background even in dark mode — the
+    // scanner contrast ratio depends on dark-on-white. Wrap it in a white
+    // panel regardless of theme.
     return (
-      <div className="bg-white border-2 border-zinc-200 rounded-lg p-6 flex items-center justify-center">
+      <div className="bg-white border-2 border-zinc-200 dark:border-dark-600 rounded-lg p-6 flex items-center justify-center">
         <QRCodeSVG value={votingUrl} size={180} level="M" />
       </div>
     );
