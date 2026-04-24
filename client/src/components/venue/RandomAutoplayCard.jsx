@@ -55,6 +55,9 @@ export default function RandomAutoplayCard({
 }) {
   const [explicitMode, setExplicitMode] = useState('off');
   const [explicitAfterHour, setExplicitAfterHour] = useState(18);
+  const [strictExplicit, setStrictExplicit] = useState(false);
+  const [blockedTitleWords, setBlockedTitleWords] = useState([]);
+  const [wordInput, setWordInput] = useState('');
   const [autoplayGenres, setAutoplayGenres] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -74,12 +77,28 @@ export default function RandomAutoplayCard({
         } else {
           setExplicitMode(s.allowExplicit ? 'always' : 'off');
         }
+        setStrictExplicit(s.strictExplicit === true);
+        setBlockedTitleWords(Array.isArray(s.blockedTitleWords) ? s.blockedTitleWords : []);
         const ag = s.autoplayGenre;
         setAutoplayGenres(Array.isArray(ag) ? ag : (ag ? [ag] : []));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [venueCode]);
+
+  function addWord(raw) {
+    const w = (raw || '').trim();
+    if (!w) return;
+    const key = w.toLowerCase();
+    setBlockedTitleWords((prev) => (
+      prev.some((x) => x.toLowerCase() === key) ? prev : [...prev, w]
+    ));
+    setWordInput('');
+  }
+
+  function removeWord(word) {
+    setBlockedTitleWords((prev) => prev.filter((w) => w !== word));
+  }
 
   function toggleGenre(g) {
     setAutoplayGenres((prev) =>
@@ -106,6 +125,8 @@ export default function RandomAutoplayCard({
       await api.updateSettings(venueCode, {
         allowExplicit: explicitMode === 'always',
         explicitAfterHour: explicitMode === 'scheduled' ? explicitAfterHour : null,
+        strictExplicit,
+        blockedTitleWords,
         autoplayGenre: autoplayGenres.length > 0 ? autoplayGenres : null,
       });
       setSavedFlash(true);
@@ -145,12 +166,25 @@ export default function RandomAutoplayCard({
               <dl className="mt-3 max-w-xl text-sm space-y-1">
                 <div className="flex flex-wrap gap-x-2 gap-y-0.5">
                   <dt className="text-zinc-500 dark:text-zinc-400 shrink-0">Explicit</dt>
-                  <dd className="text-zinc-800 dark:text-zinc-100 font-medium">{explicitSummary}</dd>
+                  <dd className="text-zinc-800 dark:text-zinc-100 font-medium">
+                    {explicitSummary}
+                    {strictExplicit && explicitMode !== 'always' && (
+                      <span className="ml-1 text-xs text-violet-700 dark:text-violet-300">(strict)</span>
+                    )}
+                  </dd>
                 </div>
                 <div className="flex flex-wrap gap-x-2 gap-y-0.5">
                   <dt className="text-zinc-500 dark:text-zinc-400 shrink-0">Mix</dt>
                   <dd className="text-zinc-800 dark:text-zinc-100 font-medium">{summaryGenres}</dd>
                 </div>
+                {blockedTitleWords.length > 0 && (
+                  <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                    <dt className="text-zinc-500 dark:text-zinc-400 shrink-0">Blocked words</dt>
+                    <dd className="text-zinc-800 dark:text-zinc-100 font-medium">
+                      {blockedTitleWords.length} {blockedTitleWords.length === 1 ? 'word' : 'words'}
+                    </dd>
+                  </div>
+                )}
               </dl>
             )}
           </div>
@@ -233,6 +267,68 @@ export default function RandomAutoplayCard({
               {explicitMode === 'always' && 'Explicit allowed at all times.'}
               {explicitMode === 'scheduled' && `Clean before ${explicitAfterHour}:00, explicit after.`}
             </p>
+            {explicitMode !== 'always' && (
+              <label className="mt-3 flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={strictExplicit}
+                  onChange={(e) => setStrictExplicit(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-zinc-300 dark:border-dark-500 text-violet-600 focus:ring-violet-500"
+                />
+                <span className="text-xs text-zinc-600 dark:text-zinc-300">
+                  <strong className="text-zinc-800 dark:text-zinc-100">Strict mode</strong>
+                  <span className="block text-zinc-500 dark:text-zinc-400">
+                    Also drop songs the label didn&apos;t rate (safer; may shrink results).
+                  </span>
+                </span>
+              </label>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-zinc-600 dark:text-zinc-300 mb-1">Blocked words (title / artist)</label>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-2">
+              Songs whose title or artist contains any of these words (whole-word match) are hidden from search and random autofill.
+            </p>
+            {blockedTitleWords.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {blockedTitleWords.map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    onClick={() => removeWord(w)}
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300 text-xs font-medium hover:bg-red-200 dark:hover:bg-red-500/30"
+                  >
+                    {w}
+                    <span className="text-red-500/80 dark:text-red-300/80 text-[10px]">✕</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={wordInput}
+                onChange={(e) => setWordInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    addWord(wordInput);
+                  }
+                }}
+                placeholder="Add a word and press Enter"
+                maxLength={50}
+                className="flex-1 min-h-touch px-3 py-2 rounded-lg border border-zinc-300 dark:border-dark-600 bg-white dark:bg-dark-700 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 text-sm focus:ring-2 focus:ring-violet-500"
+              />
+              <button
+                type="button"
+                onClick={() => addWord(wordInput)}
+                disabled={!wordInput.trim()}
+                className="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50 min-h-touch"
+              >
+                Add
+              </button>
+            </div>
           </div>
 
           <div>

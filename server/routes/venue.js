@@ -71,9 +71,11 @@ router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, (r
   const {
     allowExplicit,
     explicitAfterHour,
+    strictExplicit,
     maxSongsPerUser,
     genreFilters,
     blockedArtists,
+    blockedTitleWords,
     requirePaymentForRequest,
     requestPriceCents,
     autoplayQueue,
@@ -114,6 +116,27 @@ router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, (r
       return res.status(400).json({ error: 'blockedArtists must be an array of strings (max 100 chars each)' });
     }
     venue.settings.blockedArtists = blockedArtists;
+  }
+  if (typeof strictExplicit === 'boolean') venue.settings.strictExplicit = strictExplicit;
+  if (Array.isArray(blockedTitleWords)) {
+    if (blockedTitleWords.length > 200) {
+      return res.status(400).json({ error: 'blockedTitleWords cannot exceed 200 entries' });
+    }
+    if (!blockedTitleWords.every((x) => typeof x === 'string' && x.length <= 50)) {
+      return res.status(400).json({ error: 'blockedTitleWords must be an array of strings (max 50 chars each)' });
+    }
+    // Normalise: trim, drop empties, dedupe case-insensitively.
+    const seen = new Set();
+    const cleaned = [];
+    for (const w of blockedTitleWords) {
+      const t = w.trim();
+      if (!t) continue;
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      cleaned.push(t);
+    }
+    venue.settings.blockedTitleWords = cleaned;
   }
   if (typeof requirePaymentForRequest === 'boolean') venue.settings.requirePaymentForRequest = requirePaymentForRequest;
   if (typeof requestPriceCents === 'number' && requestPriceCents >= 500 && requestPriceCents <= 5000) {

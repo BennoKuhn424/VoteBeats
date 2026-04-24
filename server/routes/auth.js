@@ -124,9 +124,11 @@ router.post('/register', validate(registerSchema), async (req, res) => {
       owner: { email: emailNorm, passwordHash, emailVerified: false },
       settings: {
         allowExplicit: false,
+        strictExplicit: false,
         maxSongsPerUser: 3,
         genreFilters: [],
         blockedArtists: [],
+        blockedTitleWords: [],
         requirePaymentForRequest: false,
         requestPriceCents: 1000,
         autoplayQueue: false,

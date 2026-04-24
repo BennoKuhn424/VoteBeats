@@ -48,21 +48,23 @@ function shuffleArray(arr) {
   return a;
 }
 
+const DEFAULT_VENUE_TIMEZONE = 'Africa/Johannesburg';
+
 /** Hour (0–23) for explicit-content window; uses venue.settings.timezone when set (IANA). */
 function getVenueLocalHour(venue) {
-  const tz = venue?.settings?.timezone;
-  if (tz && typeof tz === 'string') {
-    try {
-      const parts = new Intl.DateTimeFormat('en-GB', {
-        timeZone: tz,
-        hour: 'numeric',
-        hour12: false,
-      }).formatToParts(new Date());
-      const h = parts.find((p) => p.type === 'hour');
-      if (h) return parseInt(h.value, 10);
-    } catch (_) {
-      /* invalid IANA */
-    }
+  const tz = (venue?.settings?.timezone && typeof venue.settings.timezone === 'string')
+    ? venue.settings.timezone
+    : DEFAULT_VENUE_TIMEZONE;
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz,
+      hour: 'numeric',
+      hour12: false,
+    }).formatToParts(new Date());
+    const h = parts.find((p) => p.type === 'hour');
+    if (h) return parseInt(h.value, 10);
+  } catch (_) {
+    /* invalid IANA — fall through to server-local */
   }
   return new Date().getHours();
 }
@@ -553,6 +555,29 @@ const MOCK_CATALOG = [
   { appleId: 'song_251', title: 'Young Dumb & Broke', artist: 'Khalid', albumArt: 'https://picsum.photos/451', duration: 203, genre: 'R&B/Soul' },
 ];
 
+/**
+ * Decide whether a song should be dropped by the explicit filter.
+ * In strict mode, songs the label didn't rate (contentRating missing → isExplicit null)
+ * are treated as risky and dropped alongside confirmed explicits.
+ */
+function shouldDropForExplicit(song, strict) {
+  if (song.isExplicit === true) return true;
+  if (strict && (song.isExplicit === null || song.isExplicit === undefined)) return true;
+  return false;
+}
+
+/**
+ * Case-insensitive whole-word match. Word boundary is /\b/, which avoids the
+ * Scunthorpe problem ("ass" won't match "classic" or "bass").
+ */
+function haystackContainsWord(haystack, word) {
+  if (!haystack || !word) return false;
+  const needle = word.toLowerCase().trim();
+  if (!needle) return false;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}\\b`, 'i').test(haystack);
+}
+
 function filterByVenueSettings(songs, venue) {
   if (!venue?.settings) return songs;
 
@@ -560,15 +585,16 @@ function filterByVenueSettings(songs, venue) {
 
   // Time-based explicit filter: allow explicit after a certain hour (venue local time).
   // If explicitAfterHour is set, it overrides allowExplicit during the scheduled hours.
+  const strict = venue.settings.strictExplicit === true;
   const explicitAfterHour = venue.settings.explicitAfterHour;
   if (typeof explicitAfterHour === 'number' && explicitAfterHour >= 0 && explicitAfterHour <= 23) {
     const currentHour = getVenueLocalHour(venue);
     const explicitAllowedNow = currentHour >= explicitAfterHour;
     if (!explicitAllowedNow) {
-      filtered = filtered.filter((s) => !s.isExplicit);
+      filtered = filtered.filter((s) => !shouldDropForExplicit(s, strict));
     }
   } else if (venue.settings.allowExplicit === false) {
-    filtered = filtered.filter((s) => !s.isExplicit);
+    filtered = filtered.filter((s) => !shouldDropForExplicit(s, strict));
   }
 
   if (venue.settings.genreFilters?.length) {
@@ -582,6 +608,15 @@ function filterByVenueSettings(songs, venue) {
     const blocked = venue.settings.blockedArtists.map((a) => a.toLowerCase());
     filtered = filtered.filter(
       (s) => !blocked.some((b) => String(s.artist).toLowerCase().includes(b))
+    );
+  }
+
+  // Word-boundary match on title + artist; catches tracks whose label didn't
+  // flag them explicit but where the title itself is the problem (slurs, etc).
+  if (venue.settings.blockedTitleWords?.length) {
+    const words = venue.settings.blockedTitleWords;
+    filtered = filtered.filter(
+      (s) => !words.some((w) => haystackContainsWord(s.title, w) || haystackContainsWord(s.artist, w))
     );
   }
 
@@ -623,7 +658,13 @@ async function searchAppleMusic(query, venueCode) {
         duration: Math.round(s.attributes.durationInMillis / 1000),
         // Join ALL genre tags so downstream filters catch secondary tags (e.g. 'Afrikaans').
         genre: (s.attributes.genreNames || []).join(' '),
-        isExplicit: s.attributes.contentRating === 'explicit',
+        // Tri-state: true = label-flagged explicit, false = explicitly clean,
+        // null = unrated / missing tag (treated as risky under strictExplicit).
+        isExplicit: s.attributes.contentRating === 'explicit'
+          ? true
+          : s.attributes.contentRating === 'clean'
+            ? false
+            : null,
       }));
       return filterByVenueSettings(songs, venue);
     } catch (err) {
@@ -719,7 +760,13 @@ async function searchByGenre(genres, venueCode) {
           duration: Math.round(s.attributes.durationInMillis / 1000),
           // Join ALL genre tags so 'Afrikaans' is caught even when it's not the primary tag.
           genre: (s.attributes.genreNames || []).join(' '),
-          isExplicit: s.attributes.contentRating === 'explicit',
+          // Tri-state: true = label-flagged explicit, false = explicitly clean,
+        // null = unrated / missing tag (treated as risky under strictExplicit).
+        isExplicit: s.attributes.contentRating === 'explicit'
+          ? true
+          : s.attributes.contentRating === 'clean'
+            ? false
+            : null,
         }));
 
         const matched = songs.filter((s) => songMatchesGenreRules(s, languageGenres, regularGenres));
@@ -788,4 +835,13 @@ function pickFromPlaylist(playlist, venueCode) {
   return chosen;
 }
 
-module.exports = { searchAppleMusic, searchByGenre, pickFromPlaylist };
+module.exports = {
+  searchAppleMusic,
+  searchByGenre,
+  pickFromPlaylist,
+  // Exported for direct unit testing of the filter pipeline.
+  filterByVenueSettings,
+  shouldDropForExplicit,
+  haystackContainsWord,
+  getVenueLocalHour,
+};
