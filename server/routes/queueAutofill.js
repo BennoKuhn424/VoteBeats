@@ -20,9 +20,11 @@ async function serverAutofill(venueCode, venue) {
     const playlists = venue?.playlists || [];
 
     let activePl = null;
+    let scheduledPl = null;
     const schedule = venue?.settings?.playlistSchedule;
     if (Array.isArray(schedule) && schedule.length > 0) {
-      activePl = findScheduledPlaylist(schedule, playlists, new Date());
+      scheduledPl = findScheduledPlaylist(schedule, playlists, new Date());
+      activePl = scheduledPl;
     }
     if (!activePl) {
       activePl = playlists.find((p) => p.id === venue?.activePlaylistId)
@@ -32,8 +34,9 @@ async function serverAutofill(venueCode, venue) {
 
     const provider = getProvider();
     let song = null;
-    if (autoplayMode === 'playlist') {
-      // Playlist mode: only play from an existing playlist — never fall through to random
+    if (scheduledPl || autoplayMode === 'playlist') {
+      // Scheduled playlist slots override random mode while the slot is active.
+      // Playlist mode itself only plays from existing playlists.
       if (playlist.length > 0) {
         song = provider.pickFromPlaylist(playlist, venueCode);
       }
@@ -104,9 +107,11 @@ function attachAutofillRoutes(router) {
       const playlists = venue.playlists || [];
 
       let activePl = null;
+      let scheduledPl = null;
       const schedule = venue.settings?.playlistSchedule;
       if (Array.isArray(schedule) && schedule.length > 0) {
-        activePl = findScheduledPlaylist(schedule, playlists, new Date());
+        scheduledPl = findScheduledPlaylist(schedule, playlists, new Date());
+        activePl = scheduledPl;
       }
       if (!activePl) {
         activePl = playlists.find((p) => p.id === venue.activePlaylistId)
@@ -116,7 +121,7 @@ function attachAutofillRoutes(router) {
 
       const provider = getProvider();
       let song = null;
-      if (autoplayMode === 'playlist') {
+      if (scheduledPl || autoplayMode === 'playlist') {
         if (playlist.length > 0) {
           song = provider.pickFromPlaylist(playlist, venueCode);
         }

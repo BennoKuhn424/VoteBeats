@@ -13,6 +13,7 @@ const {
   generateCheckoutSchema,
   generatePlaylistSchema,
 } = require('../utils/schemas');
+const { findScheduleOverlap } = require('../utils/playlistSchedule');
 
 const validateVenueCode = require('../middleware/validateVenueCode');
 
@@ -194,7 +195,7 @@ router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, (r
       if (schedule.length > 50) {
         return res.status(400).json({ error: 'playlistSchedule cannot exceed 50 entries' });
       }
-      venue.settings.playlistSchedule = schedule
+      const cleanedSchedule = schedule
         .map((s) => {
           const startMinute = Number(s.startMinute);
           const endMinute = Number(s.endMinute);
@@ -219,6 +220,11 @@ router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, (r
           if (s.startHour === s.endHour && s.startMinute === s.endMinute) return false;
           return true;
         });
+      const overlap = findScheduleOverlap(cleanedSchedule);
+      if (overlap) {
+        return res.status(400).json({ error: 'Playlist schedule slots cannot overlap' });
+      }
+      venue.settings.playlistSchedule = cleanedSchedule;
     } else {
       delete venue.settings.playlistSchedule;
     }

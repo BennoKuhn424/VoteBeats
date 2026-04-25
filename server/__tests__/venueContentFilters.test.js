@@ -275,6 +275,36 @@ describe('PUT /api/venue/:venueCode/settings — playlistSchedule', () => {
     expect(db.saveVenue).not.toHaveBeenCalled();
   });
 
+  test('rejects overlapping slots on the same day', async () => {
+    db.getVenue.mockReturnValue({ code: 'TSTV01', settings: {} });
+
+    const res = await authedPut('TSTV01', {
+      playlistSchedule: [
+        { playlistId: 'pl_lunch', startHour: 12, endHour: 14, days: [6] },
+        { playlistId: 'pl_afternoon', startHour: 13, endHour: 17, days: [6] },
+      ],
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/overlap/i);
+    expect(db.saveVenue).not.toHaveBeenCalled();
+  });
+
+  test('rejects overnight slots that overlap the next day', async () => {
+    db.getVenue.mockReturnValue({ code: 'TSTV01', settings: {} });
+
+    const res = await authedPut('TSTV01', {
+      playlistSchedule: [
+        { playlistId: 'pl_late', startHour: 22, endHour: 2, days: [5] },
+        { playlistId: 'pl_early', startHour: 1, endHour: 3, days: [6] },
+      ],
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/overlap/i);
+    expect(db.saveVenue).not.toHaveBeenCalled();
+  });
+
   test('truncates over-long playlistId', async () => {
     db.getVenue.mockReturnValue({ code: 'TSTV01', settings: {} });
     db.saveVenue.mockImplementation(() => {});

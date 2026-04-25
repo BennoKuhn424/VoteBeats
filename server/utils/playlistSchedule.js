@@ -30,6 +30,57 @@ function previousDay(day) {
   return (day + 6) % 7;
 }
 
+function slotDays(s) {
+  if (Array.isArray(s.days) && s.days.length > 0) {
+    return [...new Set(s.days.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))];
+  }
+  return [0, 1, 2, 3, 4, 5, 6];
+}
+
+function slotWeeklyIntervals(s) {
+  const start = slotStartMinutes(s);
+  const end = slotEndExclusiveMinutes(s);
+  if (start === end) return [];
+
+  const intervals = [];
+  for (const day of slotDays(s)) {
+    const dayStart = day * 1440;
+    if (start < end) {
+      intervals.push({ start: dayStart + start, end: dayStart + end });
+    } else {
+      intervals.push({ start: dayStart + start, end: dayStart + 1440 });
+      const nextDayStart = ((day + 1) % 7) * 1440;
+      intervals.push({ start: nextDayStart, end: nextDayStart + end });
+    }
+  }
+  return intervals;
+}
+
+function intervalsOverlap(a, b) {
+  return a.start < b.end && b.start < a.end;
+}
+
+function findScheduleOverlap(schedule) {
+  if (!Array.isArray(schedule)) return null;
+  const seen = [];
+  for (let i = 0; i < schedule.length; i++) {
+    for (const interval of slotWeeklyIntervals(schedule[i])) {
+      for (const prior of seen) {
+        if (intervalsOverlap(interval, prior.interval)) {
+          return {
+            firstIndex: prior.index,
+            secondIndex: i,
+            first: schedule[prior.index],
+            second: schedule[i],
+          };
+        }
+      }
+      seen.push({ index: i, interval });
+    }
+  }
+  return null;
+}
+
 /**
  * Check whether a schedule slot is active at a given time.
  * Supports overnight ranges (e.g. startHour=22, endHour=2).
@@ -79,4 +130,9 @@ function findScheduledPlaylist(schedule, playlists, now = new Date()) {
   return null;
 }
 
-module.exports = { slotMatches, findScheduledPlaylist, minutesFromMidnight };
+module.exports = {
+  slotMatches,
+  findScheduledPlaylist,
+  findScheduleOverlap,
+  minutesFromMidnight,
+};
