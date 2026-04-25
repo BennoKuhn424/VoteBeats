@@ -202,3 +202,117 @@ describe('PUT /api/venue/:venueCode/settings — lyrics filter settings', () => 
     expect(saved.settings.lyricsLanguages).toEqual([]);
   });
 });
+
+describe('PUT /api/venue/:venueCode/settings — playlistSchedule', () => {
+  test('saves a valid schedule with clamped minutes and dedup-ed days', async () => {
+    db.getVenue.mockReturnValue({ code: 'TSTV01', settings: {} });
+    db.saveVenue.mockImplementation(() => {});
+
+    const res = await authedPut('TSTV01', {
+      playlistSchedule: [
+        { playlistId: 'pl_lunch', startHour: 12, endHour: 14, startMinute: 30, endMinute: 70, days: [1, 1, 3, 9] },
+      ],
+    });
+    expect(res.status).toBe(200);
+
+    const saved = db.saveVenue.mock.calls[0][1];
+    expect(saved.settings.playlistSchedule).toEqual([
+      {
+        playlistId: 'pl_lunch',
+        startHour: 12,
+        endHour: 14,
+        startMinute: 30,
+        endMinute: 59, // clamped to 59
+        days: [1, 3], // dedup-ed, out-of-range (9) dropped
+      },
+    ]);
+  });
+
+  test('drops slots with invalid hours', async () => {
+    db.getVenue.mockReturnValue({ code: 'TSTV01', settings: {} });
+    db.saveVenue.mockImplementation(() => {});
+
+    const res = await authedPut('TSTV01', {
+      playlistSchedule: [
+        { playlistId: 'good', startHour: 9, endHour: 17 },
+        { playlistId: 'bad-start', startHour: 25, endHour: 17 },
+        { playlistId: 'bad-end', startHour: 9, endHour: -1 },
+        { playlistId: 'no-id', startHour: 1, endHour: 2 }, // valid but missing playlistId after String() — actually 'no-id' is fine
+      ],
+    });
+    expect(res.status).toBe(200);
+
+    const saved = db.saveVenue.mock.calls[0][1];
+    expect(saved.settings.playlistSchedule.map((s) => s.playlistId)).toEqual(['good', 'no-id']);
+  });
+
+  test('drops zero-duration slots (start === end at minute granularity)', async () => {
+    db.getVenue.mockReturnValue({ code: 'TSTV01', settings: {} });
+    db.saveVenue.mockImplementation(() => {});
+
+    const res = await authedPut('TSTV01', {
+      playlistSchedule: [
+        { playlistId: 'zero', startHour: 12, endHour: 12, startMinute: 30, endMinute: 30 },
+        { playlistId: 'real', startHour: 12, endHour: 14 },
+      ],
+    });
+    expect(res.status).toBe(200);
+
+    const saved = db.saveVenue.mock.calls[0][1];
+    expect(saved.settings.playlistSchedule.map((s) => s.playlistId)).toEqual(['real']);
+  });
+
+  test('rejects schedules with more than 50 slots', async () => {
+    db.getVenue.mockReturnValue({ code: 'TSTV01', settings: {} });
+    const huge = Array.from({ length: 51 }, (_, i) => ({
+      playlistId: `pl_${i}`,
+      startHour: 9,
+      endHour: 17,
+    }));
+
+    const res = await authedPut('TSTV01', { playlistSchedule: huge });
+    expect(res.status).toBe(400);
+    expect(db.saveVenue).not.toHaveBeenCalled();
+  });
+
+  test('truncates over-long playlistId', async () => {
+    db.getVenue.mockReturnValue({ code: 'TSTV01', settings: {} });
+    db.saveVenue.mockImplementation(() => {});
+
+    const longId = 'x'.repeat(150);
+    const res = await authedPut('TSTV01', {
+      playlistSchedule: [{ playlistId: longId, startHour: 9, endHour: 17 }],
+    });
+    expect(res.status).toBe(200);
+
+    const saved = db.saveVenue.mock.calls[0][1];
+    expect(saved.settings.playlistSchedule[0].playlistId).toHaveLength(100);
+  });
+
+  test('non-array playlistSchedule clears the schedule', async () => {
+    db.getVenue.mockReturnValue({
+      code: 'TSTV01',
+      settings: { playlistSchedule: [{ playlistId: 'pl_old', startHour: 9, endHour: 17 }] },
+    });
+    db.saveVenue.mockImplementation(() => {});
+
+    const res = await authedPut('TSTV01', { playlistSchedule: null });
+    expect(res.status).toBe(200);
+
+    const saved = db.saveVenue.mock.calls[0][1];
+    expect(saved.settings.playlistSchedule).toBeUndefined();
+  });
+
+  test('omits empty days arrays from saved slot', async () => {
+    db.getVenue.mockReturnValue({ code: 'TSTV01', settings: {} });
+    db.saveVenue.mockImplementation(() => {});
+
+    const res = await authedPut('TSTV01', {
+      playlistSchedule: [{ playlistId: 'all-days', startHour: 9, endHour: 17, days: [] }],
+    });
+    expect(res.status).toBe(200);
+
+    const saved = db.saveVenue.mock.calls[0][1];
+    expect(saved.settings.playlistSchedule[0]).not.toHaveProperty('days');
+  });
+});

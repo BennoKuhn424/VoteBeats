@@ -58,4 +58,40 @@ describe('findScheduledPlaylist', () => {
 
     expect(findScheduledPlaylist(schedule, playlists, new Date(2025, 0, 15, 10, 0, 0))).toBeNull();
   });
+
+  test('returns the first matching slot when two playlists overlap the same window', () => {
+    // Real-world dayparting: lunch (12–14) and afternoon (13–17) overlap at 13:30.
+    // First slot in the array wins.
+    const schedule = [
+      { playlistId: 'breakfast', startHour: 12, endHour: 14 },
+      { playlistId: 'dinner', startHour: 13, endHour: 17 },
+    ];
+
+    expect(findScheduledPlaylist(schedule, playlists, new Date(2025, 0, 15, 13, 30, 0))).toMatchObject({
+      id: 'breakfast',
+    });
+  });
+
+  test('falls through to a later non-empty slot when an earlier matching slot is empty', () => {
+    const schedule = [
+      { playlistId: 'empty', startHour: 9, endHour: 17 },
+      { playlistId: 'breakfast', startHour: 9, endHour: 17 },
+    ];
+
+    expect(findScheduledPlaylist(schedule, playlists, new Date(2025, 0, 15, 10, 0, 0))).toMatchObject({
+      id: 'breakfast',
+    });
+  });
+});
+
+describe('slotMatches edge cases', () => {
+  test('defaults missing startMinute and endMinute to 0', () => {
+    // Slot with only startHour/endHour (no minute keys at all) should match the same as 0-minute slots.
+    const at0930 = new Date(2025, 0, 15, 9, 30, 0);
+    expect(slotMatches({ startHour: 9, endHour: 17 }, at0930)).toBe(true);
+
+    // And the end-boundary exclusion still applies with defaulted minutes.
+    const at1700 = new Date(2025, 0, 15, 17, 0, 0);
+    expect(slotMatches({ startHour: 9, endHour: 17 }, at1700)).toBe(false);
+  });
 });

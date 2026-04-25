@@ -1,6 +1,20 @@
-jest.mock('../utils/database');
-jest.mock('../repos/queueRepo');
-jest.mock('../utils/broadcast');
+// Use explicit factories so Jest never loads the real ../utils/database
+// (which pulls in better-sqlite3 and breaks under any Node ABI mismatch).
+jest.mock('../utils/database', () => ({
+  getVenue: jest.fn(),
+  getQueues: jest.fn(),
+  recordAnalyticsEvent: jest.fn(),
+}));
+jest.mock('../repos/queueRepo', () => ({
+  get: jest.fn(),
+  update: jest.fn(),
+}));
+jest.mock('../utils/broadcast', () => ({
+  broadcastQueue: jest.fn(),
+  broadcastVolumeFeedback: jest.fn(),
+  init: jest.fn(),
+  getConnectedCount: jest.fn(() => 0),
+}));
 jest.mock('../utils/logEvent', () => ({ logEvent: jest.fn() }));
 
 const db = require('../utils/database');
@@ -106,6 +120,29 @@ describe('serverAutofill playlist scheduling', () => {
       playlists: [
         { id: 'active', songs: [activeSong] },
         { id: 'late', songs: [song('late-1', 'Late Track')] },
+      ],
+    };
+    mockPickFromPlaylist.mockReturnValue(activeSong);
+
+    await serverAutofill(VENUE_CODE, venue);
+
+    expect(mockPickFromPlaylist).toHaveBeenCalledWith([activeSong], VENUE_CODE);
+  });
+
+  test('falls back to active playlist when scheduled slot matches but playlist is empty', async () => {
+    freezeTime(new Date(2025, 0, 15, 19, 30, 0)); // Wednesday evening
+    const activeSong = song('active-1', 'Active Track');
+    const venue = {
+      code: VENUE_CODE,
+      settings: {
+        autoplayMode: 'playlist',
+        autoplayQueue: true,
+        playlistSchedule: [{ playlistId: 'dinner', startHour: 18, endHour: 23 }],
+      },
+      activePlaylistId: 'active',
+      playlists: [
+        { id: 'active', songs: [activeSong] },
+        { id: 'dinner', songs: [] }, // matches the schedule but has no songs
       ],
     };
     mockPickFromPlaylist.mockReturnValue(activeSong);
