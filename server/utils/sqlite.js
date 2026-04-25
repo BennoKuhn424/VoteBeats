@@ -98,6 +98,7 @@ db.exec(`
     active_playlist_id TEXT,
     created_at TEXT NOT NULL
   );
+  CREATE INDEX IF NOT EXISTS idx_venues_owner_email ON venues(owner_email COLLATE NOCASE);
 
   CREATE TABLE IF NOT EXISTS queues (
     venue_code TEXT NOT NULL,
@@ -157,6 +158,14 @@ db.exec(`
     percent INTEGER NOT NULL DEFAULT 50,
     updated_at INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS request_throttles (
+    scope TEXT NOT NULL,
+    throttle_key TEXT NOT NULL,
+    last_at INTEGER NOT NULL,
+    PRIMARY KEY (scope, throttle_key)
+  );
+  CREATE INDEX IF NOT EXISTS idx_request_throttles_last_at ON request_throttles(last_at);
 
   CREATE TABLE IF NOT EXISTS auth_tokens (
     token TEXT PRIMARY KEY,

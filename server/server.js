@@ -30,8 +30,11 @@ io.on('connection', (socket) => {
 
 // ── Auto-advance interval ─────────────────────────────────────────────────────
 let shuttingDown = false;
+const ADVANCE_TICK_MS = 1000;
 const advanceInterval = setInterval(async () => {
   if (shuttingDown) return;
+  // getQueues only returns venues with queue rows, so this ticks active queues
+  // instead of every registered venue.
   const queues = db.getQueues();
   for (const [venueCode, queue] of Object.entries(queues)) {
     try {
@@ -62,7 +65,7 @@ const advanceInterval = setInterval(async () => {
       console.error(`[advance] venue ${venueCode}:`, err?.message || err);
     }
   }
-}, 5000);
+}, ADVANCE_TICK_MS);
 
 // Drop abandoned Yoco checkouts so pendingPayments.json cannot grow forever
 const PENDING_PAYMENT_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
@@ -80,6 +83,15 @@ setInterval(() => {
     console.warn('purgeStalePendingPayments:', err?.message);
   }
 }, 15 * 60 * 1000);
+
+const THROTTLE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+setInterval(() => {
+  try {
+    db.purgeThrottles?.(THROTTLE_MAX_AGE_MS);
+  } catch (err) {
+    console.warn('purgeThrottles:', err?.message);
+  }
+}, 60 * 60 * 1000);
 
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {

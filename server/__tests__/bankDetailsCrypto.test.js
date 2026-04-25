@@ -4,14 +4,17 @@
 
 describe('bankDetailsCrypto', () => {
   const originalKey = process.env.PAYMENT_ENCRYPTION_KEY;
+  const originalNodeEnv = process.env.NODE_ENV;
 
   afterEach(() => {
     if (originalKey === undefined) delete process.env.PAYMENT_ENCRYPTION_KEY;
     else process.env.PAYMENT_ENCRYPTION_KEY = originalKey;
+    process.env.NODE_ENV = originalNodeEnv;
     jest.resetModules();
   });
 
   test('leaves details readable when encryption is not configured', () => {
+    process.env.NODE_ENV = 'test';
     delete process.env.PAYMENT_ENCRYPTION_KEY;
     const { encryptBankDetails, decryptBankDetails } = require('../utils/bankDetailsCrypto');
     const details = {
@@ -72,5 +75,11 @@ describe('bankDetailsCrypto', () => {
     process.env.PAYMENT_ENCRYPTION_KEY = 'test-key';
     const { decryptBankDetails } = require('../utils/bankDetailsCrypto');
     expect(decryptBankDetails(null)).toBeNull();
+  });
+
+  test('fails fast in production when PAYMENT_ENCRYPTION_KEY is missing', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.PAYMENT_ENCRYPTION_KEY;
+    expect(() => require('../utils/paymentCrypto')).toThrow(/PAYMENT_ENCRYPTION_KEY/);
   });
 });

@@ -38,6 +38,7 @@ beforeEach(() => {
   jest.resetAllMocks();
   db.getVotesForDevice.mockReturnValue({});
   db.getPlayerVolumeReport.mockReturnValue(null);
+  db.checkAndSetThrottle.mockReturnValue(true);
   db.recordAnalyticsEvent.mockImplementation(() => {});
   queueRepo.get.mockReturnValue({ nowPlaying: null, upcoming: [] });
 });
@@ -100,6 +101,7 @@ describe('JWT token integrity', () => {
       settings: {},
     };
     db.getAllVenues.mockReturnValue({ TSTV22: venue });
+    db.getVenueByOwnerEmail.mockReturnValue(venue);
     db.getVenue.mockReturnValue(venue);
     db.saveVenue.mockImplementation(() => {});
     return venue;
@@ -124,6 +126,7 @@ describe('JWT token integrity', () => {
 
   test('register does not auto-login (requires email verification)', async () => {
     db.getAllVenues.mockReturnValue({});
+    db.getVenueByOwnerEmail.mockReturnValue(null);
     db.getVenue.mockReturnValue(null);
     db.saveVenue.mockImplementation(() => {});
 
@@ -187,6 +190,7 @@ describe('Cookie security flags', () => {
       settings: {},
     };
     db.getAllVenues.mockReturnValue({ TSTV33: venue });
+    db.getVenueByOwnerEmail.mockReturnValue(venue);
     db.getVenue.mockReturnValue(venue);
     return venue;
   }
@@ -300,6 +304,7 @@ describe('Input sanitization', () => {
 
   test('rejects registration with password shorter than 8 chars', async () => {
     db.getAllVenues.mockReturnValue({});
+    db.getVenueByOwnerEmail.mockReturnValue(null);
     db.getVenue.mockReturnValue(null);
     const res = await request(app)
       .post('/api/auth/register')
@@ -309,6 +314,7 @@ describe('Input sanitization', () => {
 
   test('rejects registration with email longer than 254 chars', async () => {
     db.getAllVenues.mockReturnValue({});
+    db.getVenueByOwnerEmail.mockReturnValue(null);
     db.getVenue.mockReturnValue(null);
     const res = await request(app)
       .post('/api/auth/register')

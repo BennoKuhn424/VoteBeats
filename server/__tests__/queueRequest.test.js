@@ -75,6 +75,7 @@ beforeEach(() => {
   db.getSubscription.mockReturnValue({ status: 'active' });
   db.getVotesForDevice.mockReturnValue({});
   db.getPlayerVolumeReport.mockReturnValue(null);
+  db.checkAndSetThrottle.mockReturnValue(true);
   db.recordAnalyticsEvent.mockImplementation(() => {});
   queueRepo.get.mockReturnValue(EMPTY_QUEUE);
   queueRepo.update.mockImplementation(async (_code, mutateFn) => {
@@ -388,5 +389,19 @@ describe('POST /api/queue/:venueCode/volume-feedback', () => {
       .send({ direction: 'too_loud', deviceId: DEVICE_ID });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+    expect(db.checkAndSetThrottle).toHaveBeenCalledWith(
+      'volume-feedback',
+      `${VENUE_CODE}:${DEVICE_ID}`,
+      90 * 1000,
+      expect.any(Number),
+    );
+  });
+
+  test('429 when device is still inside the feedback cooldown', async () => {
+    db.checkAndSetThrottle.mockReturnValue(false);
+    const res = await request(app)
+      .post(`/api/queue/${VENUE_CODE}/volume-feedback`)
+      .send({ direction: 'too_loud', deviceId: DEVICE_ID });
+    expect(res.status).toBe(429);
   });
 });

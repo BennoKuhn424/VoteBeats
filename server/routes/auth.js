@@ -66,6 +66,10 @@ function generateSecureToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+function findVenueByEmail(email) {
+  return db.getVenueByOwnerEmail(String(email || '').trim().toLowerCase());
+}
+
 /**
  * Constant-time token lookup. On miss, burns the same HMAC + compare the
  * hit path runs so "token not found" and "token found but wrong type" take
@@ -106,10 +110,7 @@ router.post('/register', validate(registerSchema), async (req, res) => {
     }
 
     const emailNorm = email.trim().toLowerCase();
-    const venues = db.getAllVenues();
-    const existing = Object.values(venues).find(
-      (v) => v.owner?.email?.toLowerCase() === emailNorm
-    );
+    const existing = findVenueByEmail(emailNorm);
     if (existing) {
       return res.status(400).json({ error: 'Email already registered', code: E.AUTH_EMAIL_TAKEN });
     }
@@ -196,10 +197,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
     }
 
     // Venue owner login
-    const venues = db.getAllVenues();
-    const venue = Object.values(venues).find(
-      (v) => v.owner?.email?.toLowerCase() === email.toLowerCase()
-    );
+    const venue = findVenueByEmail(email);
     if (!venue) {
       return res.status(401).json({ error: 'Invalid email or password', code: E.AUTH_INVALID_CREDENTIALS });
     }
@@ -278,10 +276,7 @@ router.post('/resend-verification', emailLimiter, validate(resendVerificationSch
   try {
     const emailNorm = req.body.email.trim().toLowerCase();
 
-    const venues = db.getAllVenues();
-    const venue = Object.values(venues).find(
-      (v) => v.owner?.email?.toLowerCase() === emailNorm
-    );
+    const venue = findVenueByEmail(emailNorm);
 
     // Always return same success message to prevent email enumeration
     const successMsg = 'If that email is registered, a verification link has been sent.';
@@ -317,10 +312,7 @@ router.post('/forgot-password', emailLimiter, validate(forgotPasswordSchema), as
   try {
     const emailNorm = req.body.email.trim().toLowerCase();
 
-    const venues = db.getAllVenues();
-    const venue = Object.values(venues).find(
-      (v) => v.owner?.email?.toLowerCase() === emailNorm
-    );
+    const venue = findVenueByEmail(emailNorm);
 
     // Always return success to prevent email enumeration
     const successMsg = 'If that email is registered, a password reset link has been sent.';

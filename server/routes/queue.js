@@ -36,8 +36,6 @@ function getCurrentPositionMs(np) {
 }
 
 // Customer volume feedback — per device cooldown (spam prevention)
-const volumeFeedbackLastByDevice = new Map();
-const VOLUME_FEEDBACK_MAX_ENTRIES = 10_000;
 const VOLUME_FEEDBACK_COOLDOWN_MS = 90 * 1000;
 const VOLUME_REPORT_MAX_AGE_MS = 30 * 60 * 1000;
 
@@ -64,15 +62,9 @@ router.post('/:venueCode/volume-feedback', validate(volumeFeedbackSchema), (req,
 
   const key = `${venueCode}:${deviceId}`;
   const now = Date.now();
-  const last = volumeFeedbackLastByDevice.get(key) || 0;
-  if (now - last < VOLUME_FEEDBACK_COOLDOWN_MS) {
+  if (!db.checkAndSetThrottle('volume-feedback', key, VOLUME_FEEDBACK_COOLDOWN_MS, now)) {
     return res.status(429).json({ error: 'Please wait a minute before sending another suggestion', code: E.QUEUE_RATE_LIMITED });
   }
-  if (volumeFeedbackLastByDevice.size > VOLUME_FEEDBACK_MAX_ENTRIES) {
-    const iter = volumeFeedbackLastByDevice.keys();
-    for (let i = 0; i < 1000; i++) volumeFeedbackLastByDevice.delete(iter.next().value);
-  }
-  volumeFeedbackLastByDevice.set(key, now);
 
   const report = db.getPlayerVolumeReport(venueCode);
   let volumePercent = null;

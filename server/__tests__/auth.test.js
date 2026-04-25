@@ -24,6 +24,7 @@ beforeAll(async () => {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function stubEmptyVenues() {
   db.getAllVenues.mockReturnValue({});
+  db.getVenueByOwnerEmail.mockReturnValue(null);
   db.getVenue.mockReturnValue(null);
   db.saveVenue.mockImplementation(() => {});
 }
@@ -37,6 +38,7 @@ function stubExistingVenue(email = 'owner@bar.com') {
     settings: {},
   };
   db.getAllVenues.mockReturnValue({ TSTV01: venue });
+  db.getVenueByOwnerEmail.mockReturnValue(venue);
   db.getVenue.mockReturnValue(venue);
   return venue;
 }
@@ -146,6 +148,7 @@ describe('POST /api/auth/login', () => {
 
   test('401 for unknown email', async () => {
     db.getAllVenues.mockReturnValue({});
+    db.getVenueByOwnerEmail.mockReturnValue(null);
     const res = await request(app)
       .post('/api/auth/login')
       .send({ email: 'nobody@bar.com', password: TEST_PASSWORD });
@@ -187,6 +190,7 @@ describe('POST /api/auth/login', () => {
     process.env.OWNER_EMAIL = ownerEmail;
     process.env.OWNER_PASSWORD_HASH = ownerHash;
     db.getAllVenues.mockReturnValue({});
+    db.getVenueByOwnerEmail.mockReturnValue(null);
     try {
       const res = await request(app)
         .post('/api/auth/login')

@@ -6,6 +6,7 @@ const { normalizePendingPayload, buildPendingPayload } = require('./pendingPayme
 
 // Venues
 const stmtGetVenue = db.prepare('SELECT * FROM venues WHERE code = ?');
+const stmtGetVenueByOwnerEmail = db.prepare('SELECT * FROM venues WHERE owner_email = ? COLLATE NOCASE LIMIT 1');
 const stmtGetAllVenues = db.prepare('SELECT * FROM venues');
 const stmtUpsertVenue = db.prepare(`
   INSERT INTO venues (code, name, location, owner_email, owner_password_hash, settings, playlists, active_playlist_id, created_at)
@@ -84,6 +85,15 @@ const stmtSetVolume = db.prepare(`
   INSERT INTO player_volume (venue_code, percent, updated_at) VALUES (?, ?, ?)
   ON CONFLICT(venue_code) DO UPDATE SET percent = excluded.percent, updated_at = excluded.updated_at
 `);
+
+// Cross-process throttles
+const stmtCheckAndSetThrottle = db.prepare(`
+  INSERT INTO request_throttles (scope, throttle_key, last_at)
+  VALUES (@scope, @throttle_key, @last_at)
+  ON CONFLICT(scope, throttle_key) DO UPDATE SET last_at = excluded.last_at
+  WHERE excluded.last_at - request_throttles.last_at >= @cooldown_ms
+`);
+const stmtPurgeThrottles = db.prepare('DELETE FROM request_throttles WHERE last_at < ?');
 
 // Auth tokens
 const stmtGetAuthToken = db.prepare('SELECT * FROM auth_tokens WHERE token = ?');
@@ -308,6 +318,11 @@ module.exports = {
     return rowToVenue(row);
   },
 
+  getVenueByOwnerEmail: (email) => {
+    const row = stmtGetVenueByOwnerEmail.get(String(email || '').trim().toLowerCase());
+    return rowToVenue(row);
+  },
+
   getAllVenues: () => {
     const rows = stmtGetAllVenues.all();
     const result = {};
@@ -475,6 +490,22 @@ module.exports = {
   setPlayerVolumeReport: (venueCode, percent) => {
     const p = Math.round(Math.max(0, Math.min(100, Number(percent) || 0)));
     stmtSetVolume.run(venueCode, p, Date.now());
+  },
+
+  checkAndSetThrottle: (scope, key, cooldownMs, now = Date.now()) => {
+    const result = stmtCheckAndSetThrottle.run({
+      scope: String(scope || ''),
+      throttle_key: String(key || ''),
+      last_at: now,
+      cooldown_ms: Math.max(0, Number(cooldownMs) || 0),
+    });
+    return result.changes > 0;
+  },
+
+  purgeThrottles: (maxAgeMs) => {
+    const cutoff = Date.now() - maxAgeMs;
+    const result = stmtPurgeThrottles.run(cutoff);
+    return result.changes;
   },
 
   // Auth tokens

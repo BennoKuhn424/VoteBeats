@@ -19,6 +19,9 @@ const _key = getKey();
 const ENABLED = _key !== null;
 
 if (!ENABLED) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('FATAL: PAYMENT_ENCRYPTION_KEY environment variable must be set in production');
+  }
   console.warn('[CRYPTO] PAYMENT_ENCRYPTION_KEY not set — payment data will be stored in plaintext');
 }
 

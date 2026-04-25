@@ -26,6 +26,10 @@ function slotStartMinutes(s) {
   return sh * 60 + sm;
 }
 
+function previousDay(day) {
+  return (day + 6) % 7;
+}
+
 /**
  * Check whether a schedule slot is active at a given time.
  * Supports overnight ranges (e.g. startHour=22, endHour=2).
@@ -35,17 +39,28 @@ function slotStartMinutes(s) {
  */
 function slotMatches(s, now = new Date()) {
   if (!s || typeof s.startHour !== 'number' || typeof s.endHour !== 'number') return false;
-  const currentDay = now.getDay();
-  if (Array.isArray(s.days) && s.days.length > 0 && !s.days.includes(currentDay)) {
-    return false;
-  }
   const cur = minutesFromMidnight(now);
   const start = slotStartMinutes(s);
   const end = slotEndExclusiveMinutes(s);
+
+  let matchesTime;
+  let slotStartDay = now.getDay();
   if (start <= end) {
-    return cur >= start && cur < end;
+    matchesTime = cur >= start && cur < end;
+  } else {
+    matchesTime = cur >= start || cur < end;
+    if (cur < end) {
+      // For overnight ranges, 01:00 Thursday belongs to Wednesday's 22:00 slot.
+      slotStartDay = previousDay(slotStartDay);
+    }
   }
-  return cur >= start || cur < end;
+
+  if (!matchesTime) return false;
+
+  if (Array.isArray(s.days) && s.days.length > 0 && !s.days.includes(slotStartDay)) {
+    return false;
+  }
+  return true;
 }
 
 /**

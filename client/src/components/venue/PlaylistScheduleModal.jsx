@@ -158,8 +158,9 @@ export default function PlaylistScheduleModal({
 
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div>
-                    <label className="block text-xs text-zinc-600 dark:text-zinc-300 mb-1">Start</label>
+                    <label htmlFor={`playlist-slot-${slot.id}-start`} className="block text-xs text-zinc-600 dark:text-zinc-300 mb-1">Start</label>
                     <input
+                      id={`playlist-slot-${slot.id}-start`}
                       type="time"
                       value={slot.startTime}
                       onChange={(e) => updateTimeSlot(slot.id, 'startTime', e.target.value)}
@@ -167,8 +168,9 @@ export default function PlaylistScheduleModal({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-zinc-600 dark:text-zinc-300 mb-1">End</label>
+                    <label htmlFor={`playlist-slot-${slot.id}-end`} className="block text-xs text-zinc-600 dark:text-zinc-300 mb-1">End</label>
                     <input
+                      id={`playlist-slot-${slot.id}-end`}
                       type="time"
                       value={slot.endTime}
                       onChange={(e) => updateTimeSlot(slot.id, 'endTime', e.target.value)}
