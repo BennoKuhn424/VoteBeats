@@ -74,40 +74,44 @@ export default function NowPlaying({ song, hasLyrics, onLyrics, venueCode, devic
         />
       </div>
 
-      <div className="flex items-center gap-3">
+      {/* flex-wrap + basis-[8rem] lets the row collapse into a 2-col then 1-col
+          stack at large font scales rather than squeezing the labels off-screen.
+          tap-target floor (44px) keeps the hit area finger-sized regardless. */}
+      <div className="flex flex-wrap items-stretch gap-3">
         <button
           type="button"
           onClick={() => handleVote(1)}
           disabled={voting}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50 ${
+          className={`min-h-touch grow basis-[8rem] flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50 ${
             myVote === 1
               ? 'bg-green-500 text-white'
               : 'bg-carbon-100 text-carbon-600 hover:bg-green-50 hover:text-green-600'
           }`}
         >
-          <ThumbsUp className="h-4 w-4" />
-          Like
+          <ThumbsUp className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>Like</span>
         </button>
         <button
           type="button"
           onClick={() => handleVote(-1)}
           disabled={voting}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50 ${
+          className={`min-h-touch grow basis-[8rem] flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50 ${
             myVote === -1
               ? 'bg-red-500 text-white'
               : 'bg-carbon-100 text-carbon-600 hover:bg-red-50 hover:text-red-600'
           }`}
         >
-          <ThumbsDown className="h-4 w-4" />
-          Dislike
+          <ThumbsDown className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>Dislike</span>
         </button>
         {hasLyrics && (
           <button
             type="button"
             onClick={onLyrics}
-            className="flex-1 py-2.5 rounded-xl bg-black text-white font-semibold text-sm flex items-center justify-center gap-2 active:opacity-80 transition-opacity"
+            className="min-h-touch grow basis-[8rem] py-2.5 rounded-xl bg-black text-white font-semibold text-sm flex items-center justify-center gap-2 active:opacity-80 transition-opacity"
           >
-            🎤 Lyrics
+            <span aria-hidden="true">🎤</span>
+            <span>Lyrics</span>
           </button>
         )}
       </div>

@@ -55,6 +55,12 @@ export default {
         'safe': 'env(safe-area-inset-bottom, 0px)',
       },
       minHeight: {
+        // Apple HIG 44pt / Material 48dp finger floor — literal px, NOT rem,
+        // so it doesn't scale with iOS Dynamic Type. Touch targets stay
+        // finger-sized regardless of text scale; only the text inside grows.
+        'touch': '44px',
+      },
+      minWidth: {
         'touch': '44px',
       },
       boxShadow: {

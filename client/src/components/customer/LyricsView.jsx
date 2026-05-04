@@ -105,7 +105,8 @@ export default function LyricsView({ song, lyricsData, onClose }) {
         <button
           type="button"
           onClick={onClose}
-          className="ml-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 text-white text-xl shrink-0 active:bg-white/20"
+          aria-label="Close lyrics"
+          className="ml-4 min-h-touch min-w-touch flex items-center justify-center rounded-full bg-white/10 text-white text-xl shrink-0 active:bg-white/20"
         >
           ✕
         </button>

@@ -28,7 +28,7 @@ export default function CookieConsent() {
         </p>
         <button
           onClick={handleAccept}
-          className="shrink-0 px-5 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-lg transition-colors min-h-[40px]"
+          className="shrink-0 min-h-touch px-5 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-lg transition-colors"
         >
           Got it
         </button>

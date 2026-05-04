@@ -13,6 +13,26 @@
     touch-action: manipulation;
   }
 
+  /* iOS Dynamic Type opt-in.
+     The @supports query is the trick from Airbnb's text-resizing post: it's
+     true ONLY on iOS/iPadOS Safari (desktop Safari does not have
+     -webkit-touch-callout). Setting `font: -apple-system-body` on <html>
+     adopts the user's system text-size preference (Settings → Display & Brightness
+     → Text Size, including Larger Accessibility Sizes up to AX5 ~310%).
+     Tailwind's rem-based sizing then scales along with it.
+
+     We re-declare font-family back to Outfit so the system body font's
+     scaling is inherited but the visual face stays our brand font.
+
+     Source: https://medium.com/airbnb-engineering/rethinking-text-resizing-on-web-1047b12d2881
+             https://gist.github.com/colingourlay/d95908ec5cd4854c7a5afa06f3989479 */
+  @supports (font: -apple-system-body) and (-webkit-touch-callout: default) {
+    html {
+      font: -apple-system-body;
+      font-family: 'Outfit', system-ui, sans-serif;
+    }
+  }
+
   body {
     margin: 0;
     font-family: 'Outfit', system-ui, sans-serif;
@@ -20,6 +40,11 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
     /* Prevent pull-to-refresh from triggering on the player page */
     overscroll-behavior-y: contain;
+    /* Long song titles, venue names, IDs, URLs must wrap rather than blow
+       out the viewport when text scaling is on. `anywhere` lets the browser
+       break inside long unbroken tokens; pairs with min-w-0 on flex children
+       so they actually surrender their intrinsic width. */
+    overflow-wrap: anywhere;
   }
 
   /* Prevent text selection on buttons / interactive controls (cleaner tap UX) */
@@ -36,3 +61,8 @@
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 }
+
+/* Touch target floor (Apple HIG 44pt / Material 48dp) lives in
+   tailwind.config.js as `min-h-touch` / `min-w-touch`. Use those classes
+   on every primary tap target — sized to the finger, not the text, so
+   they stay 44px regardless of iOS Dynamic Type scale. */

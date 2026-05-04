@@ -38,7 +38,7 @@ export default function VolumeSuggestion({ venueCode, deviceId, reportedPlayerVo
           </div>
           <div className="min-w-0">
             <h2 className="text-sm font-bold text-white tracking-tight">Suggest volume</h2>
-            <p className="text-xs text-dark-400 truncate">Tell the venue if it&apos;s too loud or too quiet</p>
+            <p className="text-xs text-dark-400">Tell the venue if it&apos;s too loud or too quiet</p>
           </div>
         </div>
         <ChevronDown
