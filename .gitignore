@@ -37,3 +37,9 @@ dist-ssr
 *.db
 *.db-wal
 *.db-shm
+# Quarantined corrupt DBs (created by sqlite.js recovery path) and their sidecars
+*.db.corrupt.*
+# Pre-restore safety copies (created by restore-db.js)
+*.db.pre-restore.*
+# Hot backups produced by backup-db.js
+server/data/backups/

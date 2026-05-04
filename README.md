@@ -197,6 +197,30 @@ Songs auto-advance when their duration ends (server checks every 5s). Next song 
 2. Build: (none). Start: `node server.js`
 3. Env: `JWT_SECRET`, `PUBLIC_URL` (frontend URL), optionally `APPLE_MUSIC_DEVELOPER_TOKEN`, `YOCO_SECRET_KEY`
 
+## Backups
+
+The server stores live data in `DATA_DIR/speeldit.db` (SQLite). Two scripts handle hot backup + restore:
+
+```bash
+# Hot backup — safe while the server is running
+node server/scripts/backup-db.js
+
+# List + restore — STOP THE SERVER first
+node server/scripts/restore-db.js                    # lists available backups
+node server/scripts/restore-db.js --latest           # restores newest backup
+node server/scripts/restore-db.js speeldit-2026-...db
+```
+
+Backups land in `DATA_DIR/backups/` and the script keeps the 14 most recent (override with `BACKUP_RETENTION=N`).
+
+**Recommended cron** (Render persistent disk, 03:00 UTC nightly):
+
+```
+0 3 * * * cd /opt/render/project/src/server && node scripts/backup-db.js
+```
+
+Full restore drill and operational notes: see [BACKUPS.md](./BACKUPS.md).
+
 ## Apple MusicKit Integration
 
 For real search and full playback:

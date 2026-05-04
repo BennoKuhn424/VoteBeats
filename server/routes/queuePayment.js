@@ -7,6 +7,7 @@ const { requireVenueSubscriptionActive } = require('../middleware/requireSubscri
 const E = require('../utils/errorCodes');
 const validate = require('../middleware/validate');
 const { createPaymentSchema } = require('../utils/schemas');
+const { resolveRedirectBase } = require('../utils/redirectOrigin');
 
 /**
  * POST /api/queue/:venueCode/create-payment
@@ -36,17 +37,18 @@ function attachPaymentRoutes(router) {
       return res.status(503).json({ error: 'Payment integration not configured', code: E.PAYMENT_NOT_CONFIGURED });
     }
 
-    const allowedOrigins = [req.headers.origin, process.env.PUBLIC_URL].filter(Boolean);
-    let baseUrl = process.env.PUBLIC_URL || req.headers.origin || 'http://localhost:5173';
-    if (typeof clientOrigin === 'string' && clientOrigin) {
-      try {
-        const parsed = new URL(clientOrigin);
-        if (allowedOrigins.some((o) => { try { return new URL(o).origin === parsed.origin; } catch { return false; } })) {
-          baseUrl = clientOrigin;
-        }
-      } catch { /* invalid URL */ }
+    // SECURITY: redirect base is resolved from server-controlled allowlist only.
+    // Never trust req.headers.origin — see server/utils/redirectOrigin.js.
+    const { baseUrl: base, source } = resolveRedirectBase(clientOrigin);
+    if (typeof clientOrigin === 'string' && clientOrigin && source !== 'client') {
+      console.warn(JSON.stringify({
+        t: new Date().toISOString(),
+        msg: 'redirect-origin-rejected',
+        venueCode,
+        clientOrigin,
+        usedSource: source,
+      }));
     }
-    const base = baseUrl.replace(/\/$/, '');
     const successUrl = `${base}/v/${venueCode}/request-success`;
     const cancelUrl = `${base}/v/${venueCode}`;
     const failureUrl = cancelUrl;
@@ -101,12 +103,31 @@ function attachPaymentRoutes(router) {
     if (provider.isConfigured()) {
       try {
         const { verified, amountCents } = await provider.verifyCheckout(checkoutId);
-        if (verified) {
-          const amt = amountCents ?? pending.amountCents;
-          if (await fulfillPaidRequest(checkoutId, amt)) {
+        // SECURITY: same hard amount guard as the webhook — never fulfil
+        // unless the provider returned a numeric amount that matches what
+        // the patron was charged. Keeps the polling path consistent with
+        // the webhook path.
+        const expected = pending.amountCents;
+        if (
+          verified
+          && Number.isFinite(amountCents)
+          && Number.isFinite(expected)
+          && amountCents === expected
+        ) {
+          if (await fulfillPaidRequest(checkoutId, amountCents)) {
             broadcast.broadcastQueue(venueCode, queueRepo.get(venueCode));
             return res.json({ fulfilled: true });
           }
+        } else if (verified) {
+          console.error(JSON.stringify({
+            t: new Date().toISOString(),
+            msg: 'request-status-amount-guard-rejected',
+            provider: provider.name,
+            checkoutId,
+            venueCode,
+            expectedCents: Number.isFinite(expected) ? expected : null,
+            providerAmount: Number.isFinite(amountCents) ? amountCents : null,
+          }));
         }
       } catch (err) {
         console.warn(`[${provider.name}] checkout status fetch failed:`, err.message);

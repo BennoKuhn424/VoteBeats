@@ -46,40 +46,105 @@ function migrateLegacyDbName() {
 }
 migrateLegacyDbName();
 
-function openDatabase() {
-  try {
-    const db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
-    db.pragma('busy_timeout = 5000');
-    return db;
-  } catch (err) {
-    // Corrupt database — back it up and start fresh
-    const backupName = `speeldit.db.corrupt.${Date.now()}`;
-    const backupPath = path.join(DATA_DIR, backupName);
-    console.error(JSON.stringify({
-      t: new Date().toISOString(),
-      level: 'CRITICAL',
-      msg: 'sqlite-corrupt',
-      error: err.message,
-      backup: backupName,
-      action: 'Backed up corrupt DB and creating fresh database',
-    }));
-    try {
-      if (fs.existsSync(DB_PATH)) fs.renameSync(DB_PATH, backupPath);
-      // Also move WAL/SHM files if they exist
-      const walPath = DB_PATH + '-wal';
-      const shmPath = DB_PATH + '-shm';
-      if (fs.existsSync(walPath)) fs.renameSync(walPath, backupPath + '-wal');
-      if (fs.existsSync(shmPath)) fs.renameSync(shmPath, backupPath + '-shm');
-    } catch (_) { /* ignore backup failure */ }
+function applyPragmas(db) {
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+  db.pragma('busy_timeout = 5000');
+}
 
-    const db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
-    db.pragma('busy_timeout = 5000');
-    return db;
+/**
+ * Run SQLite's integrity_check pragma. Returns true iff the DB is intact.
+ * `integrity_check` returns one row containing 'ok' on a healthy DB, or one
+ * or more rows describing problems otherwise.
+ */
+function isDatabaseIntact(db) {
+  try {
+    const rows = db.pragma('integrity_check');
+    return Array.isArray(rows)
+      && rows.length === 1
+      && (rows[0].integrity_check === 'ok' || rows[0] === 'ok');
+  } catch (_) {
+    return false;
   }
+}
+
+/**
+ * Move the corrupt DB + WAL/SHM sidecars aside so a fresh DB can be created.
+ * Returns the chosen backup base name (or null if nothing was moved).
+ */
+function quarantineCorruptDb() {
+  if (!fs.existsSync(DB_PATH)) return null;
+  const backupName = `speeldit.db.corrupt.${Date.now()}`;
+  const backupPath = path.join(DATA_DIR, backupName);
+  try {
+    fs.renameSync(DB_PATH, backupPath);
+    for (const suffix of ['-wal', '-shm']) {
+      if (fs.existsSync(DB_PATH + suffix)) {
+        fs.renameSync(DB_PATH + suffix, backupPath + suffix);
+      }
+    }
+    return backupName;
+  } catch (_) {
+    return null;
+  }
+}
+
+function openDatabase() {
+  // ── Path 1: try to open + verify integrity ───────────────────────────────
+  // better-sqlite3's `new Database()` is lazy — it doesn't actually touch the
+  // file until the first statement runs. So errors from a non-DB file surface
+  // on the first pragma, not on the constructor. We wrap the open + pragmas
+  // + integrity_check in a single try block.
+  let openErr = null;
+  let openedDb = null;
+  try {
+    openedDb = new Database(DB_PATH);
+    applyPragmas(openedDb);
+
+    // Even when the file opens, run integrity_check on existing databases to
+    // catch silent corruption before the schema-applying CREATE TABLE statements
+    // run against a damaged page tree. A freshly created empty DB has no pages
+    // to corrupt yet, so skip the check for zero-byte files.
+    const fileExisted = fs.existsSync(DB_PATH) && fs.statSync(DB_PATH).size > 0;
+    if (fileExisted && !isDatabaseIntact(openedDb)) {
+      try { openedDb.close(); } catch (_) {}
+      openedDb = null;
+      const backup = quarantineCorruptDb();
+      console.error(JSON.stringify({
+        t: new Date().toISOString(),
+        level: 'CRITICAL',
+        msg: 'sqlite-integrity-check-failed',
+        backup,
+        action: 'integrity_check returned non-ok — quarantined and recreating',
+      }));
+      const fresh = new Database(DB_PATH);
+      applyPragmas(fresh);
+      return fresh;
+    }
+
+    return openedDb;
+  } catch (err) {
+    openErr = err;
+  }
+
+  // ── Path 2: file is so corrupt that opening or pragma-ing failed ─────────
+  // Close any handle we obtained before pragmas threw — on Windows an open
+  // handle prevents fs.renameSync, which would defeat the quarantine.
+  if (openedDb) {
+    try { openedDb.close(); } catch (_) {}
+  }
+  const backup = quarantineCorruptDb();
+  console.error(JSON.stringify({
+    t: new Date().toISOString(),
+    level: 'CRITICAL',
+    msg: 'sqlite-corrupt',
+    error: openErr ? openErr.message : 'unknown',
+    backup,
+    action: 'Backed up corrupt DB and creating fresh database',
+  }));
+  const fresh = new Database(DB_PATH);
+  applyPragmas(fresh);
+  return fresh;
 }
 
 const db = openDatabase();

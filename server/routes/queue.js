@@ -247,14 +247,15 @@ router.post('/:venueCode/pause', authMiddleware, requireSubscriptionActive, requ
     const { venueCode } = req.params;
     const { songId } = req.body;
 
-    const pre = queueRepo.get(venueCode);
-    const frozenPos = pre.nowPlaying ? getCurrentPositionMs(pre.nowPlaying) : 0;
-
     const updated = await queueRepo.update(venueCode, (queue) => {
       if (!queue.nowPlaying ||
           (queue.nowPlaying.id !== songId && String(queue.nowPlaying.appleId) !== String(songId))) {
         return null;
       }
+      // Compute frozenPos from the locked queue snapshot — not a pre-lock read —
+      // so a concurrent /playing or /advance can't slip in between the read and
+      // the write and leave us pausing at a stale position.
+      const frozenPos = getCurrentPositionMs(queue.nowPlaying);
       const np = {
         ...queue.nowPlaying,
         positionMs: frozenPos,

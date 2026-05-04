@@ -79,23 +79,38 @@ async function patronPaymentWebhook(req, res) {
     return res.sendStatus(200);
   }
 
-  // Amount guard — reject if provider reports a different amount than expected.
+  // SECURITY: hard amount guard.
+  // We must have BOTH a numeric expectedCents and a numeric providerAmount,
+  // and they must match. Anything else (null, missing, non-number, mismatch)
+  // means we cannot confirm the patron paid the right amount — refuse to
+  // fulfil. Ack with 200 so the provider stops retrying; the discrepancy is
+  // logged loudly for ops follow-up.
   const expectedCents = pending.amountCents;
-  if (providerAmount != null && expectedCents != null && providerAmount !== expectedCents) {
-    console.error(
-      `Patron-payment amount mismatch: checkoutId=${evt.checkoutId} expected=${expectedCents} got=${providerAmount}`,
-    );
+  const expectedOk = Number.isFinite(expectedCents);
+  const providerOk = Number.isFinite(providerAmount);
+  if (!expectedOk || !providerOk || providerAmount !== expectedCents) {
+    console.error(JSON.stringify({
+      t: new Date().toISOString(),
+      msg: 'webhook-amount-guard-rejected',
+      provider: provider.name,
+      checkoutId: evt.checkoutId,
+      venueCode: pending.venueCode,
+      expectedCents: expectedOk ? expectedCents : null,
+      providerAmount: providerOk ? providerAmount : null,
+      reason: !expectedOk ? 'expected_missing' : !providerOk ? 'provider_missing' : 'mismatch',
+      ip,
+    }));
     return res.sendStatus(200);
   }
 
-  const fulfilled = await fulfillPaidRequest(evt.checkoutId, providerAmount ?? expectedCents);
+  const fulfilled = await fulfillPaidRequest(evt.checkoutId, providerAmount);
   console.log(JSON.stringify({
     t: new Date().toISOString(),
     msg: 'webhook-fulfill',
     provider: provider.name,
     checkoutId: evt.checkoutId,
     fulfilled,
-    amountCents: providerAmount ?? expectedCents,
+    amountCents: providerAmount,
     venueCode: pending.venueCode,
     ip,
   }));

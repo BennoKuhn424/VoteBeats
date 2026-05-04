@@ -20,6 +20,7 @@
  */
 
 const db = require('../utils/database');
+const sqlite = require('../utils/sqlite');
 const { validateQueue } = require('../utils/validateQueue');
 
 // ── Per-venue async mutex ─────────────────────────────────────────────────────
@@ -58,6 +59,13 @@ function get(venueCode) {
  *   - the new queue object  → validateQueue runs, then the queue is written
  *   - null / undefined      → no-op, the current queue is returned unchanged
  *
+ * The mutateFn body, the queue write, and any DB side-effects the mutateFn
+ * triggers (vote writes, analytics inserts, etc.) all run inside a SINGLE
+ * SQLite transaction. If anything throws, the whole thing rolls back — votes
+ * never get out of sync with the queue, analytics never get logged for an
+ * action that didn't happen, and so on. better-sqlite3's transactions are
+ * SAVEPOINT-based and nest correctly with inner db.transaction() calls.
+ *
  * Returns a Promise that resolves to the queue after the operation:
  *   - the new queue if a write happened
  *   - the unchanged current queue if mutateFn returned null
@@ -69,11 +77,18 @@ function get(venueCode) {
 async function update(venueCode, mutateFn) {
   return withVenueLock(venueCode, () => {
     const current = db.getQueue(venueCode);
-    const next = mutateFn(current);
-    if (next == null) return current; // no-op — caller signalled skip
-    validateQueue(venueCode, next);
-    db.updateQueue(venueCode, next);
-    return next;
+
+    // Wrap the mutateFn + queue write in one SQLite transaction so all DB
+    // side-effects (votes, analytics) are atomic with the queue write.
+    let next;
+    sqlite.transaction(() => {
+      next = mutateFn(current);
+      if (next == null) return; // no-op — caller signalled skip
+      validateQueue(venueCode, next);
+      db.updateQueue(venueCode, next);
+    })();
+
+    return next == null ? current : next;
   });
 }
 
