@@ -27,18 +27,29 @@ describe('CORS production guard', () => {
   // Spawn a child process so we don't pollute global NODE_ENV for other tests.
   const serverDir = path.resolve(__dirname, '..');
 
+  // Build an env block for a NODE_ENV=production child. The app refuses to
+  // start in prod without JWT_SECRET *or* PAYMENT_ENCRYPTION_KEY (the latter
+  // throws from utils/paymentCrypto.js, the former from the JWT bootstrap).
+  // These tests are about the CORS guard specifically — supply dummy values
+  // for the unrelated production-only requirements so the spawned process
+  // gets far enough to hit (or pass) the CORS check.
+  function prodEnv(overrides) {
+    return {
+      ...process.env,
+      NODE_ENV: 'production',
+      JWT_SECRET: 'test-secret',
+      // 32-byte hex key — paymentCrypto requires this in prod, format only
+      // matters because it's read at module load.
+      PAYMENT_ENCRYPTION_KEY: '0'.repeat(64),
+      ...overrides,
+    };
+  }
+
   test('refuses to start in production with no CORS origins', () => {
     expect(() => {
-      execFileSync(process.execPath, ['-e', "require('./app')"], {
+      execFileSync(process.execPath, ['-e', "require('./app'); process.exit(0);"], {
         cwd: serverDir,
-        env: {
-          ...process.env,
-          NODE_ENV: 'production',
-          CORS_ORIGINS: '',
-          PUBLIC_URL: '',
-          // JWT_SECRET is required in production — supply a dummy
-          JWT_SECRET: 'test-secret',
-        },
+        env: prodEnv({ CORS_ORIGINS: '', PUBLIC_URL: '' }),
         stdio: 'pipe',
       });
     }).toThrow();
@@ -46,55 +57,29 @@ describe('CORS production guard', () => {
 
   test('starts in production when CORS_ORIGINS is set', () => {
     expect(() => {
-      execFileSync(
-        process.execPath,
-        ['-e', "require('./app')"],
-        {
-          cwd: serverDir,
-          env: {
-            ...process.env,
-            NODE_ENV: 'production',
-            CORS_ORIGINS: 'https://example.com',
-            PUBLIC_URL: '',
-            JWT_SECRET: 'test-secret',
-          },
-          stdio: 'pipe',
-        }
-      );
+      execFileSync(process.execPath, ['-e', "require('./app'); process.exit(0);"], {
+        cwd: serverDir,
+        env: prodEnv({ CORS_ORIGINS: 'https://example.com', PUBLIC_URL: '' }),
+        stdio: 'pipe',
+      });
     }).not.toThrow();
   });
 
   test('starts in production when only PUBLIC_URL is set', () => {
     expect(() => {
-      execFileSync(
-        process.execPath,
-        ['-e', "require('./app')"],
-        {
-          cwd: serverDir,
-          env: {
-            ...process.env,
-            NODE_ENV: 'production',
-            CORS_ORIGINS: '',
-            PUBLIC_URL: 'https://myapp.vercel.app',
-            JWT_SECRET: 'test-secret',
-          },
-          stdio: 'pipe',
-        }
-      );
+      execFileSync(process.execPath, ['-e', "require('./app'); process.exit(0);"], {
+        cwd: serverDir,
+        env: prodEnv({ CORS_ORIGINS: '', PUBLIC_URL: 'https://myapp.vercel.app' }),
+        stdio: 'pipe',
+      });
     }).not.toThrow();
   });
 
   test('throws in production when PUBLIC_URL is whitespace-only', () => {
     expect(() => {
-      execFileSync(process.execPath, ['-e', "require('./app')"], {
+      execFileSync(process.execPath, ['-e', "require('./app'); process.exit(0);"], {
         cwd: serverDir,
-        env: {
-          ...process.env,
-          NODE_ENV: 'production',
-          CORS_ORIGINS: '',
-          PUBLIC_URL: '   ',
-          JWT_SECRET: 'test-secret',
-        },
+        env: prodEnv({ CORS_ORIGINS: '', PUBLIC_URL: '   ' }),
         stdio: 'pipe',
       });
     }).toThrow();
@@ -102,15 +87,9 @@ describe('CORS production guard', () => {
 
   test('starts when PUBLIC_URL has leading/trailing spaces around a real URL', () => {
     expect(() => {
-      execFileSync(process.execPath, ['-e', "require('./app')"], {
+      execFileSync(process.execPath, ['-e', "require('./app'); process.exit(0);"], {
         cwd: serverDir,
-        env: {
-          ...process.env,
-          NODE_ENV: 'production',
-          CORS_ORIGINS: '',
-          PUBLIC_URL: '  https://myapp.vercel.app/  ',
-          JWT_SECRET: 'test-secret',
-        },
+        env: prodEnv({ CORS_ORIGINS: '', PUBLIC_URL: '  https://myapp.vercel.app/  ' }),
         stdio: 'pipe',
       });
     }).not.toThrow();
@@ -121,33 +100,24 @@ describe('CORS production guard', () => {
     expect(() => {
       execFileSync(
         process.execPath,
-        ['-e', "const { allowedOrigins } = require('./app'); if (allowedOrigins.filter(o => o === 'https://myapp.vercel.app').length !== 1) throw new Error('not deduped')"],
+        ['-e', "const { allowedOrigins } = require('./app'); if (allowedOrigins.filter(o => o === 'https://myapp.vercel.app').length !== 1) throw new Error('not deduped'); process.exit(0);"],
         {
           cwd: serverDir,
-          env: {
-            ...process.env,
-            NODE_ENV: 'production',
+          env: prodEnv({
             CORS_ORIGINS: ' https://myapp.vercel.app ',
             PUBLIC_URL: '  https://myapp.vercel.app/  ',
-            JWT_SECRET: 'test-secret',
-          },
+          }),
           stdio: 'pipe',
-        }
+        },
       );
     }).not.toThrow();
   });
 
   test('error message is actionable', () => {
     try {
-      execFileSync(process.execPath, ['-e', "require('./app')"], {
+      execFileSync(process.execPath, ['-e', "require('./app'); process.exit(0);"], {
         cwd: serverDir,
-        env: {
-          ...process.env,
-          NODE_ENV: 'production',
-          CORS_ORIGINS: '',
-          PUBLIC_URL: '',
-          JWT_SECRET: 'test-secret',
-        },
+        env: prodEnv({ CORS_ORIGINS: '', PUBLIC_URL: '' }),
         stdio: 'pipe',
       });
       throw new Error('should have thrown');
