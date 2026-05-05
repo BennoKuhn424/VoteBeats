@@ -21,7 +21,7 @@ const LRCLIB_BASE = 'https://lrclib.net/api';
  * @param {number} [opts.timeoutMs] Abort after this long. Default 3000.
  * @returns {Promise<string|null>}
  */
-async function fetchPlainLyrics({ title, artist, duration, timeoutMs = 3000 }) {
+async function fetchPlainLyrics({ title, artist, duration, timeoutMs = 2000 }) {
   if (!title || !artist) return null;
 
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -29,7 +29,12 @@ async function fetchPlainLyrics({ title, artist, duration, timeoutMs = 3000 }) {
   const signal = controller ? controller.signal : undefined;
 
   try {
-    // /api/get wants exact title+artist (+duration is optional but improves hit rate)
+    // /api/get wants exact title+artist (+duration is optional but improves hit rate).
+    // We DO NOT fall back to /search — that endpoint returns close-but-different
+    // tracks (covers, remixes, same-titled songs by other artists), and using
+    // their lyrics to score the user's actual song caused clean songs to be
+    // dropped because someone else's explicit cover came back from the search.
+    // "No exact match" is treated as "no lyrics found" (kept in non-strict mode).
     const params = new URLSearchParams({ track_name: title, artist_name: artist });
     if (duration != null) params.set('duration', String(Math.round(Number(duration))));
 
@@ -40,20 +45,6 @@ async function fetchPlainLyrics({ title, artist, duration, timeoutMs = 3000 }) {
     if (exact.ok) {
       const data = await exact.json();
       if (data.plainLyrics) return data.plainLyrics;
-    }
-
-    // Fallback: search for a close match. Free + unauthenticated.
-    const searchParams = new URLSearchParams({ track_name: title, artist_name: artist });
-    const search = await fetch(`${LRCLIB_BASE}/search?${searchParams}`, {
-      headers: { 'User-Agent': USER_AGENT },
-      signal,
-    });
-    if (search.ok) {
-      const results = await search.json();
-      if (Array.isArray(results) && results.length > 0) {
-        const withPlain = results.find((r) => r.plainLyrics);
-        if (withPlain) return withPlain.plainLyrics;
-      }
     }
     return null;
   } catch (err) {

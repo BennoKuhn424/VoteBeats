@@ -5,8 +5,9 @@
  * not across Render restarts — which is fine since LRCLIB is free and
  * the cache warms quickly.
  *
- * Key: `${appleId}|${languages.sort().join(',')}`  so a strict-AF venue
- * and an EN-only venue get distinct cached counts for the same track.
+ * Key: `${appleId}|${languages.sort().join(',')}|${extras.sort().join(',')}`
+ * so two venues using different built-in packs OR different custom words
+ * get distinct cached counts for the same track.
  *
  * Entry shape:
  *   { hitCount: number, lyricsFound: boolean, expiresAt: number }
@@ -26,15 +27,18 @@ function now() {
   return Date.now();
 }
 
-function makeKey(appleId, languages) {
+function makeKey(appleId, languages, extras) {
   const langKey = Array.isArray(languages) && languages.length > 0
     ? [...languages].sort().join(',')
-    : 'en';
-  return `${appleId}|${langKey}`;
+    : '';
+  const extraKey = Array.isArray(extras) && extras.length > 0
+    ? [...extras].map((w) => String(w).toLowerCase().trim()).filter(Boolean).sort().join(',')
+    : '';
+  return `${appleId}|${langKey}|${extraKey}`;
 }
 
-function get(appleId, languages) {
-  const key = makeKey(appleId, languages);
+function get(appleId, languages, extras) {
+  const key = makeKey(appleId, languages, extras);
   const entry = cache.get(key);
   if (!entry) return null;
   if (entry.expiresAt <= now()) {
@@ -47,8 +51,8 @@ function get(appleId, languages) {
   return { hitCount: entry.hitCount, lyricsFound: entry.lyricsFound };
 }
 
-function set(appleId, languages, { hitCount, lyricsFound }, ttlMs = DEFAULT_TTL_MS) {
-  const key = makeKey(appleId, languages);
+function set(appleId, languages, extras, { hitCount, lyricsFound }, ttlMs = DEFAULT_TTL_MS) {
+  const key = makeKey(appleId, languages, extras);
   // Simple size bound: drop oldest entry (insertion order) when over cap.
   if (cache.size >= MAX_ENTRIES && !cache.has(key)) {
     const firstKey = cache.keys().next().value;

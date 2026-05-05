@@ -131,7 +131,7 @@ router.post('/register', validate(registerSchema), async (req, res) => {
         blockedArtists: [],
         blockedTitleWords: [],
         lyricsFilter: false,
-        lyricsThreshold: 1,
+        lyricsThreshold: 3,
         lyricsLanguages: ['en'],
         requirePaymentForRequest: false,
         requestPriceCents: 1000,

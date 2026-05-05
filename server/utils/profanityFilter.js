@@ -56,55 +56,80 @@ const LANGUAGE_PACKS = {
 };
 
 /**
- * Build a single regex that matches any of the words in the selected packs.
- * Cached per pack-set signature so we don't recompile every call.
+ * Build a single regex that matches any of the words in the selected packs
+ * plus any extra venue-supplied words. Built-in packs are cached; venue
+ * extras change per-venue so the combined regex is built fresh when extras
+ * are present. (The built-in-only branch is the hot path and stays cached.)
  */
 const regexCache = new Map();
 
-function buildProfanityRegex(languages) {
-  const list = Array.isArray(languages) && languages.length > 0 ? languages : ['en'];
-  const key = list.slice().sort().join(',');
-  if (regexCache.has(key)) return regexCache.get(key);
+function compileWords(words) {
+  if (words.length === 0) return null;
+  const escaped = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`\\b(?:${escaped.join('|')})\\b`, 'gi');
+}
 
-  const words = [];
+function normaliseExtras(extraWords) {
+  if (!Array.isArray(extraWords)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of extraWords) {
+    if (typeof raw !== 'string') continue;
+    const w = raw.trim().toLowerCase();
+    if (!w) continue;
+    if (seen.has(w)) continue;
+    seen.add(w);
+    out.push(w);
+  }
+  return out;
+}
+
+function buildProfanityRegex(languages, extraWords) {
+  const list = Array.isArray(languages) ? languages : [];
+  const extras = normaliseExtras(extraWords);
+
+  const builtIn = [];
   for (const lang of list) {
     const pack = LANGUAGE_PACKS[lang];
-    if (pack) words.push(...pack);
-  }
-  if (words.length === 0) {
-    regexCache.set(key, null);
-    return null;
+    if (pack) builtIn.push(...pack);
   }
 
-  // Escape regex meta-chars; join with | and wrap in word boundaries.
-  const escaped = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  // Use a non-capturing alternation; flags gi for global case-insensitive.
-  const rx = new RegExp(`\\b(?:${escaped.join('|')})\\b`, 'gi');
-  regexCache.set(key, rx);
-  return rx;
+  // Cache only the built-in-language combination (the hot path). Combined
+  // built-in + extras is rebuilt per call — extras are short, so cheap.
+  if (extras.length === 0) {
+    const key = list.slice().sort().join(',');
+    if (regexCache.has(key)) return regexCache.get(key);
+    const rx = compileWords(builtIn);
+    regexCache.set(key, rx);
+    return rx;
+  }
+
+  return compileWords([...builtIn, ...extras]);
 }
 
 /**
  * Count profanity hits in a lyrics string.
  * @param {string|null|undefined} lyrics  Plain (un-timestamped) lyrics text.
- * @param {string[]} [languages]  e.g. ['en', 'af']. Defaults to ['en'].
- * @returns {number}  Number of profane tokens found. 0 means clean or no lyrics.
+ * @param {string[]} [languages]          Built-in packs to use, e.g. ['en','af'].
+ *                                        Empty array = use only extra words.
+ * @param {string[]} [extraWords]         Venue-supplied custom words.
+ * @returns {number}  Number of matched tokens found. 0 means clean / no lyrics.
  */
-function countProfanity(lyrics, languages = ['en']) {
+function countProfanity(lyrics, languages = ['en'], extraWords = []) {
   if (!lyrics || typeof lyrics !== 'string') return 0;
-  const rx = buildProfanityRegex(languages);
+  const rx = buildProfanityRegex(languages, extraWords);
   if (!rx) return 0;
   const matches = lyrics.match(rx);
   return matches ? matches.length : 0;
 }
 
 /**
- * Helper: list the unique profane words found (for logging / debugging).
+ * Helper: list the unique matched words found (for logging / debugging).
  * Not used in the hot path.
  */
-function findProfanityWords(lyrics, languages = ['en']) {
+function findProfanityWords(lyrics, languages = ['en'], extraWords = []) {
   if (!lyrics || typeof lyrics !== 'string') return [];
-  const rx = buildProfanityRegex(languages);
+  const rx = buildProfanityRegex(languages, extraWords);
   if (!rx) return [];
   const matches = lyrics.match(rx) || [];
   const lower = matches.map((m) => m.toLowerCase());

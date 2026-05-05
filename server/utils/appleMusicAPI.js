@@ -650,10 +650,22 @@ async function applyLyricsFilter(songs, venue) {
   if (!Array.isArray(songs) || songs.length === 0) return songs;
   if (!venue?.settings || venue.settings.lyricsFilter !== true) return songs;
 
-  const threshold = Math.max(1, Number(venue.settings.lyricsThreshold) || 1);
-  const languages = Array.isArray(venue.settings.lyricsLanguages) && venue.settings.lyricsLanguages.length > 0
+  // Default threshold is 3 — at 1 even a single common swear drops the song,
+  // which removes most popular tracks. 3 is the sane "loud chorus of profanity"
+  // bar that still catches the songs venues actually want to block.
+  const threshold = Math.max(1, Number(venue.settings.lyricsThreshold) || 3);
+  // Empty languages array is now valid — it means "scan only with the venue's
+  // custom words". Falling back to ['en'] would silently re-enable a built-in
+  // pack the operator switched off.
+  const languages = Array.isArray(venue.settings.lyricsLanguages)
     ? venue.settings.lyricsLanguages
     : ['en'];
+  const extras = Array.isArray(venue.settings.blockedTitleWords)
+    ? venue.settings.blockedTitleWords
+    : [];
+  // No words at all → nothing to scan against; act as a passthrough.
+  if (languages.length === 0 && extras.length === 0) return songs;
+
   const strict = venue.settings.strictExplicit === true;
 
   // Pool-based concurrency to avoid hammering LRCLIB on 25+ results.
@@ -666,7 +678,7 @@ async function applyLyricsFilter(songs, venue) {
       const idx = i++;
       const song = songs[idx];
       if (!song || !song.appleId) continue;
-      const cached = lyricsCache.get(song.appleId, languages);
+      const cached = lyricsCache.get(song.appleId, languages, extras);
       if (cached) {
         results.set(song.appleId, cached);
         continue;
@@ -677,9 +689,9 @@ async function applyLyricsFilter(songs, venue) {
         duration: song.duration,
       });
       const entry = lyrics
-        ? { hitCount: countProfanity(lyrics, languages), lyricsFound: true }
+        ? { hitCount: countProfanity(lyrics, languages, extras), lyricsFound: true }
         : { hitCount: 0, lyricsFound: false };
-      lyricsCache.set(song.appleId, languages, entry);
+      lyricsCache.set(song.appleId, languages, extras, entry);
       results.set(song.appleId, entry);
     }
   }
