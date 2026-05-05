@@ -42,6 +42,16 @@ router.post('/generate', ownerAuthMiddleware, (req, res) => {
     const created = db.generateMonthlyPayouts(year, month);
     const payouts = db.getAllPayoutsForMonth(year, month);
 
+    db.recordAuditEvent({
+      actorRole: 'owner',
+      actorId: req.owner?.jti,
+      action: 'payout.generate',
+      targetType: 'payout-batch',
+      targetId: `${year}-${String(month).padStart(2, '0')}`,
+      ip: req.ip,
+      detail: { created, totalForMonth: payouts.length },
+    });
+
     res.json({
       message: `Generated ${created} new payout(s) for ${year}-${String(month).padStart(2, '0')}`,
       created,
@@ -110,6 +120,23 @@ router.put('/:id/status', ownerAuthMiddleware, (req, res) => {
 
     db.updatePayoutStatus(id, status, notes || '');
     const updated = db.getPayoutById(id);
+
+    db.recordAuditEvent({
+      actorRole: 'owner',
+      actorId: req.owner?.jti,
+      action: 'payout.status-change',
+      targetType: 'payout',
+      targetId: id,
+      venueCode: payout.venue_code,
+      ip: req.ip,
+      detail: {
+        from: payout.status,
+        to: status,
+        amountCents: payout.venue_amount_cents,
+        notes: notes || '',
+      },
+    });
+
     res.json({ payout: updated });
   } catch (err) {
     console.error('Payout status update error:', err);
@@ -132,15 +159,31 @@ router.post('/mark-all-paid', ownerAuthMiddleware, (req, res) => {
     }
 
     const payouts = db.getAllPayoutsForMonth(year, month);
-    let marked = 0;
+    const markedIds = [];
+    let totalCents = 0;
     for (const p of payouts) {
       if (p.status === 'pending') {
         db.updatePayoutStatus(p.id, 'paid', 'Bulk marked as paid');
-        marked++;
+        markedIds.push(p.id);
+        totalCents += p.venue_amount_cents || 0;
       }
     }
 
-    res.json({ message: `Marked ${marked} payout(s) as paid`, marked });
+    db.recordAuditEvent({
+      actorRole: 'owner',
+      actorId: req.owner?.jti,
+      action: 'payout.mark-all-paid',
+      targetType: 'payout-batch',
+      targetId: `${year}-${String(month).padStart(2, '0')}`,
+      ip: req.ip,
+      detail: {
+        count: markedIds.length,
+        totalCents,
+        payoutIds: markedIds,
+      },
+    });
+
+    res.json({ message: `Marked ${markedIds.length} payout(s) as paid`, marked: markedIds.length });
   } catch (err) {
     console.error('Bulk mark paid error:', err);
     res.status(500).json({ error: 'Failed to mark payouts as paid' });
@@ -222,6 +265,15 @@ router.put('/venue/:venueCode/bank-details', authMiddleware, (req, res) => {
     const venue = db.getVenue(req.params.venueCode);
     if (!venue) return res.status(404).json({ error: 'Venue not found' });
 
+    const previousMasked = (() => {
+      const prev = decryptBankDetails(venue.settings?.bankDetails);
+      if (!prev) return null;
+      return {
+        bankName: prev.bankName || null,
+        accountLast4: prev.accountNumber ? prev.accountNumber.slice(-4) : null,
+      };
+    })();
+
     if (!venue.settings) venue.settings = {};
     venue.settings.bankDetails = encryptBankDetails({
       bankName: bankName.trim(),
@@ -233,6 +285,23 @@ router.put('/venue/:venueCode/bank-details', authMiddleware, (req, res) => {
     });
 
     db.saveVenue(req.params.venueCode, venue);
+
+    // Log only non-sensitive metadata — never the full account number.
+    db.recordAuditEvent({
+      actorRole: 'venue',
+      actorId: req.venue?.code,
+      action: 'venue.bank-details-update',
+      targetType: 'venue',
+      targetId: req.venue?.code,
+      venueCode: req.venue?.code,
+      ip: req.ip,
+      detail: {
+        bankName: bankName.trim(),
+        accountLast4: cleanAccNum.slice(-4),
+        accountType: accountType || 'cheque',
+        previous: previousMasked,
+      },
+    });
 
     res.json({ message: 'Bank details updated', bankDetails: decryptBankDetails(venue.settings.bankDetails) });
   } catch (err) {

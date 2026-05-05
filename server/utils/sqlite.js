@@ -260,6 +260,22 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_payouts_status ON payouts(status);
   CREATE INDEX IF NOT EXISTS idx_payouts_venue ON payouts(venue_code, year, month);
 
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_role TEXT NOT NULL,
+    actor_id TEXT,
+    action TEXT NOT NULL,
+    target_type TEXT,
+    target_id TEXT,
+    venue_code TEXT,
+    ip TEXT,
+    detail TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_audit_log_time ON audit_log(created_at);
+  CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(actor_role, actor_id);
+  CREATE INDEX IF NOT EXISTS idx_audit_log_target ON audit_log(target_type, target_id);
+
   CREATE TABLE IF NOT EXISTS subscriptions (
     venue_code TEXT PRIMARY KEY,
     stripe_customer_id TEXT,

@@ -9,6 +9,8 @@ import {
   Percent,
   Activity,
   Radio,
+  ShieldCheck,
+  ChevronRight,
 } from 'lucide-react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -20,6 +22,8 @@ export default function OwnerDashboard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [auditEntries, setAuditEntries] = useState([]);
+  const [auditFilter, setAuditFilter] = useState('all');
 
   const load = useCallback(async () => {
     try {
@@ -37,6 +41,15 @@ export default function OwnerDashboard() {
     }
   }, [navigate, logout]);
 
+  const loadAudit = useCallback(async () => {
+    try {
+      const res = await api.getOwnerAuditLog({ limit: 100 });
+      setAuditEntries(res.data?.entries || []);
+    } catch {
+      // Audit log is supplementary; failure here shouldn't blow up the page.
+    }
+  }, []);
+
   useEffect(() => {
     if (authLoading) return;
     if (!user || user.role !== 'owner') {
@@ -44,9 +57,14 @@ export default function OwnerDashboard() {
       return;
     }
     load();
+    loadAudit();
     const t = setInterval(load, 20000);
-    return () => clearInterval(t);
-  }, [authLoading, user, navigate, load]);
+    const ta = setInterval(loadAudit, 60000);
+    return () => {
+      clearInterval(t);
+      clearInterval(ta);
+    };
+  }, [authLoading, user, navigate, load, loadAudit]);
 
   async function handleLogout() {
     await logout();
@@ -88,7 +106,7 @@ export default function OwnerDashboard() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => load()}
+              onClick={() => { load(); loadAudit(); }}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-700 text-sm text-zinc-300 hover:bg-zinc-800"
             >
               <RefreshCw className="w-4 h-4" />
@@ -233,7 +251,92 @@ export default function OwnerDashboard() {
             ))}
           </ul>
         </div>
+
+        <AuditLogPanel
+          entries={auditEntries}
+          filter={auditFilter}
+          onFilterChange={setAuditFilter}
+        />
       </main>
+    </div>
+  );
+}
+
+function AuditLogPanel({ entries, filter, onFilterChange }) {
+  const [expandedId, setExpandedId] = useState(null);
+  const filtered = filter === 'all'
+    ? entries
+    : entries.filter((e) => e.action?.startsWith(filter));
+
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+      <div className="px-6 py-4 border-b border-zinc-800 flex flex-wrap items-center gap-3 justify-between">
+        <h2 className="font-semibold flex items-center gap-2">
+          <ShieldCheck className="w-5 h-5 text-brand-400" />
+          Audit log
+        </h2>
+        <select
+          value={filter}
+          onChange={(e) => onFilterChange(e.target.value)}
+          className="text-sm bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-zinc-200"
+        >
+          <option value="all">All actions</option>
+          <option value="payout">Payouts</option>
+          <option value="venue">Venue actions</option>
+        </select>
+      </div>
+      {filtered.length === 0 ? (
+        <p className="px-6 py-6 text-sm text-zinc-500">No audit entries yet.</p>
+      ) : (
+        <ul className="divide-y divide-zinc-800 max-h-[28rem] overflow-y-auto">
+          {filtered.map((e) => {
+            const open = expandedId === e.id;
+            return (
+              <li key={e.id} className="text-sm">
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(open ? null : e.id)}
+                  className="w-full flex items-center gap-3 px-6 py-3 text-left hover:bg-zinc-800/40"
+                >
+                  <ChevronRight
+                    className={`w-4 h-4 text-zinc-500 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+                  />
+                  <span className="font-mono text-xs text-zinc-500 w-20 shrink-0">
+                    {e.actorRole}
+                  </span>
+                  <span className="text-zinc-200 font-medium flex-1 truncate">{e.action}</span>
+                  {e.venueCode && (
+                    <span className="font-mono text-xs text-zinc-400">{e.venueCode}</span>
+                  )}
+                  <span className="text-xs text-zinc-500 shrink-0">
+                    {new Date(e.createdAt).toLocaleString()}
+                  </span>
+                </button>
+                {open && (
+                  <div className="px-12 pb-4 pt-1">
+                    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
+                      <dt className="text-zinc-500">Target</dt>
+                      <dd className="text-zinc-300 font-mono">
+                        {e.targetType ? `${e.targetType} / ${e.targetId ?? '—'}` : '—'}
+                      </dd>
+                      <dt className="text-zinc-500">IP</dt>
+                      <dd className="text-zinc-300 font-mono">{e.ip || '—'}</dd>
+                      <dt className="text-zinc-500 self-start">Detail</dt>
+                      <dd className="text-zinc-300 font-mono whitespace-pre-wrap break-all">
+                        {e.detail == null
+                          ? '—'
+                          : typeof e.detail === 'string'
+                            ? e.detail
+                            : JSON.stringify(e.detail, null, 2)}
+                      </dd>
+                    </dl>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

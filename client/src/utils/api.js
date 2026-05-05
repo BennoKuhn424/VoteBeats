@@ -8,8 +8,10 @@ const isNgrok = typeof window !== 'undefined' && /\.ngrok-free\.(app|dev)/.test(
 
 const api = axios.create({
   baseURL: API_URL,
-  // 10s timeout covers slow mobile networks; long ops (generatePlaylist) override per-call
-  timeout: 10000,
+  // 20s default covers slow mobile networks + Render free/starter tier cold starts
+  // (which can take 30-60s on first hit after idle, but axios-retry below extends
+  // the budget). Long ops (generatePlaylist, autofill) override per-call.
+  timeout: 20000,
   // Required so the browser sends the auth_token + csrf_token cookies cross-origin
   withCredentials: true,
   headers: {
@@ -109,7 +111,10 @@ export default {
     api.post(`/queue/${venueCode}/report-volume`, { volumePercent }),
   submitVolumeFeedback: (venueCode, direction, deviceId) =>
     api.post(`/queue/${venueCode}/volume-feedback`, { direction, deviceId }),
-  autofillQueue: (venueCode) => api.get(`/queue/${venueCode}/autofill`),
+  // Autofill hits Apple Music search server-side and can take 10-20s,
+  // especially on a Render cold start. Override to 30s so we don't time out
+  // on the first request after the server has been idle.
+  autofillQueue: (venueCode) => api.get(`/queue/${venueCode}/autofill`, { timeout: 30000 }),
   removeSong: (venueCode, songId) => api.delete(`/queue/${venueCode}/song/${songId}`),
 
   search: (query, venueCode) =>
@@ -167,6 +172,7 @@ export default {
     api.get(`/venue/${venueCode}/analytics`, { params: { days } }),
 
   getOwnerOverview: () => api.get('/owner/overview'),
+  getOwnerAuditLog: (params) => api.get('/owner/audit-log', { params }),
 
   // Payouts — venue side
   getVenueBankDetails: (venueCode) =>

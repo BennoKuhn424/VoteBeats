@@ -79,6 +79,22 @@ const stmtCountAnalytics24h = db.prepare(
   'SELECT COUNT(*) as cnt FROM analytics WHERE timestamp >= ?'
 );
 
+// Audit log
+const stmtInsertAudit = db.prepare(`
+  INSERT INTO audit_log (actor_role, actor_id, action, target_type, target_id, venue_code, ip, detail, created_at)
+  VALUES (@actor_role, @actor_id, @action, @target_type, @target_id, @venue_code, @ip, @detail, @created_at)
+`);
+const stmtGetAuditLog = db.prepare(`
+  SELECT * FROM audit_log
+  WHERE (@actor_role IS NULL OR actor_role = @actor_role)
+    AND (@target_type IS NULL OR target_type = @target_type)
+    AND (@target_id IS NULL OR target_id = @target_id)
+    AND (@venue_code IS NULL OR venue_code = @venue_code)
+    AND (@since_ms IS NULL OR created_at >= @since_ms)
+  ORDER BY created_at DESC
+  LIMIT @lim
+`);
+
 // Player volume
 const stmtGetVolume = db.prepare('SELECT percent, updated_at FROM player_volume WHERE venue_code = ?');
 const stmtSetVolume = db.prepare(`
@@ -757,6 +773,42 @@ module.exports = {
   getSubscriptionByInitReference: (reference) => {
     const row = stmtGetSubscriptionByReference.get(reference);
     return row ? rowToSubscription(row) : null;
+  },
+
+  /**
+   * Append an audit-log row. Used for sensitive admin actions where you'll
+   * want a queryable trail later (payout status changes, bank-detail edits,
+   * bulk operations). Never throws — the caller's primary action must not
+   * fail just because we couldn't log it.
+   */
+  recordAuditEvent: ({ actorRole, actorId, action, targetType, targetId, venueCode, ip, detail } = {}) => {
+    try {
+      stmtInsertAudit.run({
+        actor_role: actorRole || 'unknown',
+        actor_id: actorId ?? null,
+        action: action || 'unknown',
+        target_type: targetType ?? null,
+        target_id: targetId ?? null,
+        venue_code: venueCode ?? null,
+        ip: ip ?? null,
+        detail: detail == null ? null : (typeof detail === 'string' ? detail : JSON.stringify(detail)),
+        created_at: Date.now(),
+      });
+    } catch (err) {
+      console.warn('audit-log-insert-failed:', err?.message);
+    }
+  },
+
+  /** Fetch audit log rows. All filters optional. Default limit 200. */
+  getAuditLog: ({ actorRole = null, targetType = null, targetId = null, venueCode = null, sinceMs = null, limit = 200 } = {}) => {
+    return stmtGetAuditLog.all({
+      actor_role: actorRole,
+      target_type: targetType,
+      target_id: targetId,
+      venue_code: venueCode,
+      since_ms: sinceMs,
+      lim: Math.min(Math.max(Number(limit) || 200, 1), 1000),
+    });
   },
 
   /** Create or update a venue's subscription record. */
