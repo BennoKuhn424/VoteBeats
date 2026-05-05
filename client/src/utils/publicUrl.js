@@ -17,5 +17,5 @@ export function getPublicBaseUrl() {
 export function buildVotingUrl(venueCode) {
   const base = getPublicBaseUrl();
   const code = String(venueCode || '').trim();
-  return `${base}/v/${code}`;
+  return `${base}/v/${encodeURIComponent(code)}`;
 }

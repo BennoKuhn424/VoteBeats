@@ -6,32 +6,62 @@ const E = require('../utils/errorCodes');
 const validate = require('../middleware/validate');
 const { voteSchema } = require('../utils/schemas');
 
-// ── Vote throttle: max 5 votes per direction per device per 60s ──────────────
+// ── Vote throttles ───────────────────────────────────────────────────────────
+// Two layers, applied independently:
+//   1. Per-device: max 5 votes per direction per device per 60s. Stops a single
+//      patron from spamming. Cheap to bypass by rotating localStorage IDs.
+//   2. Per-IP: max 30 votes per IP per 60s (across both directions). Stops the
+//      "rotate device IDs in a loop" attack — an attacker would also need to
+//      rotate IPs, which is far more expensive. NAT'd venues are unaffected
+//      because 30/min is well above legitimate traffic from a single venue.
 const downvoteTimestamps = {}; // { deviceId: [ts, ts, …] }
 const upvoteTimestamps = {};   // { deviceId: [ts, ts, …] }
+const ipTimestamps = {};       // { ip: [ts, ts, …] }
 const VOTE_WINDOW_MS = 60_000;
 const VOTE_MAX = 5;
+const IP_VOTE_MAX = 30;
 const VOTE_MAP_MAX_KEYS = 10_000;
 let lastThrottlePrune = Date.now();
 
-function isVoteThrottled(map, deviceId) {
-  const now = Date.now();
-
-  // Prune stale entries every 10 minutes or when the map grows too large
-  const keys = Object.keys(map);
-  if (now - lastThrottlePrune > 600_000 || keys.length > VOTE_MAP_MAX_KEYS) {
-    lastThrottlePrune = now;
-    for (const id of keys) {
-      const stamps = map[id];
-      if (!stamps.length || stamps[stamps.length - 1] < now - VOTE_WINDOW_MS) {
-        delete map[id];
-      }
+function pruneStaleKeys(map, now) {
+  for (const id of Object.keys(map)) {
+    const stamps = map[id];
+    if (!stamps.length || stamps[stamps.length - 1] < now - VOTE_WINDOW_MS) {
+      delete map[id];
     }
   }
+}
 
+function maybePruneAll(now) {
+  if (
+    now - lastThrottlePrune > 600_000 ||
+    Object.keys(downvoteTimestamps).length > VOTE_MAP_MAX_KEYS ||
+    Object.keys(upvoteTimestamps).length > VOTE_MAP_MAX_KEYS ||
+    Object.keys(ipTimestamps).length > VOTE_MAP_MAX_KEYS
+  ) {
+    lastThrottlePrune = now;
+    pruneStaleKeys(downvoteTimestamps, now);
+    pruneStaleKeys(upvoteTimestamps, now);
+    pruneStaleKeys(ipTimestamps, now);
+  }
+}
+
+function isVoteThrottled(map, deviceId) {
+  const now = Date.now();
+  maybePruneAll(now);
   const stamps = (map[deviceId] || []).filter((t) => now - t < VOTE_WINDOW_MS);
   map[deviceId] = stamps;
   if (stamps.length >= VOTE_MAX) return true;
+  stamps.push(now);
+  return false;
+}
+
+function isIpThrottled(ip) {
+  if (!ip) return false; // missing IP shouldn't hard-fail; per-device guard still applies
+  const now = Date.now();
+  const stamps = (ipTimestamps[ip] || []).filter((t) => now - t < VOTE_WINDOW_MS);
+  ipTimestamps[ip] = stamps;
+  if (stamps.length >= IP_VOTE_MAX) return true;
   stamps.push(now);
   return false;
 }
@@ -48,6 +78,12 @@ function attachVoteRoutes(router) {
 
     if (!db.getVenue(venueCode)) {
       return res.status(404).json({ error: 'Venue not found', code: E.QUEUE_VENUE_NOT_FOUND });
+    }
+
+    // Per-IP guard runs first so an attacker rotating deviceIds still hits a wall.
+    // 30/min/IP is well above any legitimate single-venue traffic.
+    if (isIpThrottled(req.ip)) {
+      return res.status(429).json({ error: 'Too many votes from this network — slow down', code: E.VOTE_RATE_LIMITED_DOWN });
     }
 
     if (voteValue === -1 && isVoteThrottled(downvoteTimestamps, deviceId)) {

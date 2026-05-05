@@ -55,7 +55,7 @@ const songIdSchema = z.object({
 
 const playingSchema = z.object({
   songId: z.string().min(1, 'songId is required').max(200),
-  positionSeconds: z.number().nonnegative().optional().default(0),
+  positionSeconds: z.number().nonnegative().max(86400).optional().default(0),
 });
 
 const volumeReportSchema = z.object({

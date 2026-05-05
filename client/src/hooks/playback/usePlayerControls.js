@@ -84,9 +84,13 @@ export function usePlayerControls(refs, venueCode, {
     // DO NOT call music.stop() here — setQueue({ startPlaying: true }) in
     // playSong replaces the queue atomically.  Calling stop() first tears down
     // the iOS audio session and causes "Operation was aborted".
-    beginTransition();
     const currentQueue = refs.queue;
     const skippedSongId = currentQueue.nowPlaying?.id;
+    // No song is playing — nothing to skip. Bail before calling the server,
+    // otherwise the API rejects with 400 (songId is required).
+    if (!skippedSongId) return;
+
+    beginTransition();
 
     const optimisticNext = currentQueue.upcoming[0];
     if (optimisticNext) {

@@ -56,9 +56,9 @@
   <body>
     <div id="root"></div>
     <script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js"></script>
-    <!-- Optional on-device console (enable with VITE_ERUDA=1) -->
+    <!-- Optional on-device console (enable with VITE_ERUDA=1, dev builds only) -->
     <script type="module">
-      if (import.meta.env?.VITE_ERUDA === '1') {
+      if (import.meta.env?.DEV && import.meta.env?.VITE_ERUDA === '1') {
         const s = document.createElement('script');
         s.src = 'https://cdn.jsdelivr.net/npm/eruda';
         s.onload = () => window.eruda?.init();
