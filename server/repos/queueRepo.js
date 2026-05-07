@@ -83,6 +83,12 @@ async function update(venueCode, mutateFn) {
     let next;
     sqlite.transaction(() => {
       next = mutateFn(current);
+      // Footgun guard: mutateFn must be synchronous. better-sqlite3 transactions
+      // are synchronous; an awaited Promise inside a transaction commits before
+      // the Promise resolves, defeating the rollback contract.
+      if (next && typeof next.then === 'function') {
+        throw new Error('queueRepo.update mutateFn must be synchronous — got a Promise');
+      }
       if (next == null) return; // no-op — caller signalled skip
       validateQueue(venueCode, next);
       db.updateQueue(venueCode, next);

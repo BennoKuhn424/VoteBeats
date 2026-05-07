@@ -60,6 +60,9 @@ beforeEach(() => {
 });
 
 afterAll(() => {
+  // Release the better-sqlite3 file handle BEFORE deleting the temp dir, or
+  // Windows will fail with EBUSY. closeForTest is a no-op on second call.
+  try { sqlite.closeForTest(); } catch (_) {}
   try { fs.rmSync(TMP_DATA_DIR, { recursive: true, force: true }); } catch (_) {}
 });
 
@@ -159,6 +162,44 @@ describe('queueRepo.update — atomicity with DB side-effects', () => {
       }),
     ).rejects.toThrow('mutateFn boom!');
 
+    expect(getVote(DEVICE)).toBeUndefined();
+  });
+
+  test('rejects an async mutateFn (Promise return) instead of silently committing', async () => {
+    // Regression for the footgun guard added in queueRepo.update — an async
+    // mutateFn would let a Promise leak through the sync transaction wrapper
+    // and commit before the Promise resolved. Better to fail loudly.
+    await expect(
+      queueRepo.update(VENUE, async (queue) => ({ ...queue })),
+    ).rejects.toThrow(/synchronous/);
+  });
+
+  test('voting on a removed song writes no vote row (B4 — lookup before write)', async () => {
+    // Set up: queue is non-empty but the song the patron votes on is NOT in it.
+    // The vote handler's mutateFn must short-circuit before any db.setVote
+    // call, so the votes table stays clean.
+    const MISSING_SONG = 'song_not_in_queue';
+    expect(getVote(DEVICE)).toBeUndefined();
+
+    // Mimic the vote-route mutateFn pattern: lookup first, then maybe write.
+    let result = null;
+    await queueRepo.update(VENUE, (queue) => {
+      const targetSong =
+        (queue.upcoming || []).find((s) => s.id === MISSING_SONG) ||
+        (queue.nowPlaying?.id === MISSING_SONG ? queue.nowPlaying : null);
+      if (!targetSong) {
+        result = { error: true };
+        return null;
+      }
+      // Would only reach here if targetSong existed; not the case for this test
+      db.setVote(VENUE, MISSING_SONG, DEVICE, 1);
+      return queue;
+    });
+
+    expect(result?.error).toBe(true);
+    // No vote row was created for the missing song
+    expect(db.getVote(VENUE, MISSING_SONG, DEVICE)).toBeUndefined();
+    // And no vote row was created for the real song either
     expect(getVote(DEVICE)).toBeUndefined();
   });
 });

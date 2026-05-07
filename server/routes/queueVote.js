@@ -97,6 +97,18 @@ function attachVoteRoutes(router) {
     let result = null;
 
     const updated = await queueRepo.update(venueCode, (queue) => {
+      // Look up the song FIRST so we never write a vote row for a song that's
+      // already gone — saves a write+rollback cycle inside the transaction and
+      // keeps the votes table in lock-step with the queue.
+      const targetSong =
+        (queue.upcoming || []).find((s) => s.id === songId) ||
+        (queue.nowPlaying?.id === songId ? queue.nowPlaying : null);
+
+      if (!targetSong) {
+        result = { error: true, status: 404, body: { error: 'Song is no longer in the queue', code: E.VOTE_SONG_NOT_FOUND } };
+        return null;
+      }
+
       const existingVote = db.getVote(venueCode, songId, deviceId);
       let voteDelta = 0;
       if (existingVote === voteValue) {
@@ -108,16 +120,6 @@ function attachVoteRoutes(router) {
       } else {
         db.setVote(venueCode, songId, deviceId, voteValue);
         voteDelta = voteValue;
-      }
-
-      const targetSong =
-        (queue.upcoming || []).find((s) => s.id === songId) ||
-        (queue.nowPlaying?.id === songId ? queue.nowPlaying : null);
-
-      if (!targetSong) {
-        db.removeVote(venueCode, songId, deviceId);
-        result = { error: true, status: 404, body: { error: 'Song is no longer in the queue', code: E.VOTE_SONG_NOT_FOUND } };
-        return null;
       }
 
       const newVoteCount = (targetSong.votes || 0) + voteDelta;

@@ -8,6 +8,27 @@
 
 jest.mock('../utils/database');
 jest.mock('../utils/validateQueue');
+// Mock sqlite so the test never opens a real DB file. The transaction wrapper
+// used by queueRepo is a passthrough; atomicity behaviour is covered separately
+// in queueVoteAtomicity.test.js with a real SQLite DB.
+//
+// Note: database.js (which jest auto-mocks above) is loaded once during the
+// auto-mock discovery pass — it calls db.prepare() etc. at module top-level
+// to build statement caches. Provide enough surface here that it can load.
+jest.mock('../utils/sqlite', () => {
+  const noopStmt = {
+    run: () => ({ changes: 0, lastInsertRowid: 0 }),
+    get: () => undefined,
+    all: () => [],
+  };
+  return {
+    prepare: () => noopStmt,
+    pragma: () => [{ integrity_check: 'ok' }],
+    exec: () => {},
+    transaction: (fn) => () => fn(),
+    closeForTest: () => {},
+  };
+});
 
 const db = require('../utils/database');
 const { validateQueue } = require('../utils/validateQueue');

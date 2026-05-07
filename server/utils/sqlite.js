@@ -309,4 +309,12 @@ addColumnIfMissing('subscriptions', 'paystack_init_reference', 'TEXT');
 
 console.log('[DB] SQLite database:', DB_PATH, process.env.DATA_DIR ? '(persistent)' : '(ephemeral - set DATA_DIR for Render disk)');
 
+// Expose `close` as an own property of the exported handle so test cleanup can
+// release the file handle (Windows refuses to fs.rmSync the temp dir while the
+// DB is still open). Production code never calls this — graceful shutdown in
+// server.js exits the process which closes the handle automatically.
+db.closeForTest = function closeForTest() {
+  try { db.close(); } catch (_) { /* already closed */ }
+};
+
 module.exports = db;

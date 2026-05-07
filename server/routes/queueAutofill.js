@@ -83,10 +83,10 @@ async function autofillIfQueueEmpty(venueCode) {
   if (!venue) return null;
   const s = venue?.settings;
   if (s?.autoplayMode === 'off' || s?.autoplayQueue === false) return null;
+  // serverAutofill broadcasts internally when it actually wrote a song —
+  // don't double-emit here.
   await serverAutofill(venueCode, venue).catch((err) => console.error('Autofill error:', err));
-  const updated = queueRepo.get(venueCode);
-  if (updated.nowPlaying) broadcast.broadcastQueue(venueCode, updated);
-  return updated;
+  return queueRepo.get(venueCode);
 }
 
 function attachAutofillRoutes(router) {
