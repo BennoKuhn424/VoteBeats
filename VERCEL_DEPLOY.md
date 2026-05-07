@@ -232,15 +232,24 @@ Fill in the form as follows:
 
 ## 3.4 Add environment variables
 
+The frontend talks directly to your Render API — there is no Vercel-side
+rewrite from `/api/*` to Render. That means **`VITE_API_URL` is required**
+(without it, the SPA falls back to a relative `/api` path that resolves to
+Vercel and 404s).
+
+You also need `VITE_SOCKET_URL` because Vercel rewrites can't proxy
+WebSocket upgrades; the Socket.IO client connects directly to Render.
+
 1. Expand **Environment Variables**
-2. Add the first variable:
-   - **Key:** `VITE_API_URL`
-   - **Value:** `https://YOUR-RENDER-URL.onrender.com/api`  
-     Replace `YOUR-RENDER-URL` with your actual Render URL from Part 2.  
+2. Add `VITE_API_URL`:
+   - **Value:** `https://YOUR-RENDER-URL.onrender.com/api`
+     Replace `YOUR-RENDER-URL` with your actual Render URL from Part 2.
      Example: `https://votebeats-api.onrender.com/api`
-3. Add the second variable:
-   - **Key:** `VITE_PUBLIC_URL`
-   - **Value:** Leave **empty** for now – we’ll set it after deploy
+3. Add `VITE_SOCKET_URL`:
+   - **Value:** `https://YOUR-RENDER-URL.onrender.com` (no `/api` suffix).
+     The Socket.IO client appends its own path.
+4. Add `VITE_PUBLIC_URL`:
+   - **Value:** Leave **empty** for now – we'll set it after deploy.
 
 ---
 
