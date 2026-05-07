@@ -46,14 +46,19 @@ function maybePruneAll(now) {
   }
 }
 
+/**
+ * Read-only check: would this caller be throttled right now?
+ * Trims expired timestamps as a side-effect (cheap; the entry is already loaded).
+ * Does NOT record the current attempt — call recordVote() AFTER the vote
+ * succeeds so failed lookups (e.g. votes on already-removed songs) don't
+ * burn the patron's quota.
+ */
 function isVoteThrottled(map, deviceId) {
   const now = Date.now();
   maybePruneAll(now);
   const stamps = (map[deviceId] || []).filter((t) => now - t < VOTE_WINDOW_MS);
   map[deviceId] = stamps;
-  if (stamps.length >= VOTE_MAX) return true;
-  stamps.push(now);
-  return false;
+  return stamps.length >= VOTE_MAX;
 }
 
 function isIpThrottled(ip) {
@@ -61,9 +66,21 @@ function isIpThrottled(ip) {
   const now = Date.now();
   const stamps = (ipTimestamps[ip] || []).filter((t) => now - t < VOTE_WINDOW_MS);
   ipTimestamps[ip] = stamps;
-  if (stamps.length >= IP_VOTE_MAX) return true;
-  stamps.push(now);
-  return false;
+  return stamps.length >= IP_VOTE_MAX;
+}
+
+/** Record a successful vote against the per-device direction map + per-IP window. */
+function recordVote(deviceId, voteValue, ip) {
+  const now = Date.now();
+  const dirMap = voteValue === -1 ? downvoteTimestamps : upvoteTimestamps;
+  if (deviceId) {
+    if (!dirMap[deviceId]) dirMap[deviceId] = [];
+    dirMap[deviceId].push(now);
+  }
+  if (ip) {
+    if (!ipTimestamps[ip]) ipTimestamps[ip] = [];
+    ipTimestamps[ip].push(now);
+  }
 }
 
 const DOWNVOTE_REMOVAL_THRESHOLD = -3;
@@ -152,6 +169,10 @@ function attachVoteRoutes(router) {
     if (result?.error) {
       return res.status(result.status).json(result.body);
     }
+
+    // Only record the throttle hit AFTER a successful vote so failed lookups
+    // (vote on already-removed songs, etc.) don't burn the patron's quota.
+    recordVote(deviceId, voteValue, req.ip);
 
     broadcast.broadcastQueue(venueCode, updated);
     res.json({ success: true, ...result });

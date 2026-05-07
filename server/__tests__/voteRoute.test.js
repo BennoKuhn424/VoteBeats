@@ -69,6 +69,56 @@ describe('vote delta — direction switch', () => {
   });
 });
 
+// ── Throttle: read-only checks + record-after-success ───────────────────────
+// Mirrors the helpers in queueVote.js — the route layer is responsible for
+// only calling recordVote() AFTER the vote succeeds, so failed votes (404 on
+// removed song, etc.) do not consume quota.
+describe('throttle helpers — H1 split read/record', () => {
+  const VOTE_WINDOW_MS = 60_000;
+  const VOTE_MAX = 5;
+
+  function isVoteThrottled(map, deviceId) {
+    const now = Date.now();
+    const stamps = (map[deviceId] || []).filter((t) => now - t < VOTE_WINDOW_MS);
+    map[deviceId] = stamps;
+    return stamps.length >= VOTE_MAX;
+  }
+  function recordVote(map, deviceId) {
+    if (!map[deviceId]) map[deviceId] = [];
+    map[deviceId].push(Date.now());
+  }
+
+  test('isVoteThrottled does not record the attempt — read-only', () => {
+    const map = {};
+    // 100 read-only checks — none of them should fill the bucket
+    for (let i = 0; i < 100; i++) {
+      expect(isVoteThrottled(map, 'd1')).toBe(false);
+    }
+    expect(map['d1']).toEqual([]);
+  });
+
+  test('throttle ticks ONLY when recordVote is called', () => {
+    const map = {};
+    for (let i = 0; i < VOTE_MAX; i++) {
+      expect(isVoteThrottled(map, 'd1')).toBe(false);
+      recordVote(map, 'd1');
+    }
+    // Now the bucket is full — next read returns true
+    expect(isVoteThrottled(map, 'd1')).toBe(true);
+  });
+
+  test('failed votes (no recordVote call) leave the bucket empty', () => {
+    const map = {};
+    // Simulate 10 vote attempts on a missing song — only check, never record
+    for (let i = 0; i < 10; i++) {
+      expect(isVoteThrottled(map, 'd1')).toBe(false);
+      // recordVote NOT called — the route 404'd
+    }
+    // The patron should still be able to vote on a real song afterwards
+    expect(isVoteThrottled(map, 'd1')).toBe(false);
+  });
+});
+
 // ── Stale-song cleanup behaviour ──────────────────────────────────────────────
 // The route removes the vote and returns 404 if the song is no longer in queue.
 describe('stale-song cleanup', () => {
