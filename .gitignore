@@ -43,3 +43,7 @@ dist-ssr
 *.db.pre-restore.*
 # Hot backups produced by backup-db.js
 server/data/backups/
+
+# Runtime JSON snapshots (legacy pre-SQLite). Live data is in *.db now;
+# these files are kept ignored so a stray dev run doesn't re-track them.
+server/data/*.json
