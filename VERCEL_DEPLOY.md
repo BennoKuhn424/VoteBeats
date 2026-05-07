@@ -250,6 +250,11 @@ WebSocket upgrades; the Socket.IO client connects directly to Render.
      The Socket.IO client appends its own path.
 4. Add `VITE_PUBLIC_URL`:
    - **Value:** Leave **empty** for now – we'll set it after deploy.
+5. Optional — add `VITE_SENTRY_DSN` if you want browser error tracking:
+   - Sign up at https://sentry.io, create a project (platform: React),
+     copy the DSN. Without this, Sentry init is skipped — no requests
+     to Sentry, no overhead. Pair with `SENTRY_DSN` on the Render side
+     to get end-to-end visibility.
 
 ---
 
