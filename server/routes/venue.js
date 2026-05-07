@@ -51,22 +51,23 @@ router.get('/:venueCode', authMiddleware, (req, res) => {
 
 // PUT /api/venue/:venueCode/theme  — lightweight, NOT subscription-gated.
 // Venues should be able to pick light/dark before/after their subscription lapses.
-router.put('/:venueCode/theme', authMiddleware, (req, res) => {
+router.put('/:venueCode/theme', authMiddleware, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
   const { theme } = req.body;
   if (theme !== 'light' && theme !== 'dark') {
     return res.status(400).json({ error: 'theme must be "light" or "dark"' });
   }
-  const venue = db.getVenue(req.params.venueCode);
-  if (!venue) return res.status(404).json({ error: 'Venue not found' });
-  if (!venue.settings) venue.settings = {};
-  venue.settings.theme = theme;
-  db.saveVenue(req.params.venueCode, venue);
+  const updated = await venueRepo.update(req.params.venueCode, (venue) => {
+    if (!venue.settings) venue.settings = {};
+    venue.settings.theme = theme;
+    return venue;
+  });
+  if (!updated) return res.status(404).json({ error: 'Venue not found' });
   res.json({ theme });
 });
 
 // PUT /api/venue/:venueCode/settings
-router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, (req, res) => {
+router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   const {
@@ -86,204 +87,231 @@ router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, (r
     autoplayMode,
     timezone,
   } = req.body;
-  const venue = db.getVenue(req.params.venueCode);
-  if (!venue.settings) venue.settings = {};
 
-  if (typeof allowExplicit === 'boolean') venue.settings.allowExplicit = allowExplicit;
-  // Time-based explicit: null = use allowExplicit toggle, 0-23 = allow explicit after that hour
-  if (explicitAfterHour !== undefined) {
-    if (explicitAfterHour === null || explicitAfterHour === '') {
-      delete venue.settings.explicitAfterHour;
-    } else {
-      const h = Number(explicitAfterHour);
-      if (!isNaN(h) && h >= 0 && h <= 23) venue.settings.explicitAfterHour = h;
-    }
-  }
-  if (typeof maxSongsPerUser === 'number') {
-    const n = Math.floor(maxSongsPerUser);
-    if (n >= 1 && n <= 100) venue.settings.maxSongsPerUser = n;
-  }
-  if (Array.isArray(genreFilters)) {
-    if (genreFilters.length > 50) {
-      return res.status(400).json({ error: 'genreFilters cannot exceed 50 entries' });
-    }
-    if (!genreFilters.every((x) => typeof x === 'string' && x.length <= 100)) {
-      return res.status(400).json({ error: 'genreFilters must be an array of strings (max 100 chars each)' });
-    }
-    venue.settings.genreFilters = genreFilters;
-  }
-  if (Array.isArray(blockedArtists)) {
-    if (blockedArtists.length > 200) {
-      return res.status(400).json({ error: 'blockedArtists cannot exceed 200 entries' });
-    }
-    if (!blockedArtists.every((x) => typeof x === 'string' && x.length <= 100)) {
-      return res.status(400).json({ error: 'blockedArtists must be an array of strings (max 100 chars each)' });
-    }
-    venue.settings.blockedArtists = blockedArtists;
-  }
-  if (typeof strictExplicit === 'boolean') venue.settings.strictExplicit = strictExplicit;
-  if (typeof lyricsFilter === 'boolean') venue.settings.lyricsFilter = lyricsFilter;
-  if (lyricsThreshold !== undefined) {
-    const n = Number(lyricsThreshold);
-    if (Number.isFinite(n) && n >= 1 && n <= 20) {
-      venue.settings.lyricsThreshold = Math.floor(n);
-    }
-  }
-  if (Array.isArray(lyricsLanguages)) {
-    const allowed = new Set(['en', 'af']);
-    const cleaned = [...new Set(
-      lyricsLanguages
-        .filter((l) => typeof l === 'string')
-        .map((l) => l.toLowerCase().trim())
-        .filter((l) => allowed.has(l)),
-    )];
-    venue.settings.lyricsLanguages = cleaned;
-  }
-  if (Array.isArray(blockedTitleWords)) {
-    if (blockedTitleWords.length > 200) {
-      return res.status(400).json({ error: 'blockedTitleWords cannot exceed 200 entries' });
-    }
-    if (!blockedTitleWords.every((x) => typeof x === 'string' && x.length <= 50)) {
-      return res.status(400).json({ error: 'blockedTitleWords must be an array of strings (max 50 chars each)' });
-    }
-    // Normalise: trim, drop empties, dedupe case-insensitively.
-    const seen = new Set();
-    const cleaned = [];
-    for (const w of blockedTitleWords) {
-      const t = w.trim();
-      if (!t) continue;
-      const key = t.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      cleaned.push(t);
-    }
-    venue.settings.blockedTitleWords = cleaned;
-  }
-  if (typeof requirePaymentForRequest === 'boolean') venue.settings.requirePaymentForRequest = requirePaymentForRequest;
-  if (typeof requestPriceCents === 'number' && requestPriceCents >= 500 && requestPriceCents <= 5000) {
-    venue.settings.requestPriceCents = requestPriceCents;
-  }
-  if (typeof autoplayQueue === 'boolean') venue.settings.autoplayQueue = autoplayQueue;
-  if (typeof autoplayMode === 'string' && ['off', 'playlist', 'random'].includes(autoplayMode)) {
-    venue.settings.autoplayMode = autoplayMode;
-  }
-  if (req.body.theme !== undefined) {
-    const t = req.body.theme;
-    if (t === 'light' || t === 'dark') {
-      venue.settings.theme = t;
-    } else if (t === null || t === '') {
-      delete venue.settings.theme;
-    }
-  }
-  if (timezone !== undefined) {
-    if (timezone === null || timezone === '') {
-      delete venue.settings.timezone;
-    } else if (typeof timezone === 'string' && timezone.length > 0 && timezone.length < 80) {
-      try {
-        Intl.DateTimeFormat(undefined, { timeZone: timezone });
-        venue.settings.timezone = timezone;
-      } catch {
-        /* invalid IANA time zone */
+  let rejection = null;
+  const updated = await venueRepo.update(req.params.venueCode, (venue) => {
+    if (!venue.settings) venue.settings = {};
+
+    if (typeof allowExplicit === 'boolean') venue.settings.allowExplicit = allowExplicit;
+    // Time-based explicit: null = use allowExplicit toggle, 0-23 = allow explicit after that hour
+    if (explicitAfterHour !== undefined) {
+      if (explicitAfterHour === null || explicitAfterHour === '') {
+        delete venue.settings.explicitAfterHour;
+      } else {
+        const h = Number(explicitAfterHour);
+        if (!isNaN(h) && h >= 0 && h <= 23) venue.settings.explicitAfterHour = h;
       }
     }
-  }
-  // Playlist schedule: { playlistId, startHour, endHour, startMinute?, endMinute?, days? }
-  // days: 0=Sun … 6=Sat. Autofill picks random songs from the matched playlist (shuffle-style).
-  if (req.body.playlistSchedule !== undefined) {
-    const schedule = req.body.playlistSchedule;
-    if (Array.isArray(schedule)) {
-      if (schedule.length > 50) {
-        return res.status(400).json({ error: 'playlistSchedule cannot exceed 50 entries' });
-      }
-      const cleanedSchedule = schedule
-        .map((s) => {
-          const startMinute = Number(s.startMinute);
-          const endMinute = Number(s.endMinute);
-          const days = Array.isArray(s.days)
-            ? [...new Set(s.days.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))]
-            : [];
-          const playlistId = typeof s.playlistId === 'string' ? s.playlistId.slice(0, 100) : '';
-          return {
-            playlistId,
-            startHour: Number(s.startHour),
-            endHour: Number(s.endHour),
-            startMinute: Number.isFinite(startMinute) ? Math.min(59, Math.max(0, Math.floor(startMinute))) : 0,
-            endMinute: Number.isFinite(endMinute) ? Math.min(59, Math.max(0, Math.floor(endMinute))) : 0,
-            ...(days.length > 0 ? { days } : {}),
-          };
-        })
-        .filter((s) => {
-          if (!s.playlistId) return false;
-          if (!Number.isFinite(s.startHour) || s.startHour < 0 || s.startHour > 23) return false;
-          if (!Number.isFinite(s.endHour) || s.endHour < 0 || s.endHour > 23) return false;
-          // Reject zero-duration slots (start === end at minute granularity).
-          if (s.startHour === s.endHour && s.startMinute === s.endMinute) return false;
-          return true;
-        });
-      const overlap = findScheduleOverlap(cleanedSchedule);
-      if (overlap) {
-        return res.status(400).json({ error: 'Playlist schedule slots cannot overlap' });
-      }
-      venue.settings.playlistSchedule = cleanedSchedule;
-    } else {
-      delete venue.settings.playlistSchedule;
+    if (typeof maxSongsPerUser === 'number') {
+      const n = Math.floor(maxSongsPerUser);
+      if (n >= 1 && n <= 100) venue.settings.maxSongsPerUser = n;
     }
-  }
-
-  if (req.body.autoplayGenre !== undefined) {
-    const ag = req.body.autoplayGenre;
-    if (Array.isArray(ag) && ag.length > 0) {
-      venue.settings.autoplayGenre = ag;
-    } else if (typeof ag === 'string' && ag) {
-      venue.settings.autoplayGenre = [ag];
-    } else {
-      venue.settings.autoplayGenre = null;
+    if (Array.isArray(genreFilters)) {
+      if (genreFilters.length > 50) {
+        rejection = { status: 400, body: { error: 'genreFilters cannot exceed 50 entries' } };
+        return null;
+      }
+      if (!genreFilters.every((x) => typeof x === 'string' && x.length <= 100)) {
+        rejection = { status: 400, body: { error: 'genreFilters must be an array of strings (max 100 chars each)' } };
+        return null;
+      }
+      venue.settings.genreFilters = genreFilters;
     }
-  }
+    if (Array.isArray(blockedArtists)) {
+      if (blockedArtists.length > 200) {
+        rejection = { status: 400, body: { error: 'blockedArtists cannot exceed 200 entries' } };
+        return null;
+      }
+      if (!blockedArtists.every((x) => typeof x === 'string' && x.length <= 100)) {
+        rejection = { status: 400, body: { error: 'blockedArtists must be an array of strings (max 100 chars each)' } };
+        return null;
+      }
+      venue.settings.blockedArtists = blockedArtists;
+    }
+    if (typeof strictExplicit === 'boolean') venue.settings.strictExplicit = strictExplicit;
+    if (typeof lyricsFilter === 'boolean') venue.settings.lyricsFilter = lyricsFilter;
+    if (lyricsThreshold !== undefined) {
+      const n = Number(lyricsThreshold);
+      if (Number.isFinite(n) && n >= 1 && n <= 20) {
+        venue.settings.lyricsThreshold = Math.floor(n);
+      }
+    }
+    if (Array.isArray(lyricsLanguages)) {
+      const allowed = new Set(['en', 'af']);
+      const cleaned = [...new Set(
+        lyricsLanguages
+          .filter((l) => typeof l === 'string')
+          .map((l) => l.toLowerCase().trim())
+          .filter((l) => allowed.has(l)),
+      )];
+      venue.settings.lyricsLanguages = cleaned;
+    }
+    if (Array.isArray(blockedTitleWords)) {
+      if (blockedTitleWords.length > 200) {
+        rejection = { status: 400, body: { error: 'blockedTitleWords cannot exceed 200 entries' } };
+        return null;
+      }
+      if (!blockedTitleWords.every((x) => typeof x === 'string' && x.length <= 50)) {
+        rejection = { status: 400, body: { error: 'blockedTitleWords must be an array of strings (max 50 chars each)' } };
+        return null;
+      }
+      // Normalise: trim, drop empties, dedupe case-insensitively.
+      const seen = new Set();
+      const cleaned = [];
+      for (const w of blockedTitleWords) {
+        const t = w.trim();
+        if (!t) continue;
+        const key = t.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        cleaned.push(t);
+      }
+      venue.settings.blockedTitleWords = cleaned;
+    }
+    if (typeof requirePaymentForRequest === 'boolean') venue.settings.requirePaymentForRequest = requirePaymentForRequest;
+    if (typeof requestPriceCents === 'number' && requestPriceCents >= 500 && requestPriceCents <= 5000) {
+      venue.settings.requestPriceCents = requestPriceCents;
+    }
+    if (typeof autoplayQueue === 'boolean') venue.settings.autoplayQueue = autoplayQueue;
+    if (typeof autoplayMode === 'string' && ['off', 'playlist', 'random'].includes(autoplayMode)) {
+      venue.settings.autoplayMode = autoplayMode;
+    }
+    if (req.body.theme !== undefined) {
+      const t = req.body.theme;
+      if (t === 'light' || t === 'dark') {
+        venue.settings.theme = t;
+      } else if (t === null || t === '') {
+        delete venue.settings.theme;
+      }
+    }
+    if (timezone !== undefined) {
+      if (timezone === null || timezone === '') {
+        delete venue.settings.timezone;
+      } else if (typeof timezone === 'string' && timezone.length > 0 && timezone.length < 80) {
+        try {
+          Intl.DateTimeFormat(undefined, { timeZone: timezone });
+          venue.settings.timezone = timezone;
+        } catch {
+          /* invalid IANA time zone */
+        }
+      }
+    }
+    // Playlist schedule: { playlistId, startHour, endHour, startMinute?, endMinute?, days? }
+    // days: 0=Sun … 6=Sat. Autofill picks random songs from the matched playlist (shuffle-style).
+    if (req.body.playlistSchedule !== undefined) {
+      const schedule = req.body.playlistSchedule;
+      if (Array.isArray(schedule)) {
+        if (schedule.length > 50) {
+          rejection = { status: 400, body: { error: 'playlistSchedule cannot exceed 50 entries' } };
+          return null;
+        }
+        const cleanedSchedule = schedule
+          .map((s) => {
+            const startMinute = Number(s.startMinute);
+            const endMinute = Number(s.endMinute);
+            const days = Array.isArray(s.days)
+              ? [...new Set(s.days.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))]
+              : [];
+            const playlistId = typeof s.playlistId === 'string' ? s.playlistId.slice(0, 100) : '';
+            return {
+              playlistId,
+              startHour: Number(s.startHour),
+              endHour: Number(s.endHour),
+              startMinute: Number.isFinite(startMinute) ? Math.min(59, Math.max(0, Math.floor(startMinute))) : 0,
+              endMinute: Number.isFinite(endMinute) ? Math.min(59, Math.max(0, Math.floor(endMinute))) : 0,
+              ...(days.length > 0 ? { days } : {}),
+            };
+          })
+          .filter((s) => {
+            if (!s.playlistId) return false;
+            if (!Number.isFinite(s.startHour) || s.startHour < 0 || s.startHour > 23) return false;
+            if (!Number.isFinite(s.endHour) || s.endHour < 0 || s.endHour > 23) return false;
+            // Reject zero-duration slots (start === end at minute granularity).
+            if (s.startHour === s.endHour && s.startMinute === s.endMinute) return false;
+            return true;
+          });
+        const overlap = findScheduleOverlap(cleanedSchedule);
+        if (overlap) {
+          rejection = { status: 400, body: { error: 'Playlist schedule slots cannot overlap' } };
+          return null;
+        }
+        venue.settings.playlistSchedule = cleanedSchedule;
+      } else {
+        delete venue.settings.playlistSchedule;
+      }
+    }
 
-  db.saveVenue(venue.code, venue);
-  res.json(venue.settings);
+    if (req.body.autoplayGenre !== undefined) {
+      const ag = req.body.autoplayGenre;
+      if (Array.isArray(ag) && ag.length > 0) {
+        venue.settings.autoplayGenre = ag;
+      } else if (typeof ag === 'string' && ag) {
+        venue.settings.autoplayGenre = [ag];
+      } else {
+        venue.settings.autoplayGenre = null;
+      }
+    }
+
+    return venue;
+  });
+
+  if (rejection) return res.status(rejection.status).json(rejection.body);
+  if (!updated) return res.status(404).json({ error: 'Venue not found' });
+  res.json(updated.settings);
 });
 
 // ── Multi-playlist CRUD ──────────────────────────────────────────────────────
 
 // POST /api/venue/:venueCode/playlists – create a new named playlist
-router.post('/:venueCode/playlists', authMiddleware, requireSubscriptionActive, validate(createPlaylistSchema), (req, res) => {
+router.post('/:venueCode/playlists', authMiddleware, requireSubscriptionActive, validate(createPlaylistSchema), async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
   const { name } = req.body;
 
-  const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
-  const playlist = { id: `pl_${Date.now()}`, name: name.trim(), songs: [] };
-  venue.playlists.push(playlist);
-  if (!venue.activePlaylistId) venue.activePlaylistId = playlist.id;
-  db.saveVenue(venue.code, venue);
-  res.json({ playlist, playlists: venue.playlists, activePlaylistId: venue.activePlaylistId });
+  let createdPlaylist = null;
+  const updated = await venueRepo.update(req.params.venueCode, (venue) => {
+    normalizePlaylists(venue);
+    createdPlaylist = { id: `pl_${Date.now()}`, name: name.trim(), songs: [] };
+    venue.playlists.push(createdPlaylist);
+    if (!venue.activePlaylistId) venue.activePlaylistId = createdPlaylist.id;
+    return venue;
+  });
+  if (!updated) return res.status(404).json({ error: 'Venue not found' });
+  res.json({ playlist: createdPlaylist, playlists: updated.playlists, activePlaylistId: updated.activePlaylistId });
 });
 
 // DELETE /api/venue/:venueCode/playlists/:playlistId – delete a playlist
-router.delete('/:venueCode/playlists/:playlistId', authMiddleware, requireSubscriptionActive, (req, res) => {
+router.delete('/:venueCode/playlists/:playlistId', authMiddleware, requireSubscriptionActive, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
-  const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
-  venue.playlists = venue.playlists.filter((p) => p.id !== req.params.playlistId);
-  if (venue.activePlaylistId === req.params.playlistId) {
-    venue.activePlaylistId = venue.playlists[0]?.id || null;
-  }
-  db.saveVenue(venue.code, venue);
-  res.json({ playlists: venue.playlists, activePlaylistId: venue.activePlaylistId });
+  const updated = await venueRepo.update(req.params.venueCode, (venue) => {
+    normalizePlaylists(venue);
+    venue.playlists = venue.playlists.filter((p) => p.id !== req.params.playlistId);
+    if (venue.activePlaylistId === req.params.playlistId) {
+      venue.activePlaylistId = venue.playlists[0]?.id || null;
+    }
+    return venue;
+  });
+  if (!updated) return res.status(404).json({ error: 'Venue not found' });
+  res.json({ playlists: updated.playlists, activePlaylistId: updated.activePlaylistId });
 });
 
 // PUT /api/venue/:venueCode/playlists/:playlistId/activate – set as active (used by autofill)
-router.put('/:venueCode/playlists/:playlistId/activate', authMiddleware, requireSubscriptionActive, (req, res) => {
+router.put('/:venueCode/playlists/:playlistId/activate', authMiddleware, requireSubscriptionActive, async (req, res) => {
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
-  const venue = normalizePlaylists(db.getVenue(req.params.venueCode));
-  if (!venue.playlists.some((p) => p.id === req.params.playlistId)) {
-    return res.status(404).json({ error: 'Playlist not found' });
-  }
-  venue.activePlaylistId = req.params.playlistId;
-  db.saveVenue(venue.code, venue);
-  res.json({ activePlaylistId: venue.activePlaylistId });
+  let rejection = null;
+  const updated = await venueRepo.update(req.params.venueCode, (venue) => {
+    normalizePlaylists(venue);
+    if (!venue.playlists.some((p) => p.id === req.params.playlistId)) {
+      rejection = { status: 404, body: { error: 'Playlist not found' } };
+      return null;
+    }
+    venue.activePlaylistId = req.params.playlistId;
+    return venue;
+  });
+  if (rejection) return res.status(rejection.status).json(rejection.body);
+  if (!updated) return res.status(404).json({ error: 'Venue not found' });
+  res.json({ activePlaylistId: updated.activePlaylistId });
 });
 
 // PUT /api/venue/:venueCode/playlists/:playlistId/rename – rename a playlist
