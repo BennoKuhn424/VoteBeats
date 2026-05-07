@@ -129,17 +129,17 @@ export default function CustomerVoting() {
     socket.on('queue:updated', onQueueUpdated);
 
     // If the socket is already open (e.g., customer navigates back to the
-    // page) the 'connect' event will never fire again, so join the room and
-    // fetch immediately rather than waiting indefinitely.
+    // page) the 'connect' event will never fire again, so call onConnect()
+    // inline — it joins the room and (after a 300ms settle) fetches the queue.
+    // Otherwise, call socket.connect() to trigger 'connect' (which will run
+    // onConnect when it lands) AND kick off an HTTP fetch right now so the
+    // loading state resolves even before the WebSocket handshake completes.
     if (socket.connected) {
       onConnect();
     } else {
       socket.connect();
+      fetchQueueRef.current?.();
     }
-
-    // Kick off an HTTP fetch right away — this resolves the loading state and
-    // populates the queue even before the WebSocket handshake completes.
-    fetchQueueRef.current?.();
 
     return () => {
       socket.off('connect', onConnect);
@@ -233,7 +233,6 @@ export default function CustomerVoting() {
             venueCode={venueCode}
             deviceId={deviceId}
             myVote={queue.myVotes?.[queue.nowPlaying.id] ?? null}
-            onVote={fetchQueue}
           />
         )}
 
@@ -245,13 +244,7 @@ export default function CustomerVoting() {
           />
         )}
 
-        <UpcomingQueue
-          songs={queue.upcoming}
-          myVotes={queue.myVotes}
-          venueCode={venueCode}
-          deviceId={deviceId}
-          onVote={fetchQueue}
-        />
+        <UpcomingQueue songs={queue.upcoming} />
 
         <VolumeSuggestion
           venueCode={venueCode}

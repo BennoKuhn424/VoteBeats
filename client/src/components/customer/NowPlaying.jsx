@@ -3,7 +3,7 @@ import { ThumbsUp, ThumbsDown } from 'lucide-react';
 import { formatDuration } from '../../utils/helpers';
 import api from '../../utils/api';
 
-export default function NowPlaying({ song, hasLyrics, onLyrics, venueCode, deviceId, myVote, onVote }) {
+export default function NowPlaying({ song, hasLyrics, onLyrics, venueCode, deviceId, myVote }) {
   const [progress, setProgress] = useState(0);
   const [voting, setVoting] = useState(false);
 
@@ -32,8 +32,11 @@ export default function NowPlaying({ song, hasLyrics, onLyrics, venueCode, devic
     if (voting || !song?.id || !venueCode || !deviceId) return;
     setVoting(true);
     try {
+      // The server broadcasts queue:updated over Socket.IO after a successful
+      // vote — the parent component picks that up and re-renders with the new
+      // myVote / vote counts. No need to trigger a fetch here (race-free, and
+      // avoids the 3x-update flicker described in the H3 review finding).
       await api.vote(venueCode, song.id, value, deviceId);
-      onVote?.();
     } catch (err) {
       if (err.response?.status === 429) {
         // throttled — silently ignore
