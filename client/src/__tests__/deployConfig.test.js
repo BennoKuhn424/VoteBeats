@@ -79,4 +79,38 @@ describe('vercel.json deploy config', () => {
       expect(policy).toMatch(/fullscreen=\*/);
     });
   });
+
+  // ── Production API surface ─────────────────────────────────────────────────
+  // These pin the production API host into the CSP and make sure the SPA
+  // fallback stays present. Without them, swapping VITE_API_URL on Vercel can
+  // silently break the app: the request leaves the page, fails CSP, login
+  // dies, and our test suite reports green.
+  //
+  // If the API host changes (e.g. switching to a new domain), update BOTH the
+  // vercel.json CSP AND this test in the same commit. Do not loosen.
+  describe('Content-Security-Policy — Speeldit API surface', () => {
+    const csp = getHeader('Content-Security-Policy');
+    const connectSrc = csp.match(/connect-src[^;]*/)?.[0] || '';
+
+    it('connect-src allows api.speeldit.com (canonical API host)', () => {
+      expect(connectSrc).toMatch(/https:\/\/api\.speeldit\.com/);
+    });
+
+    it('connect-src allows wss://api.speeldit.com (Socket.IO)', () => {
+      expect(connectSrc).toMatch(/wss:\/\/api\.speeldit\.com/);
+    });
+  });
+
+  describe('SPA fallback rewrite', () => {
+    // The /api/* → Render rewrite was removed 2026-05-07; the SPA now relies
+    // on VITE_API_URL being absolute. The remaining rewrite must keep
+    // serving /index.html for any path that isn't a static asset, otherwise
+    // direct deep-links like /venue/login return 404.
+    it('keeps an index.html fallback for non-asset paths', () => {
+      const rewrites = vercelJson.rewrites || [];
+      const fallback = rewrites.find((r) => r.destination === '/index.html');
+      expect(fallback).toBeTruthy();
+      expect(fallback.source).toMatch(/index\.html|assets/);
+    });
+  });
 });
