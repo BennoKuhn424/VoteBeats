@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import api from '../utils/api';
 
 const STATUS_LABELS = {
@@ -107,6 +108,13 @@ export default function VenueBilling() {
 
   return (
     <div className="max-w-2xl mx-auto px-5 py-10">
+      <Link
+        to="/venue/dashboard"
+        className="inline-flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 mb-6"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to dashboard
+      </Link>
       <h1 className="text-2xl font-bold mb-1 text-zinc-900 dark:text-zinc-100">Billing</h1>
       <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-6">Manage your Speeldit subscription.</p>
 

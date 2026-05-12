@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { VENUE_PLAYER_META_REFRESH } from '../utils/venuePlayerEvents';
 import Button from '../components/shared/Button';
 import QRCodeDisplay from '../components/venue/QRCodeDisplay';
@@ -38,6 +39,8 @@ export default function VenueDashboard() {
   const [copiedVotingUrl, setCopiedVotingUrl] = useState(false);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { theme } = useTheme();
+  const cardVariant = theme === 'dark' ? 'dark' : 'light';
 
   const fetchVenue = useCallback(async (code) => {
     try {
@@ -185,7 +188,7 @@ export default function VenueDashboard() {
         {/* Settings Panel */}
         {showSettings && (
           <div className="mb-8">
-            <VenueSettings venueCode={venue.code} onSaved={() => setShowSettings(false)} variant="light" />
+            <VenueSettings venueCode={venue.code} onSaved={() => setShowSettings(false)} variant={cardVariant} />
           </div>
         )}
 
@@ -225,7 +228,7 @@ export default function VenueDashboard() {
             queue={queue}
             onRemove={handleRemove}
             onBan={handleBanArtist}
-            variant="light"
+            variant={cardVariant}
           />
         </div>
 
@@ -234,7 +237,7 @@ export default function VenueDashboard() {
           <EarningsCard
             venueCode={venue.code}
             showPlaceholder={!venue.settings?.requirePaymentForRequest}
-            variant="light"
+            variant={cardVariant}
             embedded
           />
         </div>
@@ -290,11 +293,11 @@ export default function VenueDashboard() {
           onSaved={() => fetchVenue(venue.code)}
         />
 
-        <VolumeAlertsCard venueCode={venue.code} variant="light" />
+        <VolumeAlertsCard venueCode={venue.code} variant={cardVariant} />
 
         {/* Analytics */}
         <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
-          <AnalyticsDashboard venueCode={venue.code} variant="light" />
+          <AnalyticsDashboard venueCode={venue.code} variant={cardVariant} />
         </div>
 
         {/* Customer Voting Link — moved below analytics since the queue is now the headline at the top */}
