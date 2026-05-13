@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import Header from '../components/shared/Header';
 import Button from '../components/shared/Button';
 import Logo from '../components/shared/Logo';
 
@@ -17,10 +16,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-carbon-50 dark:bg-dark-950 text-carbon-800 dark:text-zinc-100 pb-safe">
-      <Header />
       <div className="container mx-auto px-5 py-12 max-w-lg">
         <div className="text-center mb-12">
-          <Logo size="2xl" className="mx-auto mb-4" />
+          <Logo size="2xl" className="mx-auto mb-6" />
           <p className="text-carbon-600 dark:text-zinc-300 text-lg">
             Be the vibe. Scan the QR at your table or enter the code below.
           </p>

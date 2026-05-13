@@ -8,7 +8,6 @@ import { useVisibilityAwarePolling } from '../hooks/useVisibilityAwarePolling';
 import NowPlaying from '../components/customer/NowPlaying';
 import UpcomingQueue from '../components/customer/UpcomingQueue';
 import SearchBar from '../components/shared/SearchBar';
-import Logo from '../components/shared/Logo';
 import LyricsView from '../components/customer/LyricsView';
 import VolumeSuggestion from '../components/customer/VolumeSuggestion';
 
@@ -189,7 +188,6 @@ export default function CustomerVoting() {
     return (
       <div className="min-h-screen bg-dark-950 text-white flex justify-center items-center pb-safe px-5">
         <div className="text-center max-w-xs">
-          <Logo size="2xl" className="mx-auto mb-6 opacity-90" forceLight />
           <div className="w-10 h-10 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-dark-400">Connecting to venue…</p>
         </div>
@@ -197,13 +195,20 @@ export default function CustomerVoting() {
     );
   }
 
+  // Use the venue's own name as the page heading. Falls back to the venue
+  // code while the first GET /api/queue/:code response is in flight so the
+  // header doesn't pop in.
+  const venueHeading = queue.venueName || venueCode;
+
   return (
     <div className="min-h-screen bg-dark-950 text-white pb-safe">
       <div className="container mx-auto px-5 py-6 max-w-lg">
         <header className="text-center mb-6">
-          <Logo size="2xl" className="mx-auto mb-4" forceLight />
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">Be the vibe</h1>
-          <p className="text-dark-400 text-sm mt-2">Vote and request what plays next</p>
+          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white break-words">
+            {venueHeading}
+          </h1>
+          <p className="text-dark-300 text-base mt-3">Be the vibe</p>
+          <p className="text-dark-400 text-sm mt-1">Vote and request what plays next</p>
         </header>
 
         {(error || (hasConnectedOnceRef.current && !isConnected)) && (

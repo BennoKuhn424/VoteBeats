@@ -129,7 +129,15 @@ router.get('/:venueCode', async (req, res) => {
           }
         : null;
 
-    res.json({ ...queue, myVotes, requestSettings, reportedPlayerVolume });
+    res.json({
+      ...queue,
+      myVotes,
+      requestSettings,
+      reportedPlayerVolume,
+      // Public, low-sensitivity. The customer voting page renders this as the
+      // page heading so patrons see "Padstal" instead of "SPEELDIT".
+      venueName: venue?.name ?? null,
+    });
   } catch (err) {
     console.error('Queue read error on GET /:venueCode:', err);
     res.status(500).json({ error: 'Could not read queue', code: E.QUEUE_READ_FAILED });

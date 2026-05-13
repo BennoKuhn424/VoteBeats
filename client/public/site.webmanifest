@@ -4,9 +4,15 @@
   "description": "Be the vibe. Vote on the music at your venue — scan the QR or enter your code.",
   "icons": [
     {
-      "src": "/speeldit-logo-transparent.png",
-      "sizes": "512x512",
-      "type": "image/png",
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon",
       "purpose": "any"
     }
   ],
