@@ -5,7 +5,7 @@ Full-stack web app for music voting in bars/restaurants using QR codes. Customer
 ## Tech stack
 
 - **Frontend:** React (Vite), Tailwind CSS, React Router, Axios, date-fns, qrcode.react
-- **Backend:** Node.js, Express, JSON file storage, JWT auth, CORS
+- **Backend:** Node.js, Express, SQLite (better-sqlite3, WAL mode) on a persistent disk, JWT auth, CORS
 - **Deploy:** Frontend → Vercel/Netlify; Backend → Render/Railway
 
 ## Project structure
@@ -20,7 +20,7 @@ speeldit/
 │   ├── server.js    # HTTP server, Socket.IO, queue auto-advance interval
 │   ├── routes/      # queue.js mounts queueVote, queuePayment, queueAutofill helpers
 │   ├── utils/yoco.js # Shared Yoco checkout verify + webhook HMAC
-│   └── data/        # JSON persistence (dev / small deployments)
+│   └── data/        # SQLite database file (speeldit.db) + nightly backups
 ├── playwright.config.js
 └── README.md
 ```
@@ -129,7 +129,7 @@ GitHub Actions runs **server tests**, **client tests**, **client build**, and **
 
 **Sentry (optional):** With `SENTRY_DSN` / `VITE_SENTRY_DSN` set, the API registers `setupExpressErrorHandler` and the SPA initializes `@sentry/react` with an error boundary. Without DSNs, Sentry code paths are skipped.
 
-**Still out of scope for the repo:** replacing JSON files with a hosted database, full React Query data layer, and deeper E2E (register → login → playlist) — add those as separate milestones if you need them.
+**Still out of scope for the repo:** horizontal scale (the SQLite + per-venue async mutex pattern assumes a single Node instance), full React Query data layer, and deeper E2E (register → login → playlist) — add those as separate milestones if you need them.
 
 ### Platform owner dashboard
 
@@ -176,12 +176,24 @@ Registration is blocked for the same email as `OWNER_EMAIL` so it stays reserved
 
 ## Data (server/data/)
 
-- `venues.json` – venue info and owner credentials
-- `queues.json` – now playing + upcoming per venue
-- `votes.json` – vote state per venue/song/device
-- `pendingPayments.json` – Yoco checkout IDs awaiting webhook confirmation
+Live storage is **SQLite** at `DATA_DIR/speeldit.db` (WAL mode, single file). On
+Render the disk is mounted at `/var/data`. The legacy filename `votebeats.db`
+is auto-renamed to `speeldit.db` on first boot. Schema is created on demand
+by `server/utils/sqlite.js`; key tables:
 
-Songs auto-advance when their duration ends (server checks every 5s). Next song is chosen by highest votes.
+- `venues` – venue info, owner credentials, settings JSON, playlists JSON
+- `queues` – now playing + upcoming songs per venue (one row per song)
+- `votes` – per-venue / per-song / per-device vote state
+- `payments` – completed Yoco patron payments (for venue earnings + payouts)
+- `pending_payments` – checkout IDs awaiting webhook confirmation (encrypted at rest with `PAYMENT_ENCRYPTION_KEY`)
+- `subscriptions` – Paystack venue subscription state per venue
+- `payouts` – monthly venue payout records (status: pending / paid / failed)
+- `analytics`, `audit_log`, `auth_tokens`, `request_throttles`, `player_volume`
+
+Songs auto-advance when their duration ends — the server ticks every 1s for
+active queues and runs a slower 30s sweep across all venues to start
+scheduled-playlist slots even when the queue has been fully empty. Next
+song is chosen by highest votes.
 
 ## Deployment
 

@@ -15,6 +15,14 @@ describe('HTTP app', () => {
     expect(res.body.ok).toBe(true);
   });
 
+  test('health response includes a DB liveness signal (proves SQLite is readable)', async () => {
+    // /api/health hits SQLite with SELECT 1 so an uptime monitor sees a real
+    // failure when the disk is full, unmounted, or the DB is corrupt — not
+    // just a "Node is alive" false positive.
+    const res = await request(app).get('/api/health').expect(200);
+    expect(res.body.db).toBe('ok');
+  });
+
   test('responses include security headers from helmet', async () => {
     const res = await request(app).get('/health').expect(200);
     // Helmet sets several headers; x-content-type-options is one of the most

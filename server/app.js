@@ -14,10 +14,40 @@ if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS || 1));
 }
 
+// Cache the prepared liveness query so we don't re-prepare on every health hit.
+// Lazy require because `app.js` is imported by tests that mock the database
+// module — pulling sqlite at module load would skip the mock.
+let _healthProbe = null;
+function getHealthProbe() {
+  if (_healthProbe) return _healthProbe;
+  try {
+    const sqlite = require('./utils/sqlite');
+    _healthProbe = sqlite.prepare('SELECT 1 AS ok');
+  } catch {
+    _healthProbe = null;
+  }
+  return _healthProbe;
+}
+
 function healthPayload() {
+  // Touch the DB so uptime monitors detect "disk full / disk unmounted / DB
+  // corrupted" failures, not just "Node process is alive." A `SELECT 1`
+  // forces a real read against speeldit.db and returns instantly when healthy.
+  // If the read throws or returns the wrong shape, mark db: 'error' so the
+  // payload still serializes and the route still returns 200 with a clear
+  // signal; the uptime monitor or Sentry alert can flag the degraded state.
+  let dbStatus = 'unknown';
+  try {
+    const stmt = getHealthProbe();
+    const row = stmt ? stmt.get() : null;
+    dbStatus = row && row.ok === 1 ? 'ok' : 'error';
+  } catch {
+    dbStatus = 'error';
+  }
   return {
-    ok: true,
+    ok: dbStatus === 'ok',
     service: 'speeldit-api',
+    db: dbStatus,
     ts: new Date().toISOString(),
   };
 }
@@ -77,13 +107,14 @@ app.use(
   })
 );
 
-app.get('/health', (req, res) => {
-  res.status(200).json(healthPayload());
-});
-
-app.get('/api/health', (req, res) => {
-  res.status(200).json(healthPayload());
-});
+function sendHealth(req, res) {
+  const payload = healthPayload();
+  // 503 when DB is unreachable so uptime monitors and load balancers see a
+  // real failure, not a "Node still answering" false positive.
+  res.status(payload.ok ? 200 : 503).json(payload);
+}
+app.get('/health', sendHealth);
+app.get('/api/health', sendHealth);
 
 // Patron-payment webhook — raw body for provider signature verification.
 // Generic route delegates to the active PatronPaymentProvider (default: Yoco).
