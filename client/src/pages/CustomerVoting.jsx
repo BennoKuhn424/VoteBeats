@@ -189,7 +189,7 @@ export default function CustomerVoting() {
     return (
       <div className="min-h-screen bg-dark-950 text-white flex justify-center items-center pb-safe px-5">
         <div className="text-center max-w-xs">
-          <Logo size="2xl" className="mx-auto mb-6 opacity-90" />
+          <Logo size="2xl" className="mx-auto mb-6 opacity-90" forceLight />
           <div className="w-10 h-10 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-dark-400">Connecting to venue…</p>
         </div>
@@ -201,7 +201,7 @@ export default function CustomerVoting() {
     <div className="min-h-screen bg-dark-950 text-white pb-safe">
       <div className="container mx-auto px-5 py-6 max-w-lg">
         <header className="text-center mb-6">
-          <Logo size="2xl" className="mx-auto mb-4" />
+          <Logo size="2xl" className="mx-auto mb-4" forceLight />
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">Be the vibe</h1>
           <p className="text-dark-400 text-sm mt-2">Vote and request what plays next</p>
         </header>

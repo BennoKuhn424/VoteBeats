@@ -97,7 +97,7 @@ export default function OwnerDashboard() {
       <header className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Logo size="md" />
+            <Logo size="md" forceLight />
             <div>
               <h1 className="text-lg font-bold text-white">Speeldit — Owner</h1>
               <p className="text-xs text-zinc-500">Platform overview & revenue</p>
