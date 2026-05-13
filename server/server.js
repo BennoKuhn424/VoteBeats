@@ -29,12 +29,25 @@ io.on('connection', (socket) => {
 });
 
 // ── Auto-advance interval ─────────────────────────────────────────────────────
+// Two intervals, two responsibilities:
+//   1. Fast tick (1s) — advance songs whose duration just elapsed. Only needs
+//      to consider venues that currently have queue rows; SELECTing every
+//      venue every second would waste CPU.
+//   2. Slow tick (30s) — sweep EVERY venue and run autofillIfQueueEmpty so
+//      a scheduled-playlist slot kicks in at its start time even when the
+//      queue has been empty (no nowPlaying, no upcoming) for a while. Without
+//      this sweep, an empty-queue venue falls off the fast tick (db.getQueues
+//      returns no rows for it) and the schedule check never fires until
+//      someone manually requests a song.
 let shuttingDown = false;
 const ADVANCE_TICK_MS = 1000;
+const AUTOFILL_SWEEP_MS = 30_000;
+
 const advanceInterval = setInterval(async () => {
   if (shuttingDown) return;
   // getQueues only returns venues with queue rows, so this ticks active queues
-  // instead of every registered venue.
+  // instead of every registered venue. Empty-queue venues are handled by the
+  // slower sweep below.
   const queues = db.getQueues();
   for (const [venueCode, queue] of Object.entries(queues)) {
     try {
@@ -66,6 +79,15 @@ const advanceInterval = setInterval(async () => {
     }
   }
 }, ADVANCE_TICK_MS);
+
+// Slow sweep — picks up empty-queue venues so a scheduled playlist slot can
+// start on time. Sweep logic lives in utils/autofillSweep.js so it's testable
+// without booting the HTTP listener; this file just owns the interval timer.
+const { runAutofillSweep } = require('./utils/autofillSweep');
+const autofillSweepInterval = setInterval(() => {
+  if (shuttingDown) return;
+  runAutofillSweep({ db, autofillIfQueueEmpty: queueRouter.autofillIfQueueEmpty });
+}, AUTOFILL_SWEEP_MS);
 
 // Drop abandoned Yoco checkouts so pendingPayments.json cannot grow forever
 const PENDING_PAYMENT_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
@@ -109,6 +131,7 @@ function gracefulShutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   clearInterval(advanceInterval);
+  clearInterval(autofillSweepInterval);
   console.log(JSON.stringify({
     t: new Date().toISOString(),
     msg: 'speeldit-server-shutdown',

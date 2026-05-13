@@ -23,7 +23,7 @@ async function serverAutofill(venueCode, venue) {
     let scheduledPl = null;
     const schedule = venue?.settings?.playlistSchedule;
     if (Array.isArray(schedule) && schedule.length > 0) {
-      scheduledPl = findScheduledPlaylist(schedule, playlists, new Date());
+      scheduledPl = findScheduledPlaylist(schedule, playlists, new Date(), venue?.settings?.timezone);
       activePl = scheduledPl;
     }
     if (!activePl) {
@@ -110,7 +110,7 @@ function attachAutofillRoutes(router) {
       let scheduledPl = null;
       const schedule = venue.settings?.playlistSchedule;
       if (Array.isArray(schedule) && schedule.length > 0) {
-        scheduledPl = findScheduledPlaylist(schedule, playlists, new Date());
+        scheduledPl = findScheduledPlaylist(schedule, playlists, new Date(), venue.settings?.timezone);
         activePl = scheduledPl;
       }
       if (!activePl) {
