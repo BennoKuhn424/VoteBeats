@@ -62,6 +62,32 @@
   }
 }
 
+/* Browser autofill paints inputs a light-blue/yellow tint (Chrome's saved-
+   credentials style) that ignores our background colors entirely. In dark
+   mode that turns dark inputs into pale rectangles. The `box-shadow` trick
+   below covers the painted-on background with our own; `-webkit-text-fill-color`
+   forces the text color since `color:` is ignored on autofilled inputs.
+   Apply to anywhere the user might autofill (login, register, billing). */
+html.dark input:-webkit-autofill,
+html.dark input:-webkit-autofill:hover,
+html.dark input:-webkit-autofill:focus,
+html.dark input:-webkit-autofill:active {
+  -webkit-text-fill-color: #f4f4f5 !important; /* zinc-100 */
+  -webkit-box-shadow: 0 0 0 1000px #262626 inset !important; /* dark-700 */
+  caret-color: #f4f4f5;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: #18181b; /* zinc-900 */
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
+  caret-color: #18181b;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
 /* Touch target floor (Apple HIG 44pt / Material 48dp) lives in
    tailwind.config.js as `min-h-touch` / `min-w-touch`. Use those classes
    on every primary tap target — sized to the finger, not the text, so

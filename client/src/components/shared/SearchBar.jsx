@@ -88,8 +88,7 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
             if (searchError) setSearchError(null);
           }}
           placeholder="Search for a song..."
-          style={{ color: '#111', WebkitTextFillColor: '#111' }}
-          className="flex-1 min-h-touch px-4 py-3 bg-white border border-carbon-200 rounded-lg text-carbon-900 placeholder-carbon-400 focus:outline-none focus:ring-2 focus:ring-amethyst-400 focus:border-transparent shadow-button"
+          className="flex-1 min-h-touch px-4 py-3 bg-dark-800 border border-dark-600 rounded-lg text-white placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-amethyst-400 focus:border-transparent shadow-button"
         />
         <button
           type="submit"
@@ -101,15 +100,15 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
       </form>
 
       {searchError && results.length === 0 && (
-        <p className="mt-4 text-center text-carbon-500 text-sm">{searchError}</p>
+        <p className="mt-4 text-center text-dark-400 text-sm">{searchError}</p>
       )}
       {results.length > 0 && (
-        <div className="mt-4 bg-white rounded-xl overflow-hidden border border-carbon-200 shadow-card max-h-72 overflow-y-auto">
+        <div className="mt-4 bg-dark-800 rounded-xl overflow-hidden border border-dark-600 shadow-card max-h-72 overflow-y-auto">
           {results.map((item) => (
             <button
               key={item.songId || item.appleId}
               type="button"
-              className="w-full flex items-center gap-4 p-4 hover:bg-carbon-50 active:bg-carbon-100 transition-colors text-left border-b border-carbon-100 last:border-b-0"
+              className="w-full flex items-center gap-4 p-4 hover:bg-dark-700 active:bg-dark-600 transition-colors text-left border-b border-dark-700 last:border-b-0"
               onClick={() => handleRequest(item)}
             >
               <img
@@ -118,10 +117,10 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
                 className="w-14 h-14 rounded-lg object-cover shrink-0"
               />
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-carbon-900 line-clamp-2 break-words" style={{ color: '#202124' }}>
+                <p className="font-semibold text-white line-clamp-2 break-words">
                   {item.trackName ?? item.title}
                 </p>
-                <p className="text-sm text-carbon-500 line-clamp-1 break-words" style={{ color: '#5f6368' }}>
+                <p className="text-sm text-dark-300 line-clamp-1 break-words">
                   {item.artistName ?? item.artist}
                 </p>
               </div>
