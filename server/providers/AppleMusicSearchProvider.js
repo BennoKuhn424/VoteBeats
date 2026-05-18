@@ -10,7 +10,6 @@
 const SearchProvider = require('./SearchProvider');
 const {
   searchAppleMusic,
-  searchByGenre,
   pickFromPlaylist,
 } = require('../utils/appleMusicAPI');
 const { getDeveloperToken } = require('../utils/appleMusicToken');
@@ -35,11 +34,6 @@ class AppleMusicSearchProvider extends SearchProvider {
   async search(query, venueCode) {
     const songs = await searchAppleMusic(query, venueCode || null);
     return Array.isArray(songs) ? songs.map(normalize) : [];
-  }
-
-  async searchByGenre(genres, venueCode) {
-    const song = await searchByGenre(genres, venueCode);
-    return normalize(song);
   }
 
   pickFromPlaylist(playlist, venueCode) {

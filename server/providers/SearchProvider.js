@@ -43,19 +43,6 @@ class SearchProvider {
   }
 
   /**
-   * Pick a single song for autofill using the venue's selected genres.
-   * Implementations may apply language/genre rules, recent-pool dedup, and
-   * venue filtering. Returns null if nothing matches.
-   * @param {string[]} genres - Full autoplayGenre array from venue.settings
-   * @param {string} venueCode
-   * @returns {Promise<object|null>}
-   */
-  // eslint-disable-next-line no-unused-vars
-  async searchByGenre(genres, venueCode) {
-    throw new Error('SearchProvider.searchByGenre must be overridden');
-  }
-
-  /**
    * Pick a single song from a venue's curated playlist for autofill,
    * avoiding recent repeats.
    * @param {object[]} playlist

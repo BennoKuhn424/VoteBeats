@@ -192,9 +192,9 @@ describe('usePlayerControls', () => {
       const deps = createDeps();
       const { result } = renderHook(() => usePlayerControls(refs, 'V1', deps));
 
-      await act(async () => { await result.current.changeMode('random'); });
-      expect(result.current.autoplayMode).toBe('random');
-      expect(refs.autoplayMode).toBe('random');
+      await act(async () => { await result.current.changeMode('playlist'); });
+      expect(result.current.autoplayMode).toBe('playlist');
+      expect(refs.autoplayMode).toBe('playlist');
     });
   });
 

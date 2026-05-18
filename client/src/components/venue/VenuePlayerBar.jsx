@@ -11,7 +11,6 @@ import { useVenuePlayback, PLAYER_STATES } from '../../context/VenuePlaybackCont
 const AUTOPLAY_OPTIONS = [
   { id: 'off', label: 'Off' },
   { id: 'playlist', label: 'Playlist' },
-  { id: 'random', label: 'Random' },
 ];
 
 /**

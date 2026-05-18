@@ -4,11 +4,16 @@ import api from '../../utils/api';
 import Button from '../shared/Button';
 import { useTheme } from '../../context/ThemeContext';
 
+/**
+ * General venue settings.
+ *
+ * After the random-autoplay removal (2026-05-18), patron-facing controls
+ * (max-per-user, pay-to-play, explicit, blocked words, lyric scan) live in
+ * the User Requests dashboard card. This modal keeps only generic settings:
+ * appearance and the request genre filter.
+ */
 export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
-  const [maxSongsPerUser, setMaxSongsPerUser] = useState(3);
   const [genreFilters, setGenreFilters] = useState('');
-  const [requirePaymentForRequest, setRequirePaymentForRequest] = useState(false);
-  const [requestPriceCents, setRequestPriceCents] = useState(1000);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const { theme, setTheme } = useTheme();
@@ -19,10 +24,7 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
       .getVenue(venueCode)
       .then((res) => {
         const s = res.data?.settings || {};
-        setMaxSongsPerUser(s.maxSongsPerUser ?? 3);
         setGenreFilters(Array.isArray(s.genreFilters) ? s.genreFilters.join(', ') : '');
-        setRequirePaymentForRequest(s.requirePaymentForRequest ?? false);
-        setRequestPriceCents(s.requestPriceCents ?? 1000);
       })
       .catch(console.error);
   }, [venueCode]);
@@ -33,12 +35,9 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
     setSaving(true);
     try {
       await api.updateSettings(venueCode, {
-        maxSongsPerUser: Math.max(1, Math.min(10, maxSongsPerUser)) || 3,
         genreFilters: genreFilters
           ? genreFilters.split(',').map((g) => g.trim()).filter(Boolean)
           : [],
-        requirePaymentForRequest,
-        requestPriceCents: Math.max(500, Math.min(5000, requestPriceCents)) || 1000,
       });
       onSaved?.();
     } catch (err) {
@@ -58,9 +57,9 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
     <div className={cardClass}>
       <h2 className={`text-lg font-bold mb-2 ${isLight ? 'text-zinc-900' : ''}`}>Settings</h2>
       <p className={`text-sm mb-4 ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>
-        Use dashboard <strong className={isLight ? 'text-zinc-700' : 'text-dark-200'}>Playlists &amp; schedule</strong> for
-        libraries and time slots, and <strong className={isLight ? 'text-zinc-700' : 'text-dark-200'}>Play random</strong> for
-        genre/language mix and explicit rules.
+        Use <strong className={isLight ? 'text-zinc-700' : 'text-dark-200'}>Playlists &amp; schedule</strong> for
+        libraries and time slots, and <strong className={isLight ? 'text-zinc-700' : 'text-dark-200'}>User requests</strong> for
+        pricing, per-user limits, and content rules.
       </p>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
@@ -95,19 +94,6 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
           </div>
         </div>
         <div>
-          <label className={`block text-sm font-medium mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>Max songs per user</label>
-          <input
-            type="number"
-            min={1}
-            max={10}
-            value={maxSongsPerUser}
-            onChange={(e) => setMaxSongsPerUser(Number(e.target.value))}
-            className={`w-full min-h-touch px-4 py-3 rounded-xl focus:ring-2 focus:ring-brand-500 ${
-              isLight ? 'bg-white border border-zinc-300 text-zinc-900' : 'bg-dark-700 border border-dark-600 text-white'
-            }`}
-          />
-        </div>
-        <div>
           <label className={`block text-sm font-medium mb-1 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>
             Request genre filter
           </label>
@@ -123,34 +109,6 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
               isLight ? 'bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400' : 'bg-dark-700 border border-dark-600 text-white placeholder-dark-500'
             }`}
           />
-        </div>
-        <div className={`border-t pt-5 space-y-4 ${isLight ? 'border-zinc-200' : 'border-dark-600'}`}>
-          <h3 className={`font-semibold ${isLight ? 'text-zinc-900' : ''}`}>Pay to play</h3>
-          <label className={`flex items-center gap-3 min-h-touch cursor-pointer ${isLight ? 'text-zinc-700' : ''}`}>
-            <input
-              type="checkbox"
-              checked={requirePaymentForRequest}
-              onChange={(e) => setRequirePaymentForRequest(e.target.checked)}
-              className="rounded border-dark-500 text-brand-500 focus:ring-brand-500"
-            />
-            <span>Require payment to suggest a song</span>
-          </label>
-          {requirePaymentForRequest && (
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>Price per request (R)</label>
-              <input
-                type="number"
-                min={5}
-                max={50}
-                value={requestPriceCents / 100}
-                onChange={(e) => setRequestPriceCents(Math.round(Number(e.target.value) * 100) || 1000)}
-                className={`w-24 min-h-touch px-4 py-3 rounded-xl focus:ring-2 focus:ring-brand-500 ${
-                  isLight ? 'bg-white border border-zinc-300 text-zinc-900' : 'bg-dark-700 border border-dark-600 text-white'
-                }`}
-              />
-              <p className="text-xs text-dark-500 mt-1">R5–R50. Add YOCO_SECRET_KEY on the server to enable.</p>
-            </div>
-          )}
         </div>
         {error && <p className="text-red-500 text-sm">{error}</p>}
         <Button type="submit" disabled={saving} className="w-full">

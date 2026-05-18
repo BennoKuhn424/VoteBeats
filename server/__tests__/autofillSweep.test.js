@@ -87,7 +87,7 @@ describe('runAutofillSweep — covers empty-queue venues the fast tick misses', 
     const db = makeDb({
       venues: {
         EMPTY1: { code: 'EMPTY1', settings: { autoplayMode: 'playlist' } },
-        EMPTY2: { code: 'EMPTY2', settings: { autoplayMode: 'random' } },
+        EMPTY2: { code: 'EMPTY2', settings: { autoplayMode: 'playlist' } },
         ACTIVE: { code: 'ACTIVE', settings: { autoplayMode: 'playlist' } },
         OFF:    { code: 'OFF',    settings: { autoplayMode: 'off' } },
       },

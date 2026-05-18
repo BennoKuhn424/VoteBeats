@@ -22,12 +22,10 @@ const queueRepo = require('../repos/queueRepo');
 const broadcast = require('../utils/broadcast');
 
 const mockPickFromPlaylist = jest.fn();
-const mockSearchByGenre = jest.fn();
 
 jest.mock('../providers', () => ({
   getProvider: () => ({
     pickFromPlaylist: mockPickFromPlaylist,
-    searchByGenre: mockSearchByGenre,
   }),
 }));
 
@@ -107,15 +105,14 @@ describe('serverAutofill playlist scheduling', () => {
     );
   });
 
-  test('scheduled playlist overrides random autoplay while the slot is active', async () => {
+  test('scheduled playlist overrides the active playlist while the slot is active', async () => {
     freezeTime(new Date(2025, 0, 18, 2, 30, 0)); // Saturday 02:30
     const scheduledSong = song('sat-230', 'Saturday Scheduled Track');
     const venue = {
       code: VENUE_CODE,
       settings: {
-        autoplayMode: 'random',
+        autoplayMode: 'playlist',
         autoplayQueue: true,
-        autoplayGenre: ['pop'],
         playlistSchedule: [
           { playlistId: 'sat-slot', startHour: 2, startMinute: 30, endHour: 4, endMinute: 0, days: [6] },
         ],
@@ -131,32 +128,27 @@ describe('serverAutofill playlist scheduling', () => {
     await serverAutofill(VENUE_CODE, venue);
 
     expect(mockPickFromPlaylist).toHaveBeenCalledWith([scheduledSong], VENUE_CODE);
-    expect(mockSearchByGenre).not.toHaveBeenCalled();
     expect(queueRepo.update).toHaveBeenCalledTimes(1);
   });
 
-  test('uses random autoplay when random mode is active and no schedule matches', async () => {
-    freezeTime(new Date(2025, 0, 18, 1, 0, 0));
-    const randomSong = song('random-1', 'Random Track');
+  test('does not autofill when autoplay mode is off, even with a matching schedule', async () => {
+    freezeTime(new Date(2025, 0, 18, 2, 30, 0)); // Saturday 02:30, inside slot
     const venue = {
       code: VENUE_CODE,
       settings: {
-        autoplayMode: 'random',
-        autoplayQueue: true,
-        autoplayGenre: ['pop'],
+        autoplayMode: 'off',
+        autoplayQueue: false,
         playlistSchedule: [
           { playlistId: 'sat-slot', startHour: 2, startMinute: 30, endHour: 4, endMinute: 0, days: [6] },
         ],
       },
       playlists: [{ id: 'sat-slot', songs: [song('sat-230', 'Saturday Scheduled Track')] }],
     };
-    mockSearchByGenre.mockResolvedValue(randomSong);
 
     await serverAutofill(VENUE_CODE, venue);
 
-    expect(mockSearchByGenre).toHaveBeenCalledWith(['pop'], VENUE_CODE);
     expect(mockPickFromPlaylist).not.toHaveBeenCalled();
-    expect(queueRepo.update).toHaveBeenCalledTimes(1);
+    expect(queueRepo.update).not.toHaveBeenCalled();
   });
 
   test('falls back to active playlist when no schedule slot matches', async () => {
@@ -205,15 +197,15 @@ describe('serverAutofill playlist scheduling', () => {
     expect(mockPickFromPlaylist).toHaveBeenCalledWith([activeSong], VENUE_CODE);
   });
 
-  test('returns to random autoplay once the scheduled slot ends', async () => {
-    // The user's scenario: 02:30 Sat the slot is active → playlist override.
-    // After the slot ends, autofill must go back to random mode.
+  test('returns to the active playlist once the scheduled slot ends', async () => {
+    // The user's scenario: at 02:30 Sat the scheduled slot is active and its
+    // playlist wins. Before and after, autofill falls back to the venue's
+    // currently-active playlist.
     const venue = {
       code: VENUE_CODE,
       settings: {
-        autoplayMode: 'random',
+        autoplayMode: 'playlist',
         autoplayQueue: true,
-        autoplayGenre: ['pop'],
         playlistSchedule: [
           { playlistId: 'sat-slot', startHour: 2, startMinute: 30, endHour: 4, endMinute: 0, days: [6] },
         ],
@@ -225,12 +217,15 @@ describe('serverAutofill playlist scheduling', () => {
       ],
     };
 
-    // 1) Before the slot: random mode wins
+    // 1) Before the slot: active playlist wins
     freezeTime(new Date(2025, 0, 18, 1, 0, 0)); // Sat 01:00, before 02:30 slot
-    mockSearchByGenre.mockResolvedValue(song('random-pre', 'Random Pre'));
+    mockPickFromPlaylist.mockReturnValue(song('regular-1', 'Regular Track'));
     await serverAutofill(VENUE_CODE, venue);
-    expect(mockSearchByGenre).toHaveBeenCalledTimes(1);
-    expect(mockPickFromPlaylist).not.toHaveBeenCalled();
+    expect(mockPickFromPlaylist).toHaveBeenCalledTimes(1);
+    expect(mockPickFromPlaylist).toHaveBeenLastCalledWith(
+      [song('regular-1', 'Regular Track')],
+      VENUE_CODE,
+    );
 
     jest.clearAllMocks();
     queueRepo.get.mockReturnValue({ nowPlaying: null, upcoming: [] });
@@ -241,18 +236,24 @@ describe('serverAutofill playlist scheduling', () => {
     mockPickFromPlaylist.mockReturnValue(song('sat-1', 'Sat Slot Track'));
     await serverAutofill(VENUE_CODE, venue);
     expect(mockPickFromPlaylist).toHaveBeenCalledTimes(1);
-    expect(mockSearchByGenre).not.toHaveBeenCalled();
+    expect(mockPickFromPlaylist).toHaveBeenLastCalledWith(
+      [song('sat-1', 'Sat Slot Track')],
+      VENUE_CODE,
+    );
 
     jest.clearAllMocks();
     queueRepo.get.mockReturnValue({ nowPlaying: null, upcoming: [] });
     queueRepo.update.mockImplementation(async (_v, fn) => fn({ nowPlaying: null, upcoming: [] }));
 
-    // 3) After the slot: back to random mode
+    // 3) After the slot: back to active playlist
     freezeTime(new Date(2025, 0, 18, 4, 0, 0)); // Sat 04:00, slot just ended (end-exclusive)
-    mockSearchByGenre.mockResolvedValue(song('random-post', 'Random Post'));
+    mockPickFromPlaylist.mockReturnValue(song('regular-1', 'Regular Track'));
     await serverAutofill(VENUE_CODE, venue);
-    expect(mockSearchByGenre).toHaveBeenCalledTimes(1);
-    expect(mockPickFromPlaylist).not.toHaveBeenCalled();
+    expect(mockPickFromPlaylist).toHaveBeenCalledTimes(1);
+    expect(mockPickFromPlaylist).toHaveBeenLastCalledWith(
+      [song('regular-1', 'Regular Track')],
+      VENUE_CODE,
+    );
   });
 
   test('does not autofill when queue already has a song', async () => {

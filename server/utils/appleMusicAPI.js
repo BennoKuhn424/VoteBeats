@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Apple Music API integration.
  * Uses JWT from .p8 key (APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_MUSIC_KEY_PATH) when set.
  * Falls back to APPLE_MUSIC_DEVELOPER_TOKEN if no .p8 configured.
@@ -14,15 +14,6 @@ const APPLE_MUSIC_DEVELOPER_TOKEN = process.env.APPLE_MUSIC_DEVELOPER_TOKEN;
 function getToken() {
   return getDeveloperToken() || APPLE_MUSIC_DEVELOPER_TOKEN;
 }
-
-// Matches the "Languages" section labels in Settings.jsx.
-// When any selected autoplay genre is a language, it becomes a mandatory
-// filter: songs must match at least one selected language AND at least one
-// selected regular genre (if regular genres are also selected).
-const LANGUAGE_GENRES = new Set([
-  'afrikaans', 'english', 'spanish', 'french', 'portuguese', 'german', 'italian',
-  'zulu', 'xhosa', 'sotho', 'tswana', 'korean', 'japanese', 'arabic', 'hindi',
-]);
 
 // Per-venue ring buffer of recently autofilled appleIds (in-memory, last 50).
 // Prevents the same song from being picked twice in a row during autofill.
@@ -77,177 +68,7 @@ function getVenueLocalHour(venue) {
   return new Date().getHours();
 }
 
-// Maps venue genre labels (from Settings.jsx) to what Apple Music actually stores
-// in genre metadata. Apple Music's tags often differ from common genre names —
-// e.g. "Indie" songs are tagged "Alternative", "Hip-Hop" songs are "Hip-Hop/Rap", etc.
-// Both the search term expansion AND the songMatchesGenreRules matching use this map.
-const GENRE_ALIASES = {
-  'indie':       ['indie', 'alternative', 'indie pop', 'indie rock', 'alternative & indie'],
-  'hip-hop':     ['hip-hop', 'hip hop', 'rap', 'hip-hop/rap', 'urban contemporary'],
-  'r&b':         ['r&b', 'r&b/soul', 'soul', 'urban contemporary'],
-  'soul':        ['soul', 'r&b/soul', 'r&b'],
-  'electronic':  ['electronic', 'dance', 'electronica', 'edm'],
-  'dance':       ['dance', 'electronic', 'edm', 'house'],
-  'edm':         ['edm', 'electronic', 'dance', 'house'],
-  'house':       ['house', 'afro house', 'deep house', 'electronic'],
-  'amapiano':    ['amapiano', 'afrobeat', 'house', 'afro house'],
-  'kwaito':      ['kwaito', 'afrobeat', 'african'],
-  'afrobeat':    ['afrobeat', 'afro', 'afro pop', 'world'],
-  'metal':       ['metal', 'heavy metal', 'hard rock'],
-  'punk':        ['punk', 'punk rock', 'alternative'],
-  'folk':        ['folk', 'contemporary folk', 'singer/songwriter', 'acoustic'],
-  'blues':       ['blues', 'blues/r&b'],
-  'gospel':      ['gospel', 'christian', 'religious'],
-  'trap':        ['trap', 'hip-hop', 'hip-hop/rap', 'rap'],
-  'lo-fi':       ['lo-fi', 'lo fi', 'lofi', 'alternative', 'chillhop'],
-  'classical':   ['classical', 'orchestral', 'opera'],
-  'reggae':      ['reggae', 'reggae/dancehall', 'dancehall'],
-  'latin':       ['latin', 'urbano latino', 'latin pop', 'reggaeton'],
-  'funk':        ['funk', 'soul', 'r&b'],
-  'jazz':        ['jazz', 'smooth jazz', 'vocal jazz'],
-  'ambient':     ['ambient', 'new age', 'electronic'],
-  'techno':      ['techno', 'electronic', 'dance'],
-  'alternative': ['alternative', 'indie', 'indie pop', 'indie rock', 'alternative & indie'],
-};
 
-// Used when no genre is selected — search terms rotate so we get a wide variety.
-const BROAD_SEARCH_TERMS = [
-  'pop', 'rock', 'hip hop', 'r&b', 'alternative', 'indie',
-  'electronic', 'dance', 'soul', 'country', 'folk', 'jazz',
-  'afrobeat', 'amapiano', 'reggae', 'funk', 'blues', 'latin',
-  'new music', 'top hits', 'chart hits',
-];
-
-// Per-language artist/keyword pools.  When a language is selected without any
-// regular genre filter we rotate through these instead of just the language name,
-// giving access to thousands more songs in that language.
-const LANGUAGE_SEARCH_TERMS = {
-  afrikaans: [
-    'afrikaans',
-    'Gstring', 'Bok van Blerk', 'Kurt Darren', 'Droomsindroom', 'Elandré',
-    'Juanita du Plessis', 'Karen Zoid', 'Steve Hofmeyr', 'Die Heuwels Fantasties',
-    'Bouwer Bosch', 'Riana Nel', 'Francois van Coke', 'Chris Chameleon',
-    'Valiant Swart', 'Laurika Rauch', 'Koos Kombuis', 'Bobby van Jaarsveld',
-    'Ruan José', 'Robbie Wessels', 'Straatligkinders', 'Spoegwolf',
-    'Foto na Dans', 'Dozi', 'Coenie de Villiers', 'Johannes Kerkorrel',
-    'Anton Goosen', 'Fokofpolisiekar', 'Nicholis Louw', 'Amore Bekker',
-    'Carike Keuzenkamp', 'Lochner de Kock', 'Theuns Jordaan', 'Mathys Roets',
-    'Andre Visser', 'Stef Bos', 'Manie Jackson', 'Die Tuindwergies',
-    'Sunstroke', 'Liezel Pieters', 'Awie van Wyk', 'Groep Twee',
-    'afrikaanse treffers', 'nuwe afrikaans', 'afrikaans pop', 'afrikaans rock',
-  ],
-
-  // English has no genre tag in Apple Music — songs are labelled Pop/Rock/etc.
-  // Use popular artists + genre terms so we get a wide variety of English songs.
-  english: [
-    'pop', 'rock', 'hip hop', 'r&b', 'alternative', 'indie',
-    'electronic', 'dance', 'soul', 'country', 'folk', 'jazz',
-    'Taylor Swift', 'Ed Sheeran', 'The Weeknd', 'Billie Eilish',
-    'Ariana Grande', 'Bruno Mars', 'Dua Lipa', 'Harry Styles',
-    'Post Malone', 'Drake', 'Adele', 'Coldplay', 'Imagine Dragons',
-    'Olivia Rodrigo', 'Doja Cat', 'Justin Bieber', 'Sam Smith',
-    'Lewis Capaldi', 'Charlie Puth', 'Shawn Mendes', 'Lizzo',
-    'top hits', 'chart hits', 'new music', 'singer songwriter',
-  ],
-
-  spanish: [
-    'latin', 'reggaeton', 'latin pop', 'salsa', 'bachata', 'cumbia',
-    'Bad Bunny', 'J Balvin', 'Shakira', 'Maluma', 'Daddy Yankee',
-    'Ricky Martin', 'Enrique Iglesias', 'Luis Fonsi', 'Ozuna',
-    'Anuel AA', 'Karol G', 'Becky G', 'Nicky Jam', 'Farruko',
-    'Peso Pluma', 'Rauw Alejandro', 'Myke Towers', 'Sebastián Yatra',
-    'Rosalía', 'Anitta spanish', 'C. Tangana', 'Alejandro Sanz',
-  ],
-
-  french: [
-    'chanson française', 'french pop', 'musique française',
-    'Stromae', 'Aya Nakamura', 'Indochine', 'Mylène Farmer', 'Céline Dion',
-    'Christine and the Queens', 'Zaz', 'MC Solaar', 'Soprano',
-    'Maître Gims', 'PNL', 'Angèle', 'Clara Luciani', 'Louane',
-    'Francis Cabrel', 'Edith Piaf', 'Serge Gainsbourg', 'Ninho',
-    'Nekfeu', 'Julien Doré', 'Grand Corps Malade', 'Patrick Bruel',
-  ],
-
-  portuguese: [
-    'sertanejo', 'forró', 'bossa nova', 'fado', 'brazilian music',
-    'Anitta', 'Caetano Veloso', 'Jorge Ben Jor', 'Roberto Carlos',
-    'Marília Mendonça', 'Wesley Safadão', 'Ludmilla', 'Ivete Sangalo',
-    'Gusttavo Lima', 'Luan Santana', 'Gloria Groove', 'Pabllo Vittar',
-    'Salvador Sobral', 'Ana Moura', 'Dulce Pontes', 'Madredeus',
-  ],
-
-  german: [
-    'deutsch pop', 'deutschrock', 'schlager', 'german music',
-    'Rammstein', 'Die Toten Hosen', 'Kraftwerk', 'Nena', 'Falco',
-    'Helene Fischer', 'Mark Forster', 'Clueso', 'Silbermond',
-    'Adel Tawil', 'Lena Meyer-Landrut', 'Andreas Gabalier',
-    'Herbert Grönemeyer', 'Udo Jürgens', 'Sarah Connor', 'Revolverheld',
-  ],
-
-  italian: [
-    'musica italiana', 'canzone italiana', 'italian pop',
-    'Laura Pausini', 'Eros Ramazzotti', 'Tiziano Ferro', 'Andrea Bocelli',
-    'Zucchero', 'Jovanotti', 'Elisa', 'Marco Mengoni', 'Emma Marrone',
-    'Mahmood', 'Blanco', 'Måneskin', 'Fedez', 'Giorgia', 'Vasco Rossi',
-    'Lucio Battisti', 'Fabrizio De André', 'Pino Daniele',
-  ],
-
-  zulu: [
-    'maskandi', 'gqom', 'zulu music', 'isicathamiya',
-    'Ladysmith Black Mambazo', 'Sjava', 'Big Zulu', 'Busta 929',
-    'Mlindo The Vocalist', 'Mthunzi', 'Mnqobi Yazo', 'Imithente',
-    'Phuzekhemisi', 'Mfaz Omnyama', 'Thokozani Langa', 'afro house',
-  ],
-
-  xhosa: [
-    'xhosa music', 'xhosa gospel', 'imibongo',
-    'Miriam Makeba', 'Brenda Fassie', 'Thandiswa Mazwai',
-    'Zahara', 'Langa Mavuso', 'Nathi', 'xhosa pop',
-  ],
-
-  sotho: [
-    'sotho music', 'sesotho', 'lesotho music', 'sotho gospel',
-    'Mahlathini', 'The Mahotella Queens', 'Ntate Stunna',
-    'Nkosazana Daughter', 'Morija', 'sotho traditional',
-  ],
-
-  tswana: [
-    'setswana', 'tswana music', 'botswana music', 'tswana gospel',
-    'Vee Mampeezy', 'Charma Gal', 'Zeus', 'ATI', 'tswana pop',
-  ],
-
-  korean: [
-    'kpop', 'k-pop', 'korean pop', 'korean music',
-    'BTS', 'BLACKPINK', 'Stray Kids', 'EXO', 'TWICE', 'IU',
-    'Aespa', 'NewJeans', 'PSY', 'Epik High', 'Zico', 'G-Dragon',
-    'SHINee', 'SEVENTEEN', 'ITZY', 'Red Velvet', 'NCT 127',
-    'Monsta X', 'Sunmi', 'HyunA', 'LE SSERAFIM', 'fromis_9',
-  ],
-
-  japanese: [
-    'jpop', 'j-pop', 'japanese music', 'anime music', 'j-rock',
-    'Fujii Kaze', 'Kenshi Yonezu', 'Aimyon', 'King Gnu', 'Yoasobi',
-    'Official HIGE DANdism', 'Mrs GREEN APPLE', 'Yorushika', 'Aimer',
-    'Bump of Chicken', 'One OK Rock', 'Utada Hikaru', 'Perfume', 'LiSA',
-    'Radwimps', 'Eve', 'Vaundy', 'Ado', 'Creepy Nuts',
-  ],
-
-  arabic: [
-    'arabic music', 'arabic pop', 'khaleeji', 'arab music',
-    'Amr Diab', 'Nancy Ajram', 'Fairuz', 'Kadim Al Sahir',
-    'Elissa', 'Haifa Wehbe', 'Mohamed Hamaki', 'Sherine',
-    'Tamer Hosny', 'Assala', 'Wael Jassar', 'Ragheb Alama',
-    'Balqees', 'Hussain Al Jassmi', 'Mohammed Abdu',
-  ],
-
-  hindi: [
-    'bollywood', 'hindi songs', 'indian music', 'punjabi music',
-    'Arijit Singh', 'A.R. Rahman', 'Shreya Ghoshal', 'Badshah',
-    'Neha Kakkar', 'Sonu Nigam', 'Atif Aslam', 'Jubin Nautiyal',
-    'Pritam', 'desi pop', 'bhangra', 'Yo Yo Honey Singh',
-    'Diljit Dosanjh', 'Guru Randhawa', 'Armaan Malik',
-  ],
-};
 
 // Pick a song not heard recently; fall back to full pool when everything is recent.
 function pickFreshSong(songs, venueCode) {
@@ -259,52 +80,6 @@ function pickFreshSong(songs, venueCode) {
     : songs[Math.floor(Math.random() * songs.length)];
   if (chosen && venueCode) recordAutofillPlay(venueCode, chosen.appleId);
   return chosen;
-}
-
-// Expands a genre label to all Apple Music genre tags it should match.
-// e.g. 'Indie' → ['indie', 'alternative', 'indie pop', 'indie rock', 'alternative & indie']
-function expandGenre(genre) {
-  return GENRE_ALIASES[genre.toLowerCase()] || [genre.toLowerCase()];
-}
-
-// Returns true if a song satisfies the venue's genre selection rules.
-//   - No genres selected             → accept every song (no filter)
-//   - Only regular genres selected  → song matches any of them (OR)
-//   - Only language genres selected  → song matches any of them (OR)
-//   - Both groups selected           → song must match ≥1 language AND ≥1 regular genre (AND)
-function songMatchesGenreRules(song, languageGenres, regularGenres) {
-  const hasLang = languageGenres.length > 0;
-  const hasRegular = regularGenres.length > 0;
-
-  // No genre filter at all — every song qualifies
-  if (!hasLang && !hasRegular) return true;
-
-  const songGenre = (song.genre || '').toLowerCase();
-
-  // Check if a song's genre string matches a given genre label (with aliases).
-  const matchesRegular = (g) => expandGenre(g).some((alias) => songGenre.includes(alias));
-
-  // 'English' is never stored as a genre tag in Apple Music — songs are tagged
-  // 'Pop', 'Rock', 'Hip-Hop' etc.  Exclude it from language checks so that
-  // English (alone or combined with regular genres) doesn't block all results.
-  const checkableLangs = languageGenres.filter((g) => g.toLowerCase() !== 'english');
-  const hasCheckableLang = checkableLangs.length > 0;
-
-  if (hasCheckableLang && hasRegular) {
-    return (
-      checkableLangs.some((g) => songGenre.includes(g.toLowerCase())) &&
-      regularGenres.some(matchesRegular)
-    );
-  }
-  if (hasCheckableLang) {
-    return checkableLangs.some((g) => songGenre.includes(g.toLowerCase()));
-  }
-  // Only English selected (no other checkable language): fall through to regular genre check
-  if (hasRegular) {
-    return regularGenres.some(matchesRegular);
-  }
-  // English-only, no regular genres → any song qualifies
-  return true;
 }
 
 // Mock catalog for development when no Apple Music API token is set
@@ -782,124 +557,6 @@ async function mockSearch(query, venue) {
   return filterByVenueSettingsAsync(matched.length ? matched : MOCK_CATALOG.slice(0, 5), venue);
 }
 
-/**
- * Search Apple Music by genre for autofill. Splits genres into language genres
- * (e.g. 'afrikaans') and regular genres, applying AND/OR rules:
- *  - language genres are mandatory (song must match at least one)
- *  - regular genres are optional (song must match at least one if any are selected)
- * @param {string[]} genres - Full autoplayGenre array from venue.settings
- * @param {string} venueCode
- * @returns {Promise<object[]>} Filtered song objects
- */
-async function searchByGenre(genres, venueCode) {
-  const db = require('./database');
-  const venue = venueCode ? db.getVenue(venueCode) : null;
-  const token = getToken();
-
-  const allGenres = Array.isArray(genres) ? genres : [genres];
-  const languageGenres = allGenres.filter((g) => LANGUAGE_GENRES.has(g.toLowerCase()));
-  const regularGenres = allGenres.filter((g) => !LANGUAGE_GENRES.has(g.toLowerCase()));
-
-  // Determine which language genres actually have genre tags in Apple Music.
-  // 'English' is never a genre tag — songs are tagged Pop/Rock/etc. — so exclude
-  // it from language checks; it only acts as a pass-through.
-  const checkableLangs = languageGenres.filter((g) => g.toLowerCase() !== 'english');
-
-  // Build search terms:
-  //  • Non-English language selected (with or without regular genre):
-  //      → search using the per-language artist/keyword pool so Apple Music
-  //        returns songs actually in that language, then filter by genre.
-  //  • English + regular genre (or regular genre only):
-  //      → search using expanded genre aliases (e.g. 'Indie' → 'alternative').
-  //  • No selections at all:
-  //      → rotate through broad popular terms for maximum variety.
-  let searchTerms;
-  if (checkableLangs.length > 0) {
-    const expanded = [];
-    for (const lang of checkableLangs) {
-      const terms = LANGUAGE_SEARCH_TERMS[lang.toLowerCase()];
-      if (terms) expanded.push(...terms);
-    }
-    searchTerms = expanded.length > 0 ? expanded : checkableLangs;
-  } else if (regularGenres.length > 0) {
-    searchTerms = [...new Set(regularGenres.flatMap(expandGenre))];
-  } else {
-    searchTerms = shuffleArray(BROAD_SEARCH_TERMS).slice(0, 5);
-  }
-
-  if (token) {
-    // Shuffle so repeated calls rotate through all selected genres.
-    const shuffled = shuffleArray(searchTerms);
-    for (const term of shuffled) {
-      try {
-        // Use a large random offset so every autofill call reaches a different
-        // slice of Apple Music's catalog (thousands of songs available at offset 0-200).
-        const offset = Math.floor(Math.random() * 200);
-        const res = await fetch(
-          `https://api.music.apple.com/v1/catalog/za/search?types=songs&term=${encodeURIComponent(term)}&limit=25&offset=${offset}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            signal: AbortSignal.timeout(8000),
-          }
-        );
-        if (!res.ok) throw new Error(`Apple Music autofill error: ${res.status}`);
-        const data = await res.json();
-        const songs = (data.results?.songs?.data || []).map((s) => ({
-          appleId: s.id,
-          title: s.attributes.name,
-          artist: s.attributes.artistName,
-          albumArt: s.attributes.artwork?.url?.replace(/\{w\}/g, '300').replace(/\{h\}/g, '300') || '',
-          duration: Math.round(s.attributes.durationInMillis / 1000),
-          // Join ALL genre tags so 'Afrikaans' is caught even when it's not the primary tag.
-          genre: (s.attributes.genreNames || []).join(' '),
-          // Tri-state: true = label-flagged explicit, false = explicitly clean,
-        // null = unrated / missing tag (treated as risky under strictExplicit).
-        isExplicit: s.attributes.contentRating === 'explicit'
-          ? true
-          : s.attributes.contentRating === 'clean'
-            ? false
-            : null,
-        }));
-
-        const matched = songs.filter((s) => songMatchesGenreRules(s, languageGenres, regularGenres));
-        const pool = filterByVenueSettings(matched, venue);
-        if (pool.length > 0) {
-          return pickFreshSong(pool, venueCode);
-        }
-
-        // Language fallback: when we searched via LANGUAGE_SEARCH_TERMS the results
-        // ARE in the right language, but many songs are loosely tagged (e.g. an Afrikaans
-        // pop song tagged "Pop" not "Afrikaans", or a Zulu hip-hop song tagged "Hip-Hop"
-        // not "Zulu"). If the strict genre+language filter matched nothing, trust Apple
-        // Music's own search relevance and accept any song from those results.
-        // This applies for both language-only AND language+genre selections.
-        if (checkableLangs.length > 0 && songs.length > 0) {
-          const fallbackPool = filterByVenueSettings(songs, venue);
-          if (fallbackPool.length > 0) {
-            return pickFreshSong(fallbackPool, venueCode);
-          }
-        }
-      } catch (err) {
-        console.error('Apple Music genre search error:', err);
-      }
-    }
-  }
-
-  // Mock catalog fallback — only used outside production or when explicitly enabled.
-  // Mock song IDs like "song_117" are fake and MusicKit will throw NOT_FOUND if
-  // we try to play them with a real subscription.
-  if (token) return null;
-  if (!isMockCatalogEnabled()) return null;
-
-  const matched = MOCK_CATALOG.filter((s) => songMatchesGenreRules(s, languageGenres, regularGenres));
-  if (matched.length === 0) return null;
-  const pool = filterByVenueSettings(matched, venue);
-  return pickFreshSong(pool, venueCode);
-}
-
 // Pick a random song from a venue's curated playlist.
 // - Small playlists (<10 songs): only block the last (size-1) played songs so songs
 //   cycle through the whole list before repeating.
@@ -933,7 +590,6 @@ function pickFromPlaylist(playlist, venueCode) {
 
 module.exports = {
   searchAppleMusic,
-  searchByGenre,
   pickFromPlaylist,
   isMockCatalogEnabled,
   // Exported for direct unit testing of the filter pipeline.

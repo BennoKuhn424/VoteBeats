@@ -169,6 +169,15 @@ const stmtUpdatePayoutStatus = db.prepare('UPDATE payouts SET status = ?, paid_a
 /** Reconstruct a venue object from a DB row to match the old JSON shape. */
 function rowToVenue(row) {
   if (!row) return undefined;
+  const settings = safeParseJSON(row.settings, {});
+  // Random autoplay was removed 2026-05-18. Any legacy 'random' value is
+  // mapped to 'off' here so all callers see consistent state — no surprise
+  // music for venues that were on random when the feature was retired.
+  // `autoplayGenre` was the random-mode setting; strip it on the way out.
+  if (settings && typeof settings === 'object') {
+    if (settings.autoplayMode === 'random') settings.autoplayMode = 'off';
+    if ('autoplayGenre' in settings) delete settings.autoplayGenre;
+  }
   return {
     code: row.code,
     name: row.name,
@@ -177,7 +186,7 @@ function rowToVenue(row) {
       email: row.owner_email,
       passwordHash: row.owner_password_hash,
     },
-    settings: safeParseJSON(row.settings, {}),
+    settings,
     playlists: safeParseJSON(row.playlists, []),
     activePlaylistId: row.active_playlist_id || undefined,
     createdAt: row.created_at,

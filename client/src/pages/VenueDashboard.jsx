@@ -24,7 +24,7 @@ import VenueSettings from '../components/venue/Settings';
 import EarningsCard from '../components/venue/EarningsCard';
 import AnalyticsDashboard from '../components/venue/AnalyticsDashboard';
 import VolumeAlertsCard from '../components/venue/VolumeAlertsCard';
-import RandomAutoplayCard from '../components/venue/RandomAutoplayCard';
+import UserRequestsCard from '../components/venue/UserRequestsCard';
 import SubscriptionBanner from '../components/venue/SubscriptionBanner';
 import { buildVotingUrl } from '../utils/publicUrl';
 
@@ -127,7 +127,10 @@ export default function VenueDashboard() {
   const effectiveAutoplayMode = useMemo(() => {
     if (!venue?.settings) return 'playlist';
     if (venue.settings.autoplayQueue === false) return 'off';
-    return venue.settings.autoplayMode || 'playlist';
+    const mode = venue.settings.autoplayMode || 'playlist';
+    // Random was retired 2026-05-18 — collapse any legacy value to 'off'.
+    if (mode !== 'playlist' && mode !== 'off') return 'off';
+    return mode;
   }, [venue?.settings]);
 
   const activePlaylistName = useMemo(() => {
@@ -147,12 +150,29 @@ export default function VenueDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900">
-      {/* Header */}
+      {/* Header — leads with the venue name. Industry-tier dashboards put
+          the thing you're managing in the page header, not a page-type label. */}
       <header className="bg-white dark:bg-dark-800 border-b border-zinc-200 dark:border-dark-600">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <span className="font-bold text-zinc-900 dark:text-zinc-100 text-lg">Dashboard</span>
-            <div className="flex items-center gap-2">
+          <div className="flex items-start sm:items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                {venue.name}
+              </h1>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
+                {venue.location && (
+                  <span className="inline-flex items-center gap-1">
+                    <MapPin className="h-3.5 w-3.5" />
+                    {venue.location}
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1">
+                  <Hash className="h-3.5 w-3.5" />
+                  <span className="font-mono">{venue.code}</span>
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
               <Link
                 to="/venue/billing"
                 className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-dark-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-dark-700 transition-colors min-h-[44px]"
@@ -182,32 +202,15 @@ export default function VenueDashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <SubscriptionBanner />
 
         {/* Settings Panel */}
         {showSettings && (
-          <div className="mb-8">
+          <div className="mb-6">
             <VenueSettings venueCode={venue.code} onSaved={() => setShowSettings(false)} variant={cardVariant} />
           </div>
         )}
-
-        {/* Venue Info */}
-        <div className="mb-8">
-          <h2 className="text-2xl sm:text-3xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">{venue.name}</h2>
-          <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600 dark:text-zinc-300">
-            {venue.location && (
-              <div className="flex items-center gap-1.5">
-                <MapPin className="h-4 w-4" />
-                <span>{venue.location}</span>
-              </div>
-            )}
-            <div className="flex items-center gap-1.5">
-              <Hash className="h-4 w-4" />
-              <span>Code: {venue.code}</span>
-            </div>
-          </div>
-        </div>
 
         {/* Queue — promoted to the top, this is the at-a-glance view owners care most about */}
         <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
@@ -246,8 +249,8 @@ export default function VenueDashboard() {
         <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-start gap-3">
-              <div className="p-2 bg-orange-100 rounded-lg">
-                <ListMusic className="h-5 w-5 text-orange-600" />
+              <div className="p-2 bg-orange-100 dark:bg-orange-500/20 rounded-lg">
+                <ListMusic className="h-5 w-5 text-orange-600 dark:text-orange-400" />
               </div>
               <div>
                 <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 uppercase tracking-wide mb-1">
@@ -287,9 +290,8 @@ export default function VenueDashboard() {
           </div>
         </div>
 
-        <RandomAutoplayCard
+        <UserRequestsCard
           venueCode={venue.code}
-          effectiveAutoplayMode={effectiveAutoplayMode}
           onSaved={() => fetchVenue(venue.code)}
         />
 

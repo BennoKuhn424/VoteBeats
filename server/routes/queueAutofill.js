@@ -14,40 +14,27 @@ async function serverAutofill(venueCode, venue) {
     const preCheck = queueRepo.get(venueCode);
     if (preCheck.nowPlaying || (preCheck.upcoming && preCheck.upcoming.length > 0)) return;
 
-    const genreSetting = venue?.settings?.autoplayGenre;
-    const genres = Array.isArray(genreSetting) ? genreSetting : (genreSetting ? [genreSetting] : []);
+    // Only `playlist` mode autofills. `off` (and any legacy/unknown value)
+    // returns without playing — random autoplay was removed 2026-05-18.
     const autoplayMode = venue?.settings?.autoplayMode || 'playlist';
+    if (autoplayMode !== 'playlist') return;
+
     const playlists = venue?.playlists || [];
 
     let activePl = null;
-    let scheduledPl = null;
     const schedule = venue?.settings?.playlistSchedule;
     if (Array.isArray(schedule) && schedule.length > 0) {
-      scheduledPl = findScheduledPlaylist(schedule, playlists, new Date(), venue?.settings?.timezone);
-      activePl = scheduledPl;
+      activePl = findScheduledPlaylist(schedule, playlists, new Date(), venue?.settings?.timezone);
     }
     if (!activePl) {
       activePl = playlists.find((p) => p.id === venue?.activePlaylistId)
         || playlists.find((p) => p.songs?.length > 0);
     }
     const playlist = activePl?.songs || venue?.playlist || [];
+    if (playlist.length === 0) return;
 
     const provider = getProvider();
-    let song = null;
-    if (scheduledPl || autoplayMode === 'playlist') {
-      // Scheduled playlist slots override random mode while the slot is active.
-      // Playlist mode itself only plays from existing playlists.
-      if (playlist.length > 0) {
-        song = provider.pickFromPlaylist(playlist, venueCode);
-      }
-      if (!song) return; // no playlist or empty playlist → do nothing
-    } else if (autoplayMode === 'random') {
-      song = await provider.searchByGenre(genres, venueCode);
-    } else {
-      // autoplayMode is 'off' or unknown — should not reach here (caller checks),
-      // but guard anyway
-      return;
-    }
+    const song = provider.pickFromPlaylist(playlist, venueCode);
     if (!song) return;
 
     const now = Date.now();
@@ -101,34 +88,29 @@ function attachAutofillRoutes(router) {
     }
 
     try {
-      const genreSetting = venue.settings?.autoplayGenre;
-      const genres = Array.isArray(genreSetting) ? genreSetting : (genreSetting ? [genreSetting] : []);
       const autoplayMode = venue.settings?.autoplayMode || 'playlist';
+      if (autoplayMode !== 'playlist') {
+        return res.json({ filled: false, reason: 'Autoplay is off' });
+      }
+
       const playlists = venue.playlists || [];
 
       let activePl = null;
-      let scheduledPl = null;
       const schedule = venue.settings?.playlistSchedule;
       if (Array.isArray(schedule) && schedule.length > 0) {
-        scheduledPl = findScheduledPlaylist(schedule, playlists, new Date(), venue.settings?.timezone);
-        activePl = scheduledPl;
+        activePl = findScheduledPlaylist(schedule, playlists, new Date(), venue.settings?.timezone);
       }
       if (!activePl) {
         activePl = playlists.find((p) => p.id === venue.activePlaylistId)
           || playlists.find((p) => p.songs?.length > 0);
       }
       const playlist = activePl?.songs || venue.playlist || [];
+      if (playlist.length === 0) {
+        return res.json({ filled: false, reason: 'No playlist songs available' });
+      }
 
       const provider = getProvider();
-      let song = null;
-      if (scheduledPl || autoplayMode === 'playlist') {
-        if (playlist.length > 0) {
-          song = provider.pickFromPlaylist(playlist, venueCode);
-        }
-        if (!song) return res.json({ filled: false, reason: 'No playlist songs available' });
-      } else if (autoplayMode === 'random') {
-        song = await provider.searchByGenre(genres, venueCode);
-      }
+      const song = provider.pickFromPlaylist(playlist, venueCode);
       if (!song) {
         return res.json({ filled: false, reason: 'No songs found' });
       }

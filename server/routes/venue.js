@@ -173,7 +173,7 @@ router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, as
       venue.settings.requestPriceCents = requestPriceCents;
     }
     if (typeof autoplayQueue === 'boolean') venue.settings.autoplayQueue = autoplayQueue;
-    if (typeof autoplayMode === 'string' && ['off', 'playlist', 'random'].includes(autoplayMode)) {
+    if (typeof autoplayMode === 'string' && ['off', 'playlist'].includes(autoplayMode)) {
       venue.settings.autoplayMode = autoplayMode;
     }
     if (req.body.theme !== undefined) {
@@ -241,15 +241,11 @@ router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, as
       }
     }
 
-    if (req.body.autoplayGenre !== undefined) {
-      const ag = req.body.autoplayGenre;
-      if (Array.isArray(ag) && ag.length > 0) {
-        venue.settings.autoplayGenre = ag;
-      } else if (typeof ag === 'string' && ag) {
-        venue.settings.autoplayGenre = [ag];
-      } else {
-        venue.settings.autoplayGenre = null;
-      }
+    // Random autoplay was removed 2026-05-18. `autoplayGenre` is deprecated;
+    // ignore any value sent by a stale client and clear it if it's still on
+    // the venue so old data stops echoing back through GET /venue.
+    if (venue.settings.autoplayGenre !== undefined) {
+      delete venue.settings.autoplayGenre;
     }
 
     return venue;

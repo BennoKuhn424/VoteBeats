@@ -108,17 +108,13 @@ router.get('/:venueCode', async (req, res) => {
       myVotes = votes || {};
     }
 
-    const autoplayGenre = venue?.settings?.autoplayGenre;
-    const hasAutoplayGenre = Array.isArray(autoplayGenre) ? autoplayGenre.length > 0 : !!autoplayGenre;
-
     const requestSettings = venue?.settings
       ? {
           requirePaymentForRequest: venue.settings.requirePaymentForRequest ?? false,
           requestPriceCents: venue.settings.requestPriceCents ?? 1000,
           autoplayQueue: venue.settings.autoplayQueue ?? true,
-          hasAutoplayGenre,
         }
-      : { requirePaymentForRequest: false, requestPriceCents: 1000, autoplayQueue: true, hasAutoplayGenre: false };
+      : { requirePaymentForRequest: false, requestPriceCents: 1000, autoplayQueue: true };
 
     const volReport = db.getPlayerVolumeReport(venueCode);
     const reportedPlayerVolume =
