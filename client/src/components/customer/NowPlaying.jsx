@@ -49,14 +49,20 @@ export default function NowPlaying({ song, hasLyrics, onLyrics, venueCode, devic
   if (!song) return null;
 
   return (
-    <div className="bg-dark-800 rounded-xl p-6 mb-8 border border-dark-600 shadow-card">
-      <p className="text-xs font-bold text-amethyst-400 tracking-widest mb-3">NOW PLAYING</p>
+    <div className="relative bg-gradient-to-br from-dark-800 to-dark-900 rounded-2xl p-6 mb-8 border border-dark-600/80 shadow-elevated overflow-hidden motion-safe:animate-scale-in">
+      {/* Soft glow bleeding from the top, like a lit stage. Decorative. */}
+      <div aria-hidden="true" className="pointer-events-none absolute -top-16 -left-10 h-40 w-40 rounded-full bg-amethyst-600/15 blur-3xl" />
 
-      <div className="flex gap-4 items-center mb-4">
+      <p className="relative flex items-center gap-2 text-xs font-bold text-amethyst-300 tracking-widest mb-3">
+        <span aria-hidden="true" className="inline-block w-2 h-2 rounded-full bg-amethyst-400 animate-pulse-soft" />
+        NOW PLAYING
+      </p>
+
+      <div className="relative flex gap-4 items-center mb-4">
         <img
           src={song.albumArt}
           alt={song.title}
-          className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl object-cover ring-2 ring-dark-700"
+          className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl object-cover ring-1 ring-white/10 shadow-soft"
           onError={(e) => { e.currentTarget.style.display = 'none'; }}
         />
         <div className="flex-1 min-w-0">
@@ -70,9 +76,16 @@ export default function NowPlaying({ song, hasLyrics, onLyrics, venueCode, devic
         </div>
       </div>
 
-      <div className="w-full bg-dark-700 rounded-full h-2 overflow-hidden mb-4">
+      <div
+        role="progressbar"
+        aria-label="Song progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(progress)}
+        className="relative w-full bg-dark-700 rounded-full h-2 overflow-hidden mb-4"
+      >
         <div
-          className="bg-gradient-to-r from-amethyst-400 to-amethyst-900 rounded-full h-2 transition-all duration-1000"
+          className="bg-gradient-to-r from-amethyst-400 to-amethyst-700 rounded-full h-2 transition-all duration-1000 ease-linear"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -85,10 +98,12 @@ export default function NowPlaying({ song, hasLyrics, onLyrics, venueCode, devic
           type="button"
           onClick={() => handleVote(1)}
           disabled={voting}
-          className={`min-h-touch grow basis-[8rem] flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50 ${
+          aria-pressed={myVote === 1}
+          aria-label="Like this song"
+          className={`min-h-touch grow basis-[8rem] flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 ease-spring active:scale-95 disabled:opacity-50 ${
             myVote === 1
-              ? 'bg-green-500 text-white'
-              : 'bg-dark-700 text-dark-200 hover:bg-green-500/15 hover:text-green-400'
+              ? 'bg-green-500 text-white shadow-lg shadow-green-500/25'
+              : 'bg-dark-700 text-dark-200 hover:bg-green-500/15 hover:text-green-400 hover:-translate-y-0.5'
           }`}
         >
           <ThumbsUp className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -98,10 +113,12 @@ export default function NowPlaying({ song, hasLyrics, onLyrics, venueCode, devic
           type="button"
           onClick={() => handleVote(-1)}
           disabled={voting}
-          className={`min-h-touch grow basis-[8rem] flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50 ${
+          aria-pressed={myVote === -1}
+          aria-label="Dislike this song"
+          className={`min-h-touch grow basis-[8rem] flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 ease-spring active:scale-95 disabled:opacity-50 ${
             myVote === -1
-              ? 'bg-red-500 text-white'
-              : 'bg-dark-700 text-dark-200 hover:bg-red-500/15 hover:text-red-400'
+              ? 'bg-red-500 text-white shadow-lg shadow-red-500/25'
+              : 'bg-dark-700 text-dark-200 hover:bg-red-500/15 hover:text-red-400 hover:-translate-y-0.5'
           }`}
         >
           <ThumbsDown className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -111,7 +128,7 @@ export default function NowPlaying({ song, hasLyrics, onLyrics, venueCode, devic
           <button
             type="button"
             onClick={onLyrics}
-            className="min-h-touch grow basis-[8rem] py-2.5 rounded-xl bg-amethyst-500 text-white font-semibold text-sm flex items-center justify-center gap-2 active:opacity-80 transition-opacity"
+            className="min-h-touch grow basis-[8rem] py-2.5 rounded-xl bg-amethyst-500 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-all duration-300 ease-spring hover:-translate-y-0.5 hover:bg-amethyst-400 active:scale-95"
           >
             <span aria-hidden="true">🎤</span>
             <span>Lyrics</span>

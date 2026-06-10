@@ -54,6 +54,60 @@
     user-select: none;
     -webkit-user-select: none;
   }
+
+  /* Keyboard-only focus ring. :focus-visible fires for keyboard/AT navigation
+     but NOT for mouse/touch, so sighted pointer users never see a ring while
+     keyboard and screen-reader users always get a clear, high-contrast focus
+     indicator. A single global rule means every interactive element is covered
+     even where we forget a utility class. */
+  a:focus-visible,
+  button:focus-visible,
+  [role='button']:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid theme('colors.amethyst.400');
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+
+/* ── Reduced-motion safety net ────────────────────────────────────────────
+   Authoritative guard for users who set "Reduce Motion" (iOS/macOS) or
+   prefers-reduced-motion at the OS level — including many people prone to
+   motion sickness and some screen-reader users. Every animation collapses to
+   an instant jump to its END state (so fill-mode:both entrances stay visible,
+   never stuck at opacity:0), and transitions become effectively instant.
+   Entrance animations additionally use the motion-safe: variant so they are
+   not even emitted here; this block also tames the infinite pulse/shimmer/eq
+   loops, which motion-safe alone would not. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer components {
+  /* Frosted-glass surface — translucent fill + blur, like iOS sheets/toolbars.
+     Falls back to a solid-ish tint where backdrop-filter is unsupported. */
+  .glass {
+    background-color: rgb(255 255 255 / 0.7);
+    border: 1px solid rgb(255 255 255 / 0.5);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+  }
+  .glass-dark {
+    background-color: rgb(20 20 20 / 0.6);
+    border: 1px solid rgb(255 255 255 / 0.08);
+    -webkit-backdrop-filter: saturate(160%) blur(20px);
+    backdrop-filter: saturate(160%) blur(20px);
+  }
 }
 
 @layer utilities {

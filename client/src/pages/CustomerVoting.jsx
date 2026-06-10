@@ -187,9 +187,9 @@ export default function CustomerVoting() {
   if (loading) {
     return (
       <div className="min-h-screen bg-dark-950 text-white flex justify-center items-center pb-safe px-5">
-        <div className="text-center max-w-xs">
-          <div className="w-10 h-10 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-dark-400">Connecting to venue…</p>
+        <div role="status" className="text-center max-w-xs motion-safe:animate-fade-in">
+          <div className="w-10 h-10 border-2 border-amethyst-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-dark-300">Connecting to venue…</p>
         </div>
       </div>
     );
@@ -201,32 +201,62 @@ export default function CustomerVoting() {
   const venueHeading = queue.venueName || venueCode;
 
   return (
-    <div className="min-h-screen bg-dark-950 text-white pb-safe">
-      <div className="container mx-auto px-5 py-6 max-w-lg">
-        <header className="text-center mb-6">
+    <div className="relative min-h-screen bg-dark-950 text-white pb-safe overflow-hidden">
+      {/* Ambient stage glow behind the header — decorative only. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-40 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-amethyst-600/20 blur-3xl"
+      />
+      <div className="relative container mx-auto px-5 py-8 max-w-lg">
+        <header className="text-center mb-6 motion-safe:animate-fade-up">
+          {/* Live equalizer badge — three bars bounce to signal music is on.
+              aria-hidden because the text beside it already conveys meaning. */}
+          <div className="inline-flex items-center gap-2 mb-4 rounded-full bg-amethyst-500/10 border border-amethyst-500/25 px-3 py-1">
+            <span aria-hidden="true" className="flex items-end gap-0.5 h-3">
+              <span className="w-0.5 h-full origin-bottom rounded-full bg-amethyst-400 animate-eq" />
+              <span className="w-0.5 h-full origin-bottom rounded-full bg-amethyst-400 animate-eq [animation-delay:200ms]" />
+              <span className="w-0.5 h-full origin-bottom rounded-full bg-amethyst-400 animate-eq [animation-delay:400ms]" />
+            </span>
+            <span className="text-[0.7rem] font-bold tracking-widest text-amethyst-300 uppercase">Be the vibe</span>
+          </div>
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white break-words">
             {venueHeading}
           </h1>
-          <p className="text-dark-300 text-base mt-3">Be the vibe</p>
-          <p className="text-dark-400 text-sm mt-1">Vote and request what plays next</p>
+          <p className="text-dark-400 text-sm mt-3">Vote and request what plays next</p>
         </header>
 
         {(error || (hasConnectedOnceRef.current && !isConnected)) && (
-          <p className="mb-4 text-xs text-center text-amber-400 bg-dark-900 border border-amber-500/40 rounded-lg px-3 py-2">
+          <p
+            role="status"
+            aria-live="polite"
+            className="mb-4 text-xs text-center text-amber-400 bg-dark-900 border border-amber-500/40 rounded-xl px-3 py-2 motion-safe:animate-fade-in"
+          >
             {error || 'Connection lost. Reconnecting…'}
           </p>
         )}
 
-        <SearchBar
-          venueCode={venueCode}
-          onRequestSong={handleRequestSong}
-          requestSettings={queue.requestSettings}
-        />
+        <div className="motion-safe:animate-fade-up [animation-delay:80ms]">
+          <SearchBar
+            venueCode={venueCode}
+            onRequestSong={handleRequestSong}
+            requestSettings={queue.requestSettings}
+          />
+        </div>
 
         {requestError && (
-          <div className="mb-4 flex items-center justify-between gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+          <div
+            role="alert"
+            className="mb-4 flex items-center justify-between gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm motion-safe:animate-scale-in"
+          >
             <span>{requestError}</span>
-            <button onClick={() => setRequestError('')} className="shrink-0 text-red-400 hover:text-red-300">&times;</button>
+            <button
+              type="button"
+              onClick={() => setRequestError('')}
+              aria-label="Dismiss error"
+              className="shrink-0 min-h-touch min-w-touch flex items-center justify-center text-red-400 hover:text-red-300 text-xl leading-none transition-colors"
+            >
+              &times;
+            </button>
           </div>
         )}
 

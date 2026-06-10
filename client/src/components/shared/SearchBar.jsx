@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Search } from 'lucide-react';
 import api from '../../utils/api';
 
 export default function SearchBar({ venueCode, onRequestSong, requestSettings }) {
@@ -75,25 +76,31 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
   return (
     <div className="mb-8">
       <form onSubmit={handleSearch} className="flex gap-3">
-        <input
-          type="text"
-          inputMode="search"
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            if (searchError) setSearchError(null);
-          }}
-          placeholder="Search for a song..."
-          className="flex-1 min-h-touch px-4 py-3 bg-dark-800 border border-dark-600 rounded-lg text-white placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-amethyst-400 focus:border-transparent shadow-button"
-        />
+        <div className="relative flex-1 min-w-0">
+          <Search
+            className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-dark-400"
+            aria-hidden="true"
+          />
+          <input
+            type="text"
+            inputMode="search"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              if (searchError) setSearchError(null);
+            }}
+            placeholder="Search for a song..."
+            className="w-full min-h-touch pl-11 pr-4 py-3 bg-dark-800 border border-dark-600 rounded-xl text-white placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-amethyst-400 focus:border-transparent focus:shadow-glow-amethyst shadow-soft transition-shadow duration-300 ease-spring"
+          />
+        </div>
         <button
           type="submit"
           disabled={loading}
-          className="min-h-touch px-5 py-3 bg-gradient-to-r from-amethyst-400 to-amethyst-900 text-white rounded-lg font-semibold hover:opacity-95 transition-opacity disabled:opacity-50 shrink-0 shadow-button"
+          className="min-h-touch px-5 py-3 bg-gradient-to-r from-amethyst-500 to-amethyst-700 text-white rounded-xl font-semibold transition-all duration-300 ease-spring hover:-translate-y-0.5 hover:shadow-glow-amethyst active:translate-y-0 active:scale-[0.97] disabled:opacity-50 disabled:hover:translate-y-0 shrink-0 shadow-soft"
         >
           {loading ? '...' : 'Search'}
         </button>
@@ -103,18 +110,19 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
         <p className="mt-4 text-center text-dark-400 text-sm">{searchError}</p>
       )}
       {results.length > 0 && (
-        <div className="mt-4 bg-dark-800 rounded-xl overflow-hidden border border-dark-600 shadow-card max-h-72 overflow-y-auto">
-          {results.map((item) => (
+        <div className="mt-4 bg-dark-800 rounded-2xl overflow-hidden border border-dark-600 shadow-elevated max-h-72 overflow-y-auto motion-safe:animate-scale-in">
+          {results.map((item, index) => (
             <button
               key={item.songId || item.appleId}
               type="button"
-              className="w-full flex items-center gap-4 p-4 hover:bg-dark-700 active:bg-dark-600 transition-colors text-left border-b border-dark-700 last:border-b-0"
+              className="group w-full flex items-center gap-4 p-4 hover:bg-dark-700 active:bg-dark-600 transition-colors text-left border-b border-dark-700 last:border-b-0 motion-safe:animate-fade-up"
+              style={{ animationDelay: `${Math.min(index, 6) * 45}ms` }}
               onClick={() => handleRequest(item)}
             >
               <img
                 src={item.artwork || item.albumArt}
                 alt={item.trackName || item.title}
-                className="w-14 h-14 rounded-lg object-cover shrink-0"
+                className="w-14 h-14 rounded-lg object-cover shrink-0 ring-1 ring-white/5 transition-transform duration-300 ease-spring group-hover:scale-105"
               />
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-white line-clamp-2 break-words">
@@ -124,7 +132,7 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
                   {item.artistName ?? item.artist}
                 </p>
               </div>
-              <span className="min-h-touch px-4 flex items-center justify-center bg-gradient-to-r from-amethyst-400 to-amethyst-900 text-white rounded-lg text-sm font-bold shrink-0">
+              <span className="min-h-touch px-4 flex items-center justify-center bg-gradient-to-r from-amethyst-500 to-amethyst-700 text-white rounded-xl text-sm font-bold shrink-0 transition-transform duration-300 ease-spring group-hover:scale-105 group-active:scale-95">
                 {requiresPayment ? `R${priceRand}` : 'Request'}
               </span>
             </button>
