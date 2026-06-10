@@ -171,11 +171,11 @@ export default function VenuePlayerBar({ venueCode }) {
   if (!venueCode) return null;
 
   return (
-    <div className="sticky top-0 z-40 shrink-0 bg-white dark:bg-dark-800 border-b border-zinc-200 dark:border-dark-600 shadow-sm">
+    <div className="sticky top-0 z-40 shrink-0 bg-white/80 dark:bg-dark-900/70 supports-[backdrop-filter]:bg-white/65 supports-[backdrop-filter]:dark:bg-dark-900/55 backdrop-blur-xl border-b border-zinc-200/80 dark:border-dark-600/80 shadow-soft">
       <div className="px-3 sm:px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2.5">
         {/* Track */}
         <div className="flex items-center gap-3 min-w-0 max-w-[220px] sm:max-w-[280px]">
-          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl shrink-0 overflow-hidden bg-zinc-100 dark:bg-dark-700 flex items-center justify-center">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl shrink-0 overflow-hidden bg-zinc-100 dark:bg-dark-700 flex items-center justify-center ring-1 ring-black/5 dark:ring-white/10 shadow-soft">
             {nowPlaying?.albumArt ? (
               <img src={nowPlaying.albumArt} alt="" className="w-full h-full object-cover" />
             ) : (
@@ -196,7 +196,7 @@ export default function VenuePlayerBar({ venueCode }) {
         <div className="flex-1 min-w-[160px] order-last sm:order-none w-full sm:w-auto basis-full sm:basis-auto">
           <div className="w-full bg-zinc-200 dark:bg-dark-700 rounded-full h-1.5 sm:h-2 overflow-hidden">
             <div
-              className="bg-brand-500 h-1.5 sm:h-2 rounded-full transition-all duration-500"
+              className="bg-gradient-to-r from-brand-400 to-brand-600 h-1.5 sm:h-2 rounded-full transition-all duration-500 ease-linear"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -218,7 +218,7 @@ export default function VenuePlayerBar({ venueCode }) {
             <button
               type="button"
               onClick={handleAuthorize}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 whitespace-nowrap min-h-[44px]"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-brand-500 text-white text-sm font-semibold shadow-glow-brand hover:bg-brand-400 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.97] transition-all duration-300 ease-spring whitespace-nowrap min-h-[44px]"
             >
               <Music2 className="h-4 w-4 shrink-0" />
               Connect
@@ -230,7 +230,7 @@ export default function VenuePlayerBar({ venueCode }) {
                 type="button"
                 onClick={handleRestart}
                 disabled={busyPlayback}
-                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-dark-700 disabled:opacity-40"
+                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-dark-700 active:scale-90 transition-all duration-300 ease-spring disabled:opacity-40"
                 aria-label="Back to start"
               >
                 <SkipBack className="h-5 w-5" />
@@ -239,7 +239,7 @@ export default function VenuePlayerBar({ venueCode }) {
                 type="button"
                 onClick={handlePlayPause}
                 disabled={busyPlayback}
-                className="w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center rounded-full text-white bg-brand-500 hover:bg-brand-600 shadow-md disabled:opacity-60"
+                className="w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center rounded-full text-white bg-gradient-to-br from-brand-400 to-brand-600 hover:from-brand-400 hover:to-brand-500 shadow-glow-brand hover:scale-105 active:scale-95 transition-all duration-300 ease-spring disabled:opacity-60 disabled:hover:scale-100"
                 aria-label={isPlaying ? 'Pause' : 'Play'}
               >
                 {busyPlayback ? (
@@ -254,7 +254,7 @@ export default function VenuePlayerBar({ venueCode }) {
                 type="button"
                 onClick={handleSkip}
                 disabled={busyPlayback}
-                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-dark-700 disabled:opacity-40"
+                className="w-10 h-10 flex items-center justify-center rounded-full text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-dark-700 active:scale-90 transition-all duration-300 ease-spring disabled:opacity-40"
                 aria-label="Next"
               >
                 <SkipForward className="h-5 w-5" />
@@ -288,9 +288,9 @@ export default function VenuePlayerBar({ venueCode }) {
               key={id}
               type="button"
               onClick={() => changeMode(id)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[36px] ${
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ease-spring active:scale-95 min-h-[36px] ${
                 autoplayMode === id
-                  ? 'bg-brand-500 text-white'
+                  ? 'bg-brand-500 text-white shadow-glow-brand'
                   : 'bg-zinc-100 dark:bg-dark-700 text-zinc-500 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100'
               }`}
             >

@@ -142,21 +142,23 @@ export default function VenueDashboard() {
 
   if (!venue) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900 flex justify-center items-center">
+      <div role="status" className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900 flex justify-center items-center motion-safe:animate-fade-in">
         <div className="w-10 h-10 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+        <span className="sr-only">Loading dashboard…</span>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900">
-      {/* Header — leads with the venue name. Industry-tier dashboards put
-          the thing you're managing in the page header, not a page-type label. */}
-      <header className="bg-white dark:bg-dark-800 border-b border-zinc-200 dark:border-dark-600">
+      {/* Header — leads with the venue name. Sticky + frosted glass so it
+          stays in reach while scrolling a long dashboard, with a translucent
+          blur that reads as depth over the content beneath. */}
+      <header className="sticky top-0 z-20 bg-white/75 dark:bg-dark-900/70 supports-[backdrop-filter]:bg-white/60 supports-[backdrop-filter]:dark:bg-dark-900/55 backdrop-blur-xl border-b border-zinc-200/80 dark:border-dark-600/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-start sm:items-center justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100 truncate">
                 {venue.name}
               </h1>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
@@ -175,7 +177,7 @@ export default function VenueDashboard() {
             <div className="flex items-center gap-2 shrink-0">
               <Link
                 to="/venue/billing"
-                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-dark-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-dark-700 transition-colors min-h-[44px]"
+                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-dark-600 rounded-xl bg-white/60 dark:bg-dark-800/60 hover:bg-zinc-50 dark:hover:bg-dark-700 hover:-translate-y-0.5 hover:shadow-soft active:translate-y-0 transition-all duration-300 ease-spring min-h-[44px]"
               >
                 <CreditCard className="h-4 w-4 shrink-0" />
                 <span className="hidden sm:inline">Billing</span>
@@ -183,7 +185,7 @@ export default function VenueDashboard() {
               <button
                 type="button"
                 onClick={() => setShowSettings(!showSettings)}
-                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-dark-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-dark-700 transition-colors min-h-[44px]"
+                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-dark-600 rounded-xl bg-white/60 dark:bg-dark-800/60 hover:bg-zinc-50 dark:hover:bg-dark-700 hover:-translate-y-0.5 hover:shadow-soft active:translate-y-0 transition-all duration-300 ease-spring min-h-[44px]"
               >
                 <Settings className="h-4 w-4 shrink-0" />
                 <span className="hidden sm:inline">Settings</span>
@@ -191,7 +193,7 @@ export default function VenueDashboard() {
               <button
                 type="button"
                 onClick={handleLogout}
-                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-dark-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-dark-700 transition-colors min-h-[44px]"
+                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-dark-600 rounded-xl bg-white/60 dark:bg-dark-800/60 hover:bg-zinc-50 dark:hover:bg-dark-700 hover:-translate-y-0.5 hover:shadow-soft active:translate-y-0 transition-all duration-300 ease-spring min-h-[44px]"
               >
                 <LogOut className="h-4 w-4 shrink-0" />
                 <span className="hidden sm:inline">Logout</span>
@@ -213,9 +215,9 @@ export default function VenueDashboard() {
         )}
 
         {/* Queue — promoted to the top, this is the at-a-glance view owners care most about */}
-        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
+        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '40ms' }}>
           <div className="flex items-start gap-3 mb-4">
-            <div className="p-2 bg-green-100 dark:bg-green-500/20 rounded-lg">
+            <div className="p-2.5 bg-gradient-to-br from-green-100 to-green-200 dark:from-green-500/25 dark:to-green-600/10 rounded-xl ring-1 ring-green-500/20 shadow-sm">
               <ListMusic className="h-5 w-5 text-green-600 dark:text-green-400" />
             </div>
             <div className="flex-1">
@@ -236,7 +238,7 @@ export default function VenueDashboard() {
         </div>
 
         {/* Pay-to-Play Earnings */}
-        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
+        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '100ms' }}>
           <EarningsCard
             venueCode={venue.code}
             showPlaceholder={!venue.settings?.requirePaymentForRequest}
@@ -246,10 +248,10 @@ export default function VenueDashboard() {
         </div>
 
         {/* Browse & schedule playlists (Figma-style) */}
-        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
+        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '160ms' }}>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-start gap-3">
-              <div className="p-2 bg-orange-100 dark:bg-orange-500/20 rounded-lg">
+              <div className="p-2.5 bg-gradient-to-br from-orange-100 to-orange-200 dark:from-orange-500/25 dark:to-orange-600/10 rounded-xl ring-1 ring-orange-500/20 shadow-sm">
                 <ListMusic className="h-5 w-5 text-orange-600 dark:text-orange-400" />
               </div>
               <div>
@@ -282,7 +284,7 @@ export default function VenueDashboard() {
             <button
               type="button"
               onClick={() => navigate('/venue/playlists')}
-              className="shrink-0 inline-flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors min-h-[44px]"
+              className="shrink-0 inline-flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl bg-brand-500 text-white shadow-glow-brand hover:bg-brand-400 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.97] transition-all duration-300 ease-spring min-h-[44px]"
             >
               <Clock className="h-4 w-4" />
               Browse &amp; schedule
@@ -298,14 +300,14 @@ export default function VenueDashboard() {
         <VolumeAlertsCard venueCode={venue.code} variant={cardVariant} />
 
         {/* Analytics */}
-        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
+        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '220ms' }}>
           <AnalyticsDashboard venueCode={venue.code} variant={cardVariant} />
         </div>
 
         {/* Customer Voting Link — moved below analytics since the queue is now the headline at the top */}
-        <div className="p-6 bg-white dark:bg-dark-800 rounded-xl border border-zinc-200 dark:border-dark-600 shadow-sm">
+        <div className="p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '280ms' }}>
           <div className="flex items-start gap-3 mb-4">
-            <div className="p-2 bg-purple-100 dark:bg-purple-500/20 rounded-lg">
+            <div className="p-2.5 bg-gradient-to-br from-purple-100 to-purple-200 dark:from-purple-500/25 dark:to-purple-600/10 rounded-xl ring-1 ring-purple-500/20 shadow-sm">
               <QrCode className="h-5 w-5 text-purple-600 dark:text-purple-400" />
             </div>
             <div className="flex-1">
@@ -325,7 +327,8 @@ export default function VenueDashboard() {
             <button
               type="button"
               onClick={() => copyToClipboard(votingUrl)}
-              className="p-2 border border-zinc-300 dark:border-dark-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-dark-700 transition-colors shrink-0"
+              aria-label="Copy voting link"
+              className="min-h-touch min-w-touch flex items-center justify-center border border-zinc-300 dark:border-dark-600 rounded-xl hover:bg-zinc-50 dark:hover:bg-dark-700 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 ease-spring shrink-0"
             >
               {copiedVotingUrl ? (
                 <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
