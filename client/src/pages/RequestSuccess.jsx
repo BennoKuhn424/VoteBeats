@@ -78,30 +78,31 @@ export default function RequestSuccess() {
   }, [checkoutId, venueCode]);
 
   return (
-    <div className="min-h-screen bg-dark-950 text-white flex justify-center items-center px-5 pb-safe">
-      <div className="text-center max-w-sm">
+    <div className="relative min-h-screen bg-dark-950 text-white flex justify-center items-center px-5 pb-safe overflow-hidden">
+      <div aria-hidden="true" className="pointer-events-none absolute top-1/2 left-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amethyst-600/15 blur-3xl" />
+      <div className="relative text-center max-w-sm">
         {status === 'checking' && (
-          <>
-            <div className="w-16 h-16 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
+          <div role="status" className="motion-safe:animate-fade-in">
+            <div className="w-16 h-16 border-2 border-amethyst-400 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
             <h1 className="text-xl font-bold mb-2">Payment successful!</h1>
-            <p className="text-dark-400">Adding your song to the queue...</p>
-          </>
+            <p className="text-dark-300">Adding your song to the queue...</p>
+          </div>
         )}
         {status === 'success' && (
-          <>
-            <div className="w-20 h-20 rounded-full bg-emerald-500 flex items-center justify-center text-4xl mx-auto mb-6">✓</div>
+          <div className="motion-safe:animate-scale-in">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_10px_34px_-10px_rgba(16,185,129,0.6)] flex items-center justify-center text-4xl mx-auto mb-6">✓</div>
             <h1 className="text-2xl font-bold mb-2">Song added!</h1>
-            <p className="text-dark-400 mb-8">Your song is in the queue. Enjoy the vibe!</p>
+            <p className="text-dark-300 mb-8">Your song is in the queue. Enjoy the vibe!</p>
             <button
               onClick={() => navigate(`/v/${venueCode}`)}
-              className="min-h-touch px-8 py-4 bg-brand-500 rounded-xl font-semibold hover:bg-brand-400 transition-colors w-full"
+              className="min-h-touch px-8 py-4 bg-brand-500 rounded-xl font-semibold shadow-glow-brand hover:bg-brand-400 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 ease-spring w-full"
             >
               Back to voting
             </button>
-          </>
+          </div>
         )}
         {status === 'timeout' && (
-          <>
+          <div className="motion-safe:animate-fade-up">
             <div className="text-5xl mb-6">⏳</div>
             <h1 className="text-xl font-bold mb-2">Almost there</h1>
             <p className="text-dark-400 mb-8">
@@ -109,11 +110,11 @@ export default function RequestSuccess() {
             </p>
             <button
               onClick={() => navigate(`/v/${venueCode}`)}
-              className="min-h-touch px-8 py-4 bg-brand-500 rounded-xl font-semibold hover:bg-brand-400 transition-colors w-full"
+              className="min-h-touch px-8 py-4 bg-brand-500 rounded-xl font-semibold shadow-glow-brand hover:bg-brand-400 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 ease-spring w-full"
             >
               Back to voting
             </button>
-          </>
+          </div>
         )}
       </div>
     </div>

@@ -23,11 +23,12 @@ function CategoryPill({ label, isActive, onClick }) {
   );
 }
 
-function PlaylistCard({ playlist, songCount, coverUrl, isActive, isScheduled, isLoading, onSelect, onSchedule, onOpen, onEdit }) {
+function PlaylistCard({ playlist, songCount, coverUrl, isActive, isScheduled, isLoading, onSelect, onSchedule, onOpen, onEdit, index = 0 }) {
   return (
     <div
-      className={`group relative bg-white dark:bg-dark-800 rounded-xl border shadow-sm overflow-hidden transition-all duration-300 hover:scale-[1.01] hover:shadow-lg cursor-pointer ${
-        isActive ? 'border-brand-500 ring-2 ring-brand-500 ring-offset-2 ring-offset-white dark:ring-offset-dark-950' : 'border-zinc-200 dark:border-dark-600'
+      style={{ animationDelay: `${Math.min(index, 8) * 50}ms` }}
+      className={`group relative bg-white dark:bg-dark-800 rounded-2xl border shadow-soft overflow-hidden transition-all duration-300 ease-spring hover:-translate-y-1 hover:shadow-elevated cursor-pointer motion-safe:animate-fade-up ${
+        isActive ? 'border-brand-500 ring-2 ring-brand-500 ring-offset-2 ring-offset-white dark:ring-offset-dark-950' : 'border-zinc-200/80 dark:border-dark-600'
       }`}
       onClick={() => onOpen(playlist.id)}
     >
@@ -277,15 +278,16 @@ export default function VenueBrowsePlaylists() {
 
   if (!venue) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900 flex items-center justify-center">
+      <div role="status" className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900 flex items-center justify-center motion-safe:animate-fade-in">
         <Loader2 className="w-10 h-10 text-brand-500 animate-spin" />
+        <span className="sr-only">Loading playlists…</span>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900">
-      <header className="sticky top-0 z-10 bg-white dark:bg-dark-800 border-b border-zinc-200 dark:border-dark-600 shadow-sm">
+      <header className="sticky top-0 z-10 bg-white/80 dark:bg-dark-900/70 supports-[backdrop-filter]:bg-white/65 supports-[backdrop-filter]:dark:bg-dark-900/55 backdrop-blur-xl border-b border-zinc-200/80 dark:border-dark-600/80 shadow-soft">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-2">
             <div className="flex items-center gap-3 min-w-0">
@@ -344,9 +346,9 @@ export default function VenueBrowsePlaylists() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {actionError && (
-          <div className="mb-4 flex items-center justify-between gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-lg text-red-700 dark:text-red-300 text-sm">
+          <div role="alert" className="mb-4 flex items-center justify-between gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl text-red-700 dark:text-red-300 text-sm motion-safe:animate-scale-in">
             <span>{actionError}</span>
-            <button onClick={() => setActionError('')} className="shrink-0 text-red-400 dark:text-red-500 hover:text-red-600 dark:hover:text-red-300">&times;</button>
+            <button onClick={() => setActionError('')} aria-label="Dismiss error" className="shrink-0 min-h-touch min-w-touch flex items-center justify-center text-red-400 dark:text-red-500 hover:text-red-600 dark:hover:text-red-300 text-xl leading-none">&times;</button>
           </div>
         )}
         <div className="mb-6 sm:mb-8">
@@ -354,7 +356,7 @@ export default function VenueBrowsePlaylists() {
             <button
               type="button"
               onClick={() => setShowCreatePlaylist((v) => !v)}
-              className="inline-flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors min-h-[44px] w-full sm:w-auto shrink-0"
+              className="inline-flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl bg-brand-500 text-white shadow-glow-brand hover:bg-brand-400 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.97] transition-all duration-300 ease-spring min-h-[44px] w-full sm:w-auto shrink-0"
             >
               <Plus className="h-4 w-4 shrink-0" />
               {showCreatePlaylist ? 'Cancel' : 'Add new playlist'}
@@ -422,9 +424,10 @@ export default function VenueBrowsePlaylists() {
           <p className="text-center text-zinc-500 dark:text-zinc-400 py-16">No playlists match.</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-            {filtered.map((pl) => (
+            {filtered.map((pl, idx) => (
               <PlaylistCard
                 key={pl.id}
+                index={idx}
                 playlist={pl}
                 songCount={pl.songs?.length || 0}
                 coverUrl={pl.songs?.[0]?.albumArt}

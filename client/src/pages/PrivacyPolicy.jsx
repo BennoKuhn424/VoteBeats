@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 export default function PrivacyPolicy() {
   return (
     <div className="min-h-screen bg-white dark:bg-dark-950 text-zinc-800 dark:text-zinc-200">
-      <div className="max-w-3xl mx-auto px-5 py-12">
-        <Link to="/" className="text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 text-sm mb-8 inline-block">&larr; Back to Home</Link>
+      <div className="max-w-3xl mx-auto px-5 py-12 motion-safe:animate-fade-up">
+        <Link to="/" className="text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 text-sm mb-8 inline-block transition-colors">&larr; Back to Home</Link>
 
         <h1 className="text-3xl font-bold mb-2 text-zinc-900 dark:text-zinc-100">Privacy Policy</h1>
         <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-8">Last updated: 11 April 2026</p>

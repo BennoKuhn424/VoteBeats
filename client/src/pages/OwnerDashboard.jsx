@@ -73,8 +73,9 @@ export default function OwnerDashboard() {
 
   if (loading && !data) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+      <div role="status" className="min-h-screen bg-zinc-950 flex items-center justify-center motion-safe:animate-fade-in">
         <RefreshCw className="w-10 h-10 text-brand-400 animate-spin" />
+        <span className="sr-only">Loading owner dashboard…</span>
       </div>
     );
   }
@@ -107,7 +108,7 @@ export default function OwnerDashboard() {
             <button
               type="button"
               onClick={() => { load(); loadAudit(); }}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-700 text-sm text-zinc-300 hover:bg-zinc-800"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-zinc-700 text-sm text-zinc-300 hover:bg-zinc-800 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 ease-spring min-h-touch"
             >
               <RefreshCw className="w-4 h-4" />
               Refresh
@@ -115,7 +116,7 @@ export default function OwnerDashboard() {
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 text-sm text-zinc-200 hover:bg-zinc-700"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-800 text-sm text-zinc-200 hover:bg-zinc-700 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 ease-spring min-h-touch"
             >
               <LogOut className="w-4 h-4" />
               Log out
@@ -157,7 +158,7 @@ export default function OwnerDashboard() {
           />
         </div>
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 shadow-elevated motion-safe:animate-fade-up p-6">
           <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wide mb-4 flex items-center gap-2">
             <Percent className="w-4 h-4" />
             Revenue split (VENUE_EARNINGS_PERCENT = {d.venueSharePercent}% to venues)
@@ -184,7 +185,7 @@ export default function OwnerDashboard() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 shadow-elevated motion-safe:animate-fade-up overflow-hidden">
           <div className="px-6 py-4 border-b border-zinc-800 flex items-center gap-2">
             <Wallet className="w-5 h-5 text-brand-400" />
             <h2 className="font-semibold">This month by venue</h2>
@@ -221,7 +222,7 @@ export default function OwnerDashboard() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 shadow-elevated motion-safe:animate-fade-up overflow-hidden">
           <div className="px-6 py-4 border-b border-zinc-800">
             <h2 className="font-semibold">All venues</h2>
           </div>
@@ -235,7 +236,7 @@ export default function OwnerDashboard() {
           </ul>
         </div>
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 shadow-elevated motion-safe:animate-fade-up overflow-hidden">
           <div className="px-6 py-4 border-b border-zinc-800">
             <h2 className="font-semibold">Recent payments</h2>
           </div>
@@ -269,7 +270,7 @@ function AuditLogPanel({ entries, filter, onFilterChange }) {
     : entries.filter((e) => e.action?.startsWith(filter));
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 shadow-elevated motion-safe:animate-fade-up overflow-hidden">
       <div className="px-6 py-4 border-b border-zinc-800 flex flex-wrap items-center gap-3 justify-between">
         <h2 className="font-semibold flex items-center gap-2">
           <ShieldCheck className="w-5 h-5 text-brand-400" />
@@ -343,7 +344,7 @@ function AuditLogPanel({ entries, filter, onFilterChange }) {
 
 function StatCard({ icon, label, value, sub }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 shadow-soft transition-all duration-300 ease-spring hover:-translate-y-0.5 hover:border-zinc-700 hover:shadow-elevated motion-safe:animate-fade-up">
       <div className="flex items-center gap-2 text-zinc-500 text-xs font-medium uppercase tracking-wide mb-2">
         {icon}
         {label}

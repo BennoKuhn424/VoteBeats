@@ -88,15 +88,20 @@ export default function VenueLogin() {
   }
 
   const inputClass =
-    'w-full min-h-touch pl-10 pr-10 py-3 bg-white dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500';
+    'w-full min-h-touch pl-10 pr-10 py-3 bg-white dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent focus:shadow-glow-brand text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 shadow-soft transition-shadow duration-300 ease-spring';
   const plainInputClass =
-    'w-full min-h-touch px-4 py-3 bg-white dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500';
+    'w-full min-h-touch px-4 py-3 bg-white dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent focus:shadow-glow-brand text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 shadow-soft transition-shadow duration-300 ease-spring';
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900">
-      <div className="w-full max-w-md px-4 py-8 sm:px-8">
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900">
+      {/* Ambient brand glow — decorative. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-brand-500/10 blur-3xl" />
+        <div className="absolute bottom-0 right-0 h-64 w-64 rounded-full bg-amethyst-500/10 blur-3xl" />
+      </div>
+      <div className="relative w-full max-w-md px-4 py-8 sm:px-8">
         {/* Card Container */}
-        <div className="bg-white dark:bg-dark-800 rounded-xl shadow-xl border border-zinc-200 dark:border-dark-600 p-6 sm:p-8">
+        <div className="bg-white dark:bg-dark-800 rounded-2xl shadow-elevated border border-zinc-200/80 dark:border-dark-600 p-6 sm:p-8 motion-safe:animate-scale-in">
           {/* Logo */}
           <div className="flex justify-center mb-8">
             <Logo size="xl" />
@@ -116,7 +121,7 @@ export default function VenueLogin() {
 
           {/* Success / info banner */}
           {info && (
-            <div className="mb-5 p-3 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900/50">
+            <div role="status" className="mb-5 p-3 rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900/50 motion-safe:animate-scale-in">
               <p className="text-sm text-green-800 dark:text-green-300">{info}</p>
             </div>
           )}
@@ -224,7 +229,7 @@ export default function VenueLogin() {
             </div>
 
             {error && (
-              <div>
+              <div role="alert" className="motion-safe:animate-scale-in">
                 <p className="text-red-500 dark:text-red-400 text-sm">{error}</p>
                 {unverifiedEmail && (
                   <button

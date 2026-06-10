@@ -26,19 +26,20 @@ export default function ForgotPassword() {
   }
 
   const inputClass =
-    'w-full min-h-touch pl-10 pr-4 py-3 bg-white dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500';
+    'w-full min-h-touch pl-10 pr-4 py-3 bg-white dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent focus:shadow-glow-brand text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 shadow-soft transition-shadow duration-300 ease-spring';
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900">
-      <div className="w-full max-w-md px-4 py-8 sm:px-8">
-        <div className="bg-white dark:bg-dark-800 rounded-xl shadow-xl border border-zinc-200 dark:border-dark-600 p-6 sm:p-8">
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900">
+      <div aria-hidden="true" className="pointer-events-none absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-brand-500/10 blur-3xl" />
+      <div className="relative w-full max-w-md px-4 py-8 sm:px-8">
+        <div className="bg-white dark:bg-dark-800 rounded-2xl shadow-elevated border border-zinc-200/80 dark:border-dark-600 p-6 sm:p-8 motion-safe:animate-scale-in">
           <div className="flex justify-center mb-6">
             <Logo size="xl" />
           </div>
 
           {sent ? (
-            <div className="text-center">
-              <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="text-center motion-safe:animate-fade-up">
+              <div className="w-12 h-12 bg-gradient-to-br from-green-100 to-green-200 dark:from-green-900/40 dark:to-green-800/20 ring-1 ring-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Mail className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
               <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Check your email</h2>
@@ -87,7 +88,7 @@ export default function ForgotPassword() {
                   </div>
                 </div>
 
-                {error && <p className="text-red-500 dark:text-red-400 text-sm">{error}</p>}
+                {error && <p role="alert" className="text-red-500 dark:text-red-400 text-sm motion-safe:animate-scale-in">{error}</p>}
 
                 <Button
                   type="submit"

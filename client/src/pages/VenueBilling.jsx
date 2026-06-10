@@ -95,7 +95,12 @@ export default function VenueBilling() {
   }
 
   if (loading) {
-    return <div className="max-w-2xl mx-auto px-5 py-12 text-zinc-500 dark:text-zinc-400">Loading billing…</div>;
+    return (
+      <div role="status" className="max-w-2xl mx-auto px-5 py-16 flex items-center gap-3 text-zinc-500 dark:text-zinc-400 motion-safe:animate-fade-in">
+        <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+        Loading billing…
+      </div>
+    );
   }
 
   const status = sub?.status || 'none';
@@ -107,10 +112,10 @@ export default function VenueBilling() {
   const showManageCancel = status === 'trialing' || status === 'active' || status === 'past_due';
 
   return (
-    <div className="max-w-2xl mx-auto px-5 py-10">
+    <div className="max-w-2xl mx-auto px-5 py-10 motion-safe:animate-fade-up">
       <Link
         to="/venue/dashboard"
-        className="inline-flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 mb-6"
+        className="inline-flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 mb-6 transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to dashboard
@@ -119,7 +124,7 @@ export default function VenueBilling() {
       <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-6">Manage your Speeldit subscription.</p>
 
       {banner && (
-        <div className={`mb-6 rounded-lg border p-4 text-sm ${
+        <div role="status" className={`mb-6 rounded-xl border p-4 text-sm motion-safe:animate-scale-in ${
           banner.tone === 'success'
             ? 'border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200'
             : 'border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-200'
@@ -129,12 +134,12 @@ export default function VenueBilling() {
       )}
 
       {error && (
-        <div className="mb-6 rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-200 p-4 text-sm">
+        <div role="alert" className="mb-6 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-200 p-4 text-sm motion-safe:animate-scale-in">
           {error}
         </div>
       )}
 
-      <div className="rounded-xl border border-zinc-200 dark:border-dark-600 bg-white dark:bg-dark-800 p-6 mb-6">
+      <div className="rounded-2xl border border-zinc-200/80 dark:border-dark-600 bg-white dark:bg-dark-800 p-6 mb-6 shadow-soft">
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Status</div>
@@ -186,7 +191,7 @@ export default function VenueBilling() {
             <button
               onClick={handleStart}
               disabled={starting}
-              className="w-full rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 disabled:opacity-50"
+              className="w-full min-h-touch rounded-xl bg-brand-500 hover:bg-brand-400 text-white font-semibold py-3 shadow-glow-brand hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 ease-spring disabled:opacity-50 disabled:hover:translate-y-0"
             >
               {starting ? 'Redirecting to Paystack…' : `Start ${trialDays}-day free trial`}
             </button>
@@ -197,14 +202,14 @@ export default function VenueBilling() {
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={handleManage}
-              className="flex-1 rounded-lg bg-zinc-100 dark:bg-dark-700 hover:bg-zinc-200 dark:hover:bg-dark-600 text-zinc-800 dark:text-zinc-100 font-semibold py-3"
+              className="flex-1 min-h-touch rounded-xl bg-zinc-100 dark:bg-dark-700 hover:bg-zinc-200 dark:hover:bg-dark-600 text-zinc-800 dark:text-zinc-100 font-semibold py-3 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 ease-spring"
             >
               Update payment method
             </button>
             <button
               onClick={handleCancel}
               disabled={canceling}
-              className="flex-1 rounded-lg bg-white dark:bg-dark-800 border border-red-300 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-700 dark:text-red-300 font-semibold py-3 disabled:opacity-50"
+              className="flex-1 min-h-touch rounded-xl bg-white dark:bg-dark-800 border border-red-300 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-700 dark:text-red-300 font-semibold py-3 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 ease-spring disabled:opacity-50"
             >
               {canceling ? 'Cancelling…' : 'Cancel subscription'}
             </button>
