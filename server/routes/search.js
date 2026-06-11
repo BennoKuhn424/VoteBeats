@@ -31,6 +31,10 @@ router.get('/', async (req, res) => {
       // Apple's label-supplied explicit flag. The patron UI uses this to mark
       // explicit songs as "not family-friendly" when the venue requires it.
       explicit: s.isExplicit === true,
+      // Tri-state rating echoed back on request so the server can decide whether
+      // a lyric check is needed: 'clean' is trusted (no fetch), 'unrated' must be
+      // verified, 'explicit' is rejected outright.
+      rating: s.isExplicit === true ? 'explicit' : (s.isExplicit === false ? 'clean' : 'unrated'),
     }));
 
     res.json({ results });

@@ -75,6 +75,7 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
       // Echoed back so the server can enforce family-friendly / genre rules.
       genre: item.genre,
       explicit: item.explicit === true,
+      rating: item.rating,
     };
     onRequestSong(song, requiresPayment ? { requiresPayment, priceRand } : null);
     setResults([]);

@@ -21,6 +21,8 @@ jest.mock('../utils/yoco', () => ({
   verifyYocoWebhookSignature: jest.fn().mockReturnValue(true),
 }));
 jest.mock('../utils/appleMusicToken', () => ({ getToken: jest.fn().mockResolvedValue('mock-token') }));
+// Family-friendly request checks may fetch lyrics — keep it off the network.
+jest.mock('../utils/lyricsFetch', () => ({ fetchPlainLyrics: jest.fn() }));
 
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
@@ -70,6 +72,8 @@ function authedPost(path) {
 
 beforeEach(() => {
   jest.resetAllMocks();
+  require('../utils/lyricsFetch').fetchPlainLyrics.mockResolvedValue('clean happy lyrics');
+  require('../utils/lyricsCache').clear();
   db.getVenue.mockReturnValue(TEST_VENUE);
   db.getAllVenues.mockReturnValue({ [VENUE_CODE]: TEST_VENUE });
   db.getSubscription.mockReturnValue({ status: 'active' });

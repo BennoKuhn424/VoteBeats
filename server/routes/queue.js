@@ -155,9 +155,9 @@ router.post('/:venueCode/request', requireVenueSubscriptionActive, validate(requ
     return res.status(404).json({ error: 'Venue not found', code: E.QUEUE_VENUE_NOT_FOUND });
   }
 
-  // Content rules apply before payment so we never charge for a song the venue
-  // would reject anyway.
-  const blocked = checkRequestAllowed(venue, song);
+  // Content rules apply before the song is queued (and before payment), so a
+  // blocked song is never added. Awaited: family-friendly may do a lyric check.
+  const blocked = await checkRequestAllowed(venue, song);
   if (blocked) {
     return res.status(blocked.status).json(blocked.body);
   }

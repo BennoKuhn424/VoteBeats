@@ -29,8 +29,9 @@ function attachPaymentRoutes(router) {
     }
 
     // Family-friendly / genre rules apply before we start a paid checkout, so a
-    // patron is never charged for a song the venue would reject.
-    const blocked = checkRequestAllowed(venue, song);
+    // patron is never charged for a song the venue would reject. Awaited:
+    // family-friendly may do a lyric check on the song.
+    const blocked = await checkRequestAllowed(venue, song);
     if (blocked) return res.status(blocked.status).json(blocked.body);
 
     const priceCents = venue.settings.requestPriceCents ?? 1000;

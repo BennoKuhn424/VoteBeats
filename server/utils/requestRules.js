@@ -1,36 +1,76 @@
 const E = require('./errorCodes');
 const { countProfanity } = require('./profanityFilter');
+const { fetchPlainLyrics } = require('./lyricsFetch');
+const lyricsCache = require('./lyricsCache');
+
+const FF_LANGS = ['en', 'af'];
+// A patron is actively waiting on this one check, so we can afford a longer
+// fetch than the bulk search scan used.
+const REQUEST_LYRIC_TIMEOUT_MS = 4000;
+
+function notFamilyFriendly() {
+  return {
+    status: 400,
+    body: {
+      error: "This song isn't family-friendly and can't be requested here",
+      code: E.QUEUE_NOT_FAMILY_FRIENDLY,
+    },
+  };
+}
 
 /**
- * Enforce a venue's patron-facing content rules against a submitted song.
- * Shared by the free-request (queue.js) and paid-request (queuePayment.js)
- * paths so both honour family-friendly + genre restrictions.
+ * Enforce a venue's patron-facing content rules against ONE submitted song.
+ * Shared by the free-request (queue.js) and paid-request (queuePayment.js) paths.
  *
- * Relies on the genre/explicit metadata the client echoes back from our own
- * search results — the same trust model as the rest of the request payload.
- * The search endpoint already filters by genre and flags explicit, so a normal
- * client never submits a disallowed song; this is the server-side backstop.
+ * Async because family-friendly mode does a real lyric check here — at REQUEST
+ * time, on the single song the patron tapped — instead of slowing every search.
  *
- * @param {object} venue  Venue record (reads venue.settings).
- * @param {object} song   Submitted song ({ explicit?, genre? }).
- * @returns {{status:number, body:object}|null}  Rejection, or null if allowed.
+ * IMPORTANT (no-bypass guarantee): this runs BEFORE the song is written to the
+ * queue or a payment is started, and it is fail-CLOSED. If the lyric fetch times
+ * out or LRCLIB has nothing for an unrated song, the song is rejected, never
+ * queued. So a slow/failed check can only wrongly block a clean song — it can
+ * never let an unverified song through to playback.
+ *
+ * Decision order for family-friendly:
+ *   explicit / title-or-artist swear        → reject (instant)
+ *   Apple rating 'clean'                     → allow  (instant, trusted)
+ *   unrated → fetch lyrics:
+ *       swear in lyrics                      → reject
+ *       clean lyrics                         → allow
+ *       no lyrics found / fetch timed out    → reject (unknown = risky)
+ *
+ * @returns {Promise<{status:number, body:object}|null>}  Rejection, or null if allowed.
  */
-function checkRequestAllowed(venue, song) {
+async function checkRequestAllowed(venue, song) {
   const s = venue?.settings || {};
 
   if (s.familyFriendly === true) {
     const extras = Array.isArray(s.blockedTitleWords) ? s.blockedTitleWords : [];
-    // Reject label-flagged explicit OR a swear in the title/artist. (The lyric
-    // scan runs at search time; this is the instant backstop for direct posts.)
-    const titleProfane = countProfanity(`${song?.title || ''} ${song?.artist || ''}`, ['en', 'af'], extras) > 0;
-    if (song?.explicit === true || titleProfane) {
-      return {
-        status: 400,
-        body: {
-          error: "This song isn't family-friendly and can't be requested here",
-          code: E.QUEUE_NOT_FAMILY_FRIENDLY,
-        },
-      };
+
+    // 1. Label-flagged explicit, or a swear in the title/artist → reject instantly.
+    const titleProfane = countProfanity(`${song?.title || ''} ${song?.artist || ''}`, FF_LANGS, extras) > 0;
+    if (song?.explicit === true || song?.rating === 'explicit' || titleProfane) {
+      return notFamilyFriendly();
+    }
+
+    // 2. Anything Apple didn't rate CLEAN must have its lyrics verified.
+    if (song?.rating !== 'clean') {
+      let entry = song?.appleId ? lyricsCache.get(song.appleId, FF_LANGS, extras) : null;
+      if (!entry) {
+        const lyrics = await fetchPlainLyrics({
+          title: song?.title,
+          artist: song?.artist,
+          duration: song?.duration,
+          timeoutMs: REQUEST_LYRIC_TIMEOUT_MS,
+        });
+        entry = lyrics
+          ? { hitCount: countProfanity(lyrics, FF_LANGS, extras), lyricsFound: true }
+          : { hitCount: 0, lyricsFound: false };
+        if (song?.appleId) lyricsCache.set(song.appleId, FF_LANGS, extras, entry);
+      }
+      // Profane lyrics → reject. No lyrics for an unrated song → can't verify → reject.
+      const unsafe = entry.lyricsFound ? entry.hitCount > 0 : true;
+      if (unsafe) return notFamilyFriendly();
     }
   }
 

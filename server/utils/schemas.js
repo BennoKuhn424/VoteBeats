@@ -40,6 +40,7 @@ const songSchema = z.object({
   // genre rules at request time without re-querying Apple.
   genre: z.string().max(200).optional(),
   explicit: z.boolean().optional(),
+  rating: z.enum(['explicit', 'clean', 'unrated']).optional(),
 });
 
 const requestSongSchema = z.object({

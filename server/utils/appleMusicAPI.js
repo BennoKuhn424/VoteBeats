@@ -563,10 +563,11 @@ async function searchAppleMusic(query, venueCode) {
             ? false
             : null,
       }));
-      // Sync filters (explicit flag, title/artist profanity, genre) run first
-      // and instantly; the lyric scan only runs when family-friendly is on and
-      // is hard-capped by a time budget, so search stays responsive.
-      return filterByVenueSettingsAsync(songs, venue);
+      // Search runs ONLY the instant filters (explicit flag, title/artist
+      // profanity, genre) so results are immediate. The lyric scan — the slow
+      // part — moved to request time, where it checks just the one song a
+      // patron actually taps (see utils/requestRules.js).
+      return filterByVenueSettings(songs, venue);
     } catch (err) {
       console.error('Apple Music API error:', err);
       if (isMockCatalogEnabled()) return mockSearch(query, venue);
@@ -586,7 +587,7 @@ async function mockSearch(query, venue) {
       s.artist.toLowerCase().includes(q) ||
       s.genre.toLowerCase().includes(q)
   );
-  return filterByVenueSettingsAsync(matched.length ? matched : MOCK_CATALOG.slice(0, 5), venue);
+  return filterByVenueSettings(matched.length ? matched : MOCK_CATALOG.slice(0, 5), venue);
 }
 
 // Pick a random song from a venue's curated playlist.
