@@ -534,7 +534,10 @@ async function searchAppleMusic(query, venueCode) {
             ? false
             : null,
       }));
-      return filterByVenueSettingsAsync(songs, venue);
+      // Sync filters only (genre / blocked) — fast. Family-friendly is enforced
+      // via Apple's explicit flag at request time + flagged in the UI, so search
+      // never fetches lyrics. This is the fix for "search takes minutes".
+      return filterByVenueSettings(songs, venue);
     } catch (err) {
       console.error('Apple Music API error:', err);
       if (isMockCatalogEnabled()) return mockSearch(query, venue);
@@ -554,7 +557,7 @@ async function mockSearch(query, venue) {
       s.artist.toLowerCase().includes(q) ||
       s.genre.toLowerCase().includes(q)
   );
-  return filterByVenueSettingsAsync(matched.length ? matched : MOCK_CATALOG.slice(0, 5), venue);
+  return filterByVenueSettings(matched.length ? matched : MOCK_CATALOG.slice(0, 5), venue);
 }
 
 // Pick a random song from a venue's curated playlist.

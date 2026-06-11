@@ -8,6 +8,7 @@ const { requireVenueSubscriptionActive } = require('../middleware/requireSubscri
 const { advanceToNextSong } = require('../utils/queueAdvance');
 const broadcast = require('../utils/broadcast');
 const { logEvent } = require('../utils/logEvent');
+const { checkRequestAllowed } = require('../utils/requestRules');
 const queueRepo = require('../repos/queueRepo');
 const { serverAutofill, autofillIfQueueEmpty, attachAutofillRoutes } = require('./queueAutofill');
 const attachVoteRoutes = require('./queueVote');
@@ -108,13 +109,17 @@ router.get('/:venueCode', async (req, res) => {
       myVotes = votes || {};
     }
 
-    const requestSettings = venue?.settings
-      ? {
-          requirePaymentForRequest: venue.settings.requirePaymentForRequest ?? false,
-          requestPriceCents: venue.settings.requestPriceCents ?? 1000,
-          autoplayQueue: venue.settings.autoplayQueue ?? true,
-        }
-      : { requirePaymentForRequest: false, requestPriceCents: 1000, autoplayQueue: true };
+    const s = venue?.settings || {};
+    const requestSettings = {
+      requirePaymentForRequest: s.requirePaymentForRequest ?? false,
+      requestPriceCents: s.requestPriceCents ?? 1000,
+      autoplayQueue: s.autoplayQueue ?? true,
+      // Patron-facing request rules — let the customer UI show the right banners
+      // (family-friendly, genre restriction, per-user limit) up front.
+      familyFriendly: s.familyFriendly === true,
+      allowedGenres: Array.isArray(s.genreFilters) ? s.genreFilters : [],
+      maxSongsPerUser: s.maxSongsPerUser ?? 3,
+    };
 
     const volReport = db.getPlayerVolumeReport(venueCode);
     const reportedPlayerVolume =
@@ -148,6 +153,13 @@ router.post('/:venueCode/request', requireVenueSubscriptionActive, validate(requ
   const venue = db.getVenue(venueCode);
   if (!venue) {
     return res.status(404).json({ error: 'Venue not found', code: E.QUEUE_VENUE_NOT_FOUND });
+  }
+
+  // Content rules apply before payment so we never charge for a song the venue
+  // would reject anyway.
+  const blocked = checkRequestAllowed(venue, song);
+  if (blocked) {
+    return res.status(blocked.status).json(blocked.body);
   }
 
   if (venue.settings?.requirePaymentForRequest) {

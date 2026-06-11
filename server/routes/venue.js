@@ -71,6 +71,7 @@ router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, as
   if (req.venue.code !== req.params.venueCode) return res.status(403).json({ error: 'Unauthorized' });
 
   const {
+    familyFriendly,
     allowExplicit,
     explicitAfterHour,
     strictExplicit,
@@ -92,6 +93,7 @@ router.put('/:venueCode/settings', authMiddleware, requireSubscriptionActive, as
   const updated = await venueRepo.update(req.params.venueCode, (venue) => {
     if (!venue.settings) venue.settings = {};
 
+    if (typeof familyFriendly === 'boolean') venue.settings.familyFriendly = familyFriendly;
     if (typeof allowExplicit === 'boolean') venue.settings.allowExplicit = allowExplicit;
     // Time-based explicit: null = use allowExplicit toggle, 0-23 = allow explicit after that hour
     if (explicitAfterHour !== undefined) {

@@ -4,6 +4,7 @@ const broadcast = require('../utils/broadcast');
 const { fulfillPaidRequest } = require('../utils/paymentFulfill');
 const { getProvider } = require('../providers/payment');
 const { requireVenueSubscriptionActive } = require('../middleware/requireSubscriptionActive');
+const { checkRequestAllowed } = require('../utils/requestRules');
 const E = require('../utils/errorCodes');
 const validate = require('../middleware/validate');
 const { createPaymentSchema } = require('../utils/schemas');
@@ -26,6 +27,11 @@ function attachPaymentRoutes(router) {
     if (!venue.settings?.requirePaymentForRequest) {
       return res.status(400).json({ error: 'This venue does not require payment for requests', code: E.PAYMENT_NOT_REQUIRED });
     }
+
+    // Family-friendly / genre rules apply before we start a paid checkout, so a
+    // patron is never charged for a song the venue would reject.
+    const blocked = checkRequestAllowed(venue, song);
+    if (blocked) return res.status(blocked.status).json(blocked.body);
 
     const priceCents = venue.settings.requestPriceCents ?? 1000;
     if (priceCents < 500 || priceCents > 5000) {

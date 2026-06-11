@@ -115,6 +115,17 @@ describe('GET /api/queue/:venueCode', () => {
     expect(typeof res.body.requestSettings.requirePaymentForRequest).toBe('boolean');
   });
 
+  test('requestSettings surfaces the patron content rules', async () => {
+    db.getVenue.mockReturnValue({
+      ...TEST_VENUE,
+      settings: { ...TEST_VENUE.settings, familyFriendly: true, genreFilters: ['Afrikaans'], maxSongsPerUser: 2 },
+    });
+    const res = await request(app).get(`/api/queue/${VENUE_CODE}`);
+    expect(res.body.requestSettings.familyFriendly).toBe(true);
+    expect(res.body.requestSettings.allowedGenres).toEqual(['Afrikaans']);
+    expect(res.body.requestSettings.maxSongsPerUser).toBe(2);
+  });
+
   test('includes myVotes when deviceId query param is provided', async () => {
     db.getVotesForDevice.mockReturnValue({ song_1: 1, song_2: -1 });
     const res = await request(app)
@@ -288,6 +299,68 @@ describe('POST /api/queue/:venueCode/request — queue mutation', () => {
       .send({ song: makeSong(), deviceId: DEVICE_ID });
     expect(res.status).toBe(500);
     expect(res.body.error).toMatch(/could not add song/i);
+  });
+});
+
+describe('POST /api/queue/:venueCode/request — content rules', () => {
+  test('400 rejects an explicit song when family-friendly is on', async () => {
+    db.getVenue.mockReturnValue({
+      ...TEST_VENUE,
+      settings: { ...TEST_VENUE.settings, familyFriendly: true },
+    });
+    const res = await request(app)
+      .post(`/api/queue/${VENUE_CODE}/request`)
+      .send({ song: makeSong({ explicit: true }), deviceId: DEVICE_ID });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('QUEUE_NOT_FAMILY_FRIENDLY');
+  });
+
+  test('200 allows a clean song when family-friendly is on', async () => {
+    db.getVenue.mockReturnValue({
+      ...TEST_VENUE,
+      settings: { ...TEST_VENUE.settings, familyFriendly: true },
+    });
+    const res = await request(app)
+      .post(`/api/queue/${VENUE_CODE}/request`)
+      .send({ song: makeSong({ explicit: false }), deviceId: DEVICE_ID });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  test('400 rejects a song outside the allowed genres', async () => {
+    db.getVenue.mockReturnValue({
+      ...TEST_VENUE,
+      settings: { ...TEST_VENUE.settings, genreFilters: ['Afrikaans'] },
+    });
+    const res = await request(app)
+      .post(`/api/queue/${VENUE_CODE}/request`)
+      .send({ song: makeSong({ genre: 'Pop' }), deviceId: DEVICE_ID });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('QUEUE_GENRE_NOT_ALLOWED');
+  });
+
+  test('200 allows an in-genre song', async () => {
+    db.getVenue.mockReturnValue({
+      ...TEST_VENUE,
+      settings: { ...TEST_VENUE.settings, genreFilters: ['Afrikaans'] },
+    });
+    const res = await request(app)
+      .post(`/api/queue/${VENUE_CODE}/request`)
+      .send({ song: makeSong({ genre: 'Afrikaans Pop' }), deviceId: DEVICE_ID });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  test('content rules are enforced before payment (no 402 for a blocked explicit song)', async () => {
+    db.getVenue.mockReturnValue({
+      ...TEST_VENUE,
+      settings: { ...TEST_VENUE.settings, familyFriendly: true, requirePaymentForRequest: true, requestPriceCents: 1500 },
+    });
+    const res = await request(app)
+      .post(`/api/queue/${VENUE_CODE}/request`)
+      .send({ song: makeSong({ explicit: true }), deviceId: DEVICE_ID });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('QUEUE_NOT_FAMILY_FRIENDLY');
   });
 });
 

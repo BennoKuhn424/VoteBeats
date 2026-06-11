@@ -1,31 +1,24 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Users, Loader2, Pencil, Check } from 'lucide-react';
+import { Users, Loader2, Pencil, Check, ShieldCheck } from 'lucide-react';
 import api from '../../utils/api';
 
 /**
- * Dashboard card: everything that governs what patrons can do.
- * Replaces the old "Play random" card after random autoplay was removed
- * 2026-05-18. Consolidates pricing, per-user limits, profanity / blocked
- * words, lyric scan, and explicit rules into one place so venue owners
- * don't have to hunt across Settings to find patron-facing controls.
+ * Dashboard card: everything that governs what patrons can request.
+ *
+ * Deliberately simple (rewritten 2026-06-11): just the controls a venue owner
+ * actually uses — a Family-friendly toggle (hides/blocks explicit songs via
+ * Apple's content rating), a Genre restriction, a per-user limit, and the
+ * pay-to-play revenue lever. The old explicit-mode/strict/blocked-words/
+ * lyric-scan machinery was removed — it was confusing and the lyric scan made
+ * search take minutes. Family-friendly now uses Apple's explicit flag, which
+ * is instant and accurate.
  */
 export default function UserRequestsCard({ venueCode, onSaved }) {
-  // Patron limits
   const [maxSongsPerUser, setMaxSongsPerUser] = useState(3);
-  // Pay-to-play
+  const [familyFriendly, setFamilyFriendly] = useState(false);
+  const [genres, setGenres] = useState(''); // comma-separated text in the input
   const [requirePaymentForRequest, setRequirePaymentForRequest] = useState(false);
   const [requestPriceCents, setRequestPriceCents] = useState(1000);
-  // Explicit content
-  const [explicitMode, setExplicitMode] = useState('off');
-  const [explicitAfterHour, setExplicitAfterHour] = useState(18);
-  const [strictExplicit, setStrictExplicit] = useState(false);
-  // Word filter
-  const [blockedTitleWords, setBlockedTitleWords] = useState([]);
-  const [wordInput, setWordInput] = useState('');
-  // Lyrics scan
-  const [lyricsFilter, setLyricsFilter] = useState(false);
-  const [lyricsThreshold, setLyricsThreshold] = useState(3);
-  const [lyricsLanguages, setLyricsLanguages] = useState(['en']);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -40,43 +33,21 @@ export default function UserRequestsCard({ venueCode, onSaved }) {
       .then((res) => {
         const s = res.data?.settings || {};
         setMaxSongsPerUser(s.maxSongsPerUser ?? 3);
+        // Treat the legacy "allowExplicit === false" as family-friendly too, so
+        // existing venues keep their intent after the migration.
+        setFamilyFriendly(s.familyFriendly === true || s.allowExplicit === false);
+        setGenres(Array.isArray(s.genreFilters) ? s.genreFilters.join(', ') : '');
         setRequirePaymentForRequest(s.requirePaymentForRequest ?? false);
         setRequestPriceCents(s.requestPriceCents ?? 1000);
-        if (typeof s.explicitAfterHour === 'number') {
-          setExplicitMode('scheduled');
-          setExplicitAfterHour(s.explicitAfterHour);
-        } else {
-          setExplicitMode(s.allowExplicit ? 'always' : 'off');
-        }
-        setStrictExplicit(s.strictExplicit === true);
-        setBlockedTitleWords(Array.isArray(s.blockedTitleWords) ? s.blockedTitleWords : []);
-        setLyricsFilter(s.lyricsFilter === true);
-        setLyricsThreshold(Number.isFinite(s.lyricsThreshold) ? s.lyricsThreshold : 3);
-        setLyricsLanguages(Array.isArray(s.lyricsLanguages) ? s.lyricsLanguages : ['en']);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [venueCode]);
 
-  function addWord(raw) {
-    const w = (raw || '').trim();
-    if (!w) return;
-    const key = w.toLowerCase();
-    setBlockedTitleWords((prev) => (
-      prev.some((x) => x.toLowerCase() === key) ? prev : [...prev, w]
-    ));
-    setWordInput('');
-  }
-
-  function removeWord(word) {
-    setBlockedTitleWords((prev) => prev.filter((w) => w !== word));
-  }
-
-  const explicitSummary = useMemo(() => {
-    if (explicitMode === 'off') return 'Never';
-    if (explicitMode === 'always') return 'Always';
-    return `After ${String(explicitAfterHour).padStart(2, '0')}:00`;
-  }, [explicitMode, explicitAfterHour]);
+  const genreList = useMemo(
+    () => genres.split(',').map((g) => g.trim()).filter(Boolean),
+    [genres]
+  );
 
   async function handleSave(e) {
     e.preventDefault();
@@ -84,15 +55,10 @@ export default function UserRequestsCard({ venueCode, onSaved }) {
     try {
       await api.updateSettings(venueCode, {
         maxSongsPerUser: Math.max(1, Math.min(10, maxSongsPerUser)) || 3,
+        familyFriendly,
+        genreFilters: genreList,
         requirePaymentForRequest,
         requestPriceCents: Math.max(500, Math.min(5000, requestPriceCents)) || 1000,
-        allowExplicit: explicitMode === 'always',
-        explicitAfterHour: explicitMode === 'scheduled' ? explicitAfterHour : null,
-        strictExplicit,
-        blockedTitleWords,
-        lyricsFilter,
-        lyricsThreshold,
-        lyricsLanguages,
       });
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2000);
@@ -104,41 +70,26 @@ export default function UserRequestsCard({ venueCode, onSaved }) {
     setSaving(false);
   }
 
-  // Status chips for the collapsed view — reads like a glanceable dashboard
-  // instead of a label/value spec sheet.
+  // Glanceable status chips for the collapsed view.
   const chips = useMemo(() => {
     const items = [
       { key: 'max', label: `Max ${maxSongsPerUser}/user`, tone: 'neutral' },
+      familyFriendly
+        ? { key: 'ff', label: 'Family-friendly', tone: 'safe' }
+        : { key: 'ff', label: 'Explicit allowed', tone: 'warn' },
       requirePaymentForRequest
         ? { key: 'pay', label: `R${(requestPriceCents / 100).toFixed(0)} per request`, tone: 'revenue' }
         : { key: 'pay', label: 'Free to request', tone: 'neutral' },
-      {
-        key: 'explicit',
-        label: `Explicit: ${explicitSummary}${strictExplicit && explicitMode !== 'always' ? ' · strict' : ''}`,
-        tone: explicitMode === 'always' ? 'warn' : 'safe',
-      },
     ];
-    if (blockedTitleWords.length > 0) {
+    if (genreList.length > 0) {
       items.push({
-        key: 'words',
-        label: `${blockedTitleWords.length} blocked word${blockedTitleWords.length === 1 ? '' : 's'}`,
-        tone: 'safe',
-      });
-    }
-    if (lyricsFilter) {
-      const langs = lyricsLanguages.length > 0 ? lyricsLanguages.map((l) => l.toUpperCase()).join('+') : 'custom';
-      items.push({
-        key: 'lyrics',
-        label: `Lyric scan ${lyricsThreshold}+ · ${langs}`,
+        key: 'genre',
+        label: `Only: ${genreList.join(', ')}`,
         tone: 'safe',
       });
     }
     return items;
-  }, [
-    maxSongsPerUser, requirePaymentForRequest, requestPriceCents,
-    explicitMode, explicitSummary, strictExplicit,
-    blockedTitleWords.length, lyricsFilter, lyricsThreshold, lyricsLanguages,
-  ]);
+  }, [maxSongsPerUser, familyFriendly, requirePaymentForRequest, requestPriceCents, genreList]);
 
   const chipClass = (tone) => {
     if (tone === 'revenue') return 'bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300 border border-brand-200/60 dark:border-brand-500/30';
@@ -159,8 +110,8 @@ export default function UserRequestsCard({ venueCode, onSaved }) {
               User requests
             </h3>
             <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-xl">
-              Everything that controls what patrons can request — per-user limits, pay-to-play
-              pricing, blocked words, and explicit content policy.
+              What patrons can request — family-friendly filtering, genre limits,
+              per-user limit, and pay-to-play.
             </p>
             {!loading && !isEditing && chips.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
@@ -218,8 +169,34 @@ export default function UserRequestsCard({ venueCode, onSaved }) {
 
       {!loading && isEditing && (
         <form id="user-requests-form" onSubmit={handleSave} className="mt-6 pt-6 border-t border-zinc-100 dark:border-dark-600 space-y-6">
-          {/* Patron limits + Explicit — sibling controls in a 2-col grid on desktop */}
+          {/* Family-friendly — the headline toggle */}
+          <div className={`rounded-xl border p-4 transition-colors ${
+            familyFriendly
+              ? 'border-emerald-300/70 dark:border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-500/5'
+              : 'border-zinc-200 dark:border-dark-600 bg-zinc-50/60 dark:bg-dark-900/40'
+          }`}>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={familyFriendly}
+                onChange={(e) => setFamilyFriendly(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-zinc-300 dark:border-dark-500 text-emerald-600 focus:ring-emerald-500"
+              />
+              <span className="flex-1 min-w-0">
+                <span className="flex items-center gap-2 flex-wrap">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <strong className="text-sm text-zinc-900 dark:text-zinc-100">Family-friendly mode</strong>
+                </span>
+                <span className="block text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  Explicit songs (per Apple's content rating) can't be requested. Patrons
+                  still see them in search, marked "not family-friendly," so they know why.
+                </span>
+              </span>
+            </label>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {/* Max songs per user */}
             <div>
               <label htmlFor="ur-max-songs" className="block text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-1">
                 Max songs per user
@@ -238,67 +215,26 @@ export default function UserRequestsCard({ venueCode, onSaved }) {
               />
             </div>
 
+            {/* Genre restriction (moved here from Settings) */}
             <div>
-              <label className="block text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-1">
-                Explicit content
+              <label htmlFor="ur-genres" className="block text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-1">
+                Genre filter
               </label>
               <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-2">
-                When patrons can request explicit songs.
+                Only let patrons request these genres. Comma-separated. Leave empty for all.
               </p>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { id: 'off', label: 'Never' },
-                  { id: 'always', label: 'Always' },
-                  { id: 'scheduled', label: 'After hour' },
-                ].map(({ id, label }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setExplicitMode(id)}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[36px] ${
-                      explicitMode === id
-                        ? 'bg-brand-500 text-white'
-                        : 'bg-zinc-100 dark:bg-dark-700 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {explicitMode === 'scheduled' && (
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-xs text-zinc-600 dark:text-zinc-300">Allow after</span>
-                  <select
-                    value={explicitAfterHour}
-                    onChange={(e) => setExplicitAfterHour(Number(e.target.value))}
-                    className="min-h-touch px-3 py-2 rounded-lg border border-zinc-300 dark:border-dark-600 bg-white dark:bg-dark-700 text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-brand-500 text-sm"
-                  >
-                    {Array.from({ length: 24 }, (_, i) => (
-                      <option key={i} value={i}>{`${i.toString().padStart(2, '0')}:00`}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {explicitMode !== 'always' && (
-                <label className="mt-2.5 flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={strictExplicit}
-                    onChange={(e) => setStrictExplicit(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-zinc-300 dark:border-dark-500 text-brand-500 focus:ring-brand-500"
-                  />
-                  <span className="text-xs text-zinc-600 dark:text-zinc-300">
-                    <strong className="text-zinc-800 dark:text-zinc-100">Strict mode</strong>
-                    <span className="block text-zinc-500 dark:text-zinc-400">
-                      Drop unrated songs too. Safer; may shrink results.
-                    </span>
-                  </span>
-                </label>
-              )}
+              <input
+                id="ur-genres"
+                type="text"
+                value={genres}
+                onChange={(e) => setGenres(e.target.value)}
+                placeholder="e.g. Afrikaans"
+                className="w-full min-h-touch px-3 py-2 rounded-lg border border-zinc-300 dark:border-dark-600 bg-white dark:bg-dark-700 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+              />
             </div>
           </div>
 
-          {/* Pay-to-play — promoted to its own accent panel since it's the revenue lever */}
+          {/* Pay-to-play — the revenue lever */}
           <div className={`rounded-xl border p-4 transition-colors ${
             requirePaymentForRequest
               ? 'border-brand-300/70 dark:border-brand-500/40 bg-brand-50/60 dark:bg-brand-500/5'
@@ -364,136 +300,6 @@ export default function UserRequestsCard({ venueCode, onSaved }) {
                 <p className="basis-full text-[11px] text-zinc-400 dark:text-zinc-500">R5–R50 per request.</p>
               </div>
             )}
-          </div>
-
-          {/* Word filter + lyric scan */}
-          <div className="rounded-xl border border-zinc-200 dark:border-dark-600 bg-zinc-50/60 dark:bg-dark-900/40 p-4">
-            <label className="block text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-1">Blocked words</label>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
-              Songs whose title or artist contain any of these words are hidden from customer search.
-            </p>
-            {blockedTitleWords.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {blockedTitleWords.map((w) => (
-                  <button
-                    key={w}
-                    type="button"
-                    onClick={() => removeWord(w)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300 text-xs font-medium hover:bg-red-200 dark:hover:bg-red-500/30"
-                  >
-                    {w}
-                    <span className="text-red-500/80 dark:text-red-300/80 text-[10px]">✕</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="flex gap-2 mb-3">
-              <input
-                type="text"
-                value={wordInput}
-                onChange={(e) => setWordInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ',') {
-                    e.preventDefault();
-                    addWord(wordInput);
-                  }
-                }}
-                placeholder="Add a word and press Enter"
-                maxLength={50}
-                className="flex-1 min-h-touch px-3 py-2 rounded-lg border border-zinc-300 dark:border-dark-600 bg-white dark:bg-dark-700 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
-              />
-              <button
-                type="button"
-                onClick={() => addWord(wordInput)}
-                disabled={!wordInput.trim()}
-                className="px-4 py-2 rounded-lg bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 transition-colors disabled:opacity-50 min-h-touch"
-              >
-                Add
-              </button>
-            </div>
-
-            <div className="pt-3 border-t border-zinc-200 dark:border-dark-600">
-              <label className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={lyricsFilter}
-                  onChange={(e) => setLyricsFilter(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-zinc-300 dark:border-dark-500 text-brand-500 focus:ring-brand-500"
-                />
-                <span className="text-sm text-zinc-700 dark:text-zinc-200">
-                  <strong className="text-zinc-900 dark:text-zinc-100">Also scan lyrics</strong>
-                  <span className="block text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                    Catches songs where the words appear in the lyrics, not just the title or artist. Uses your words above plus a built-in profanity list. Adds ~1&nbsp;second to the first search for a song; cached after that.
-                  </span>
-                </span>
-              </label>
-              {lyricsFilter && (
-                <div className="mt-3 pl-6 space-y-3">
-                  <div>
-                    <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 mb-1.5">
-                      Block when lyrics contain…
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { v: 1, label: '1+ hits', sub: 'strictest' },
-                        { v: 3, label: '3+ hits', sub: 'recommended' },
-                        { v: 5, label: '5+ hits', sub: 'lenient' },
-                      ].map(({ v, label, sub }) => (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => setLyricsThreshold(v)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[36px] ${
-                            lyricsThreshold === v
-                              ? 'bg-brand-500 text-white'
-                              : 'bg-white dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 text-zinc-600 dark:text-zinc-300 hover:border-brand-400'
-                          }`}
-                        >
-                          {label} <span className={`text-[10px] font-normal ${lyricsThreshold === v ? 'text-white/80' : 'text-zinc-400 dark:text-zinc-500'}`}>· {sub}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1.5">
-                      Lower = stricter. At 1+, even one swear word drops the song — many popular songs will disappear. 3+ is a good balance.
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 mb-1.5">
-                      Built-in profanity list
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { id: 'en', label: 'English' },
-                        { id: 'af', label: 'Afrikaans' },
-                      ].map(({ id, label }) => {
-                        const on = lyricsLanguages.includes(id);
-                        return (
-                          <button
-                            key={id}
-                            type="button"
-                            onClick={() => {
-                              setLyricsLanguages((prev) => (
-                                prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-                              ));
-                            }}
-                            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors min-h-[36px] ${
-                              on
-                                ? 'bg-brand-500 text-white'
-                                : 'bg-white dark:bg-dark-700 border border-zinc-300 dark:border-dark-600 text-zinc-600 dark:text-zinc-300 hover:border-brand-400'
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1.5">
-                      Pick none to scan only with your custom words above. Songs without lyrics on LRCLIB are kept (or dropped if strict mode is on).
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         </form>
       )}

@@ -36,6 +36,10 @@ const songSchema = z.object({
   artist: z.string().max(500, 'Artist name too long').optional().default(''),
   albumArt: z.string().max(500).optional(),
   duration: z.number().nonnegative().optional(),
+  // Carried from search results so the server can enforce family-friendly /
+  // genre rules at request time without re-querying Apple.
+  genre: z.string().max(200).optional(),
+  explicit: z.boolean().optional(),
 });
 
 const requestSongSchema = z.object({

@@ -28,6 +28,9 @@ router.get('/', async (req, res) => {
       songId: s.providerTrackId || s.appleId,
       duration: s.duration,
       genre: s.genre,
+      // Apple's label-supplied explicit flag. The patron UI uses this to mark
+      // explicit songs as "not family-friendly" when the venue requires it.
+      explicit: s.isExplicit === true,
     }));
 
     res.json({ results });

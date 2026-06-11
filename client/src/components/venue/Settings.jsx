@@ -1,52 +1,16 @@
-import { useState, useEffect } from 'react';
 import { Sun, Moon } from 'lucide-react';
-import api from '../../utils/api';
 import Button from '../shared/Button';
 import { useTheme } from '../../context/ThemeContext';
 
 /**
- * General venue settings.
+ * General venue settings — appearance only.
  *
- * After the random-autoplay removal (2026-05-18), patron-facing controls
- * (max-per-user, pay-to-play, explicit, blocked words, lyric scan) live in
- * the User Requests dashboard card. This modal keeps only generic settings:
- * appearance and the request genre filter.
+ * Patron-facing request controls (family-friendly, genre filter, per-user
+ * limit, pay-to-play) all live in the User Requests dashboard card. The genre
+ * filter moved there 2026-06-11 so every request rule sits in one place.
  */
-export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
-  const [genreFilters, setGenreFilters] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+export default function Settings({ onSaved, variant = 'dark' }) {
   const { theme, setTheme } = useTheme();
-
-  useEffect(() => {
-    if (!venueCode) return;
-    api
-      .getVenue(venueCode)
-      .then((res) => {
-        const s = res.data?.settings || {};
-        setGenreFilters(Array.isArray(s.genreFilters) ? s.genreFilters.join(', ') : '');
-      })
-      .catch(console.error);
-  }, [venueCode]);
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError('');
-    setSaving(true);
-    try {
-      await api.updateSettings(venueCode, {
-        genreFilters: genreFilters
-          ? genreFilters.split(',').map((g) => g.trim()).filter(Boolean)
-          : [],
-      });
-      onSaved?.();
-    } catch (err) {
-      console.error(err);
-      setError(err.response?.data?.error || 'Failed to save settings');
-    } finally {
-      setSaving(false);
-    }
-  }
 
   const isLight = variant === 'light';
   const cardClass = isLight
@@ -59,9 +23,9 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
       <p className={`text-sm mb-4 ${isLight ? 'text-zinc-500' : 'text-dark-400'}`}>
         Use <strong className={isLight ? 'text-zinc-700' : 'text-dark-200'}>Playlists &amp; schedule</strong> for
         libraries and time slots, and <strong className={isLight ? 'text-zinc-700' : 'text-dark-200'}>User requests</strong> for
-        pricing, per-user limits, and content rules.
+        family-friendly mode, genre limits, pricing, and per-user limits.
       </p>
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="space-y-5">
         <div>
           <label className={`block text-sm font-medium mb-2 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>Appearance</label>
           <div className="grid grid-cols-2 gap-2">
@@ -93,28 +57,10 @@ export default function Settings({ venueCode, onSaved, variant = 'dark' }) {
             </button>
           </div>
         </div>
-        <div>
-          <label className={`block text-sm font-medium mb-1 ${isLight ? 'text-zinc-600' : 'text-dark-400'}`}>
-            Request genre filter
-          </label>
-          <p className={`text-xs mb-2 ${isLight ? 'text-zinc-400' : 'text-dark-500'}`}>
-            Limits what genres customers can search and request. Leave empty to allow all genres.
-          </p>
-          <input
-            type="text"
-            value={genreFilters}
-            onChange={(e) => setGenreFilters(e.target.value)}
-            placeholder="e.g. amapiano, house, hip-hop"
-            className={`w-full min-h-touch px-4 py-3 rounded-xl focus:ring-2 focus:ring-brand-500 ${
-              isLight ? 'bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400' : 'bg-dark-700 border border-dark-600 text-white placeholder-dark-500'
-            }`}
-          />
-        </div>
-        {error && <p className="text-red-500 text-sm">{error}</p>}
-        <Button type="submit" disabled={saving} className="w-full">
-          {saving ? 'Saving...' : 'Save settings'}
+        <Button type="button" onClick={() => onSaved?.()} className="w-full">
+          Done
         </Button>
-      </form>
+      </div>
     </div>
   );
 }

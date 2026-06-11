@@ -237,3 +237,57 @@ describe('SearchBar — legacy api format', () => {
     );
   });
 });
+
+// ── Content rules (family-friendly + genre) ────────────────────────────────────
+describe('SearchBar — content rules', () => {
+  const EXPLICIT_ITEM = { ...SONG_ITEM, songId: '222', trackName: 'Rude Track', explicit: true, genre: 'Hip-Hop/Rap' };
+
+  async function searchWith(settings, items, onRequestSong = vi.fn()) {
+    const user = userEvent.setup();
+    mockSearch.mockResolvedValue({ data: { results: items } });
+    render(<SearchBar venueCode="V1" onRequestSong={onRequestSong} requestSettings={settings} />);
+    await user.type(screen.getByPlaceholderText(/search/i), 'test');
+    await user.click(screen.getByRole('button', { name: /^search$/i }));
+    return { user, onRequestSong };
+  }
+
+  it('shows the genre-restriction banner when allowedGenres is set', async () => {
+    await searchWith({ allowedGenres: ['Afrikaans'] }, [SONG_ITEM]);
+    await waitFor(() => expect(screen.getByText(/only takes/i)).toBeInTheDocument());
+    expect(screen.getByText('Afrikaans')).toBeInTheDocument();
+  });
+
+  it('shows the family-friendly banner when enabled', async () => {
+    await searchWith({ familyFriendly: true }, [SONG_ITEM]);
+    await waitFor(() => expect(screen.getByText(/family-friendly venue/i)).toBeInTheDocument());
+  });
+
+  it('marks explicit songs as not family-friendly and blocks the request', async () => {
+    const { user, onRequestSong } = await searchWith({ familyFriendly: true }, [EXPLICIT_ITEM]);
+    await waitFor(() => screen.getByText('Rude Track'));
+    expect(screen.getByText(/not family-friendly/i)).toBeInTheDocument();
+    // The row is a disabled button — clicking it must not request the song.
+    await user.click(screen.getByText('Rude Track'));
+    expect(onRequestSong).not.toHaveBeenCalled();
+  });
+
+  it('still allows explicit songs when family-friendly is off, passing the explicit flag', async () => {
+    const { user, onRequestSong } = await searchWith({ familyFriendly: false }, [EXPLICIT_ITEM]);
+    await waitFor(() => screen.getByText('Rude Track'));
+    await user.click(screen.getByText('Rude Track'));
+    expect(onRequestSong).toHaveBeenCalledWith(
+      expect.objectContaining({ appleId: '222', explicit: true, genre: 'Hip-Hop/Rap' }),
+      null
+    );
+  });
+
+  it('passes genre through on a normal request', async () => {
+    const { user, onRequestSong } = await searchWith({}, [{ ...SONG_ITEM, genre: 'Pop' }]);
+    await waitFor(() => screen.getByText('Test Track'));
+    await user.click(screen.getByText('Test Track'));
+    expect(onRequestSong).toHaveBeenCalledWith(
+      expect.objectContaining({ genre: 'Pop', explicit: false }),
+      null
+    );
+  });
+});
