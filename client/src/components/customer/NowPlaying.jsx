@@ -2,10 +2,18 @@ import { useState, useEffect } from 'react';
 import { ThumbsUp, ThumbsDown } from 'lucide-react';
 import { formatDuration } from '../../utils/helpers';
 import api from '../../utils/api';
+import useAlbumPalette from '../../hooks/useAlbumPalette';
+import SongAura from '../shared/SongAura';
+import Waveform from '../shared/Waveform';
 
 export default function NowPlaying({ song, hasLyrics, onLyrics, venueCode, deviceId, myVote }) {
   const [progress, setProgress] = useState(0);
   const [voting, setVoting] = useState(false);
+
+  // Song-reactive visualiser: colours from this track's artwork, motion gated
+  // on whether it's actually playing (vs paused).
+  const isPlaying = song ? !(song.isPaused ?? !!song.pausedAt) : false;
+  const palette = useAlbumPalette(song?.albumArt, song?.appleId || song?.id || song?.title || '');
 
   useEffect(() => {
     if (!song) return;
@@ -50,12 +58,13 @@ export default function NowPlaying({ song, hasLyrics, onLyrics, venueCode, devic
 
   return (
     <div className="relative bg-gradient-to-br from-dark-800 to-dark-900 rounded-2xl p-6 mb-8 border border-dark-600/80 shadow-elevated overflow-hidden motion-safe:animate-scale-in">
-      {/* Soft glow bleeding from the top, like a lit stage. Decorative. */}
-      <div aria-hidden="true" className="pointer-events-none absolute -top-16 -left-10 h-40 w-40 rounded-full bg-amethyst-600/15 blur-3xl" />
+      {/* Album-art ambient aura — colour drifts/breathes with the track. */}
+      <SongAura palette={palette} playing={isPlaying} opacity={0.55} />
 
       <p className="relative flex items-center gap-2 text-xs font-bold text-amethyst-300 tracking-widest mb-3">
         <span aria-hidden="true" className="inline-block w-2 h-2 rounded-full bg-amethyst-400 animate-pulse-soft" />
         NOW PLAYING
+        <Waveform palette={palette} playing={isPlaying} bars={7} className="h-3 ml-1" />
       </p>
 
       <div className="relative flex gap-4 items-center mb-4">

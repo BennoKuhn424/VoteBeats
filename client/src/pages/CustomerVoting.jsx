@@ -10,6 +10,8 @@ import UpcomingQueue from '../components/customer/UpcomingQueue';
 import SearchBar from '../components/shared/SearchBar';
 import LyricsView from '../components/customer/LyricsView';
 import VolumeSuggestion from '../components/customer/VolumeSuggestion';
+import SongAura from '../components/shared/SongAura';
+import useAlbumPalette from '../hooks/useAlbumPalette';
 
 export default function CustomerVoting() {
   const { venueCode } = useParams();
@@ -24,6 +26,15 @@ export default function CustomerVoting() {
   // successful connection — avoids a false alarm during the initial handshake.
   const hasConnectedOnceRef = useRef(socket.connected);
   const deviceId = getDeviceId();
+
+  // Whole-page ambient backdrop tinted by the current track's artwork, so the
+  // entire patron screen subtly reflects what's playing (not just the card).
+  const nowPlayingSong = queue.nowPlaying;
+  const pagePalette = useAlbumPalette(
+    nowPlayingSong?.albumArt,
+    nowPlayingSong?.appleId || nowPlayingSong?.id || nowPlayingSong?.title || ''
+  );
+  const pagePlaying = nowPlayingSong ? !(nowPlayingSong.isPaused ?? !!nowPlayingSong.pausedAt) : false;
 
   // Counts consecutive HTTP poll failures. We wait for ≥2 before showing the
   // error banner so a single transient blip (brief server wake-up, flaky cell
@@ -202,11 +213,16 @@ export default function CustomerVoting() {
 
   return (
     <div className="relative min-h-screen bg-dark-950 text-white pb-safe overflow-hidden">
-      {/* Ambient stage glow behind the header — decorative only. */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-40 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-amethyst-600/20 blur-3xl"
-      />
+      {/* Ambient backdrop. Once a track is playing it's tinted by the artwork
+          and breathes with playback; before then it's a calm static stage glow. */}
+      {nowPlayingSong ? (
+        <SongAura palette={pagePalette} playing={pagePlaying} opacity={0.22} />
+      ) : (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-40 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-amethyst-600/20 blur-3xl"
+        />
+      )}
       <div className="relative container mx-auto px-5 py-8 max-w-lg">
         <header className="text-center mb-6 motion-safe:animate-fade-up">
           {/* Live equalizer badge — three bars bounce to signal music is on.

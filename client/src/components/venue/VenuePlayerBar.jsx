@@ -7,6 +7,8 @@ import api from '../../utils/api';
 import { formatDuration } from '../../utils/helpers';
 import { VENUE_PLAYER_META_REFRESH } from '../../utils/venuePlayerEvents';
 import { useVenuePlayback, PLAYER_STATES } from '../../context/VenuePlaybackContext';
+import useAlbumPalette from '../../hooks/useAlbumPalette';
+import Waveform from '../shared/Waveform';
 
 const AUTOPLAY_OPTIONS = [
   { id: 'off', label: 'Off' },
@@ -50,6 +52,7 @@ export default function VenuePlayerBar({ venueCode }) {
   const busyPlayback = isTransitioning || playbackLoading;
 
   const nowPlaying = queue.nowPlaying;
+  const palette = useAlbumPalette(nowPlaying?.albumArt, nowPlaying?.appleId || nowPlaying?.title || '');
   const rawProgress = playbackDuration > 0 ? (playbackTime / playbackDuration) * 100 : 0;
   const progress = Number.isFinite(rawProgress) ? Math.min(rawProgress, 100) : 0;
 
@@ -259,8 +262,13 @@ export default function VenuePlayerBar({ venueCode }) {
               >
                 <SkipForward className="h-5 w-5" />
               </button>
-              <span className="text-xs font-medium text-brand-600 w-20 text-center hidden md:inline select-none">
-                {busyPlayback ? 'Loading…' : isPlaying ? 'Playing' : waitingForGesture ? 'Tap play' : 'Paused'}
+              <span className="flex items-center gap-2 w-24 hidden md:flex select-none">
+                {isPlaying && !busyPlayback && nowPlaying && (
+                  <Waveform palette={palette} playing bars={5} className="h-3.5" />
+                )}
+                <span className="text-xs font-medium text-brand-600">
+                  {busyPlayback ? 'Loading…' : isPlaying ? 'Playing' : waitingForGesture ? 'Tap play' : 'Paused'}
+                </span>
               </span>
             </div>
           )}
