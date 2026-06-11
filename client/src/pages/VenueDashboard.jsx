@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useVisibilityAwarePolling } from '../hooks/useVisibilityAwarePolling';
 import { useNavigate, Link } from 'react-router-dom';
 import {
@@ -12,6 +12,8 @@ import {
   ListMusic,
   Clock,
   CreditCard,
+  Radio,
+  BarChart3,
 } from 'lucide-react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -28,6 +30,19 @@ import UserRequestsCard from '../components/venue/UserRequestsCard';
 import SubscriptionBanner from '../components/venue/SubscriptionBanner';
 import { buildVotingUrl } from '../utils/publicUrl';
 
+// Sections, grouped by what an owner actually does:
+//   live     — watch during service (queue + earnings)
+//   music    — what plays / what patrons can request
+//   share    — the QR + voting link (promoted out of the bottom of the page)
+//   insights — analytics + volume feedback
+const DASHBOARD_TABS = [
+  { id: 'live', label: 'Live', icon: Radio },
+  { id: 'music', label: 'Music', icon: ListMusic },
+  { id: 'share', label: 'Share', icon: QrCode },
+  { id: 'insights', label: 'Insights', icon: BarChart3 },
+];
+const TAB_STORAGE_KEY = 'venueDashboardTab';
+
 export default function VenueDashboard() {
   const [venue, setVenue] = useState(null);
   const [queue, setQueue] = useState({
@@ -37,10 +52,37 @@ export default function VenueDashboard() {
   });
   const [showSettings, setShowSettings] = useState(false);
   const [copiedVotingUrl, setCopiedVotingUrl] = useState(false);
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const saved = localStorage.getItem(TAB_STORAGE_KEY);
+      return DASHBOARD_TABS.some((t) => t.id === saved) ? saved : 'live';
+    } catch {
+      return 'live';
+    }
+  });
+  const tabRefs = useRef([]);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { theme } = useTheme();
   const cardVariant = theme === 'dark' ? 'dark' : 'light';
+
+  useEffect(() => {
+    try { localStorage.setItem(TAB_STORAGE_KEY, activeTab); } catch { /* private mode */ }
+  }, [activeTab]);
+
+  // Roving-tabindex keyboard nav so the tablist behaves like a real one.
+  const onTabKeyDown = useCallback((e) => {
+    const idx = DASHBOARD_TABS.findIndex((t) => t.id === activeTab);
+    let next = null;
+    if (e.key === 'ArrowRight') next = (idx + 1) % DASHBOARD_TABS.length;
+    else if (e.key === 'ArrowLeft') next = (idx - 1 + DASHBOARD_TABS.length) % DASHBOARD_TABS.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = DASHBOARD_TABS.length - 1;
+    if (next === null) return;
+    e.preventDefault();
+    setActiveTab(DASHBOARD_TABS[next].id);
+    tabRefs.current[next]?.focus();
+  }, [activeTab]);
 
   const fetchVenue = useCallback(async (code) => {
     try {
@@ -149,13 +191,15 @@ export default function VenueDashboard() {
     );
   }
 
+  const upcomingCount = queue.upcoming?.length || 0;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-dark-950 dark:to-dark-900">
-      {/* Header — leads with the venue name. Sticky + frosted glass so it
-          stays in reach while scrolling a long dashboard, with a translucent
-          blur that reads as depth over the content beneath. */}
+      {/* Header — leads with the venue name, then a tab strip. Sticky + frosted
+          glass so both the identity and the section tabs stay in reach while
+          scrolling, with a translucent blur that reads as depth. */}
       <header className="sticky top-0 z-20 bg-white/75 dark:bg-dark-900/70 supports-[backdrop-filter]:bg-white/60 supports-[backdrop-filter]:dark:bg-dark-900/55 backdrop-blur-xl border-b border-zinc-200/80 dark:border-dark-600/80">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
           <div className="flex items-start sm:items-center justify-between gap-3">
             <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100 truncate">
@@ -200,6 +244,46 @@ export default function VenueDashboard() {
               </button>
             </div>
           </div>
+
+          {/* Section tabs — keep the whole dashboard in reach without a long scroll. */}
+          <div
+            role="tablist"
+            aria-label="Dashboard sections"
+            onKeyDown={onTabKeyDown}
+            className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-3 -mx-1 px-1"
+          >
+            {DASHBOARD_TABS.map((t, i) => {
+              const Icon = t.icon;
+              const selected = activeTab === t.id;
+              const badge = t.id === 'live' ? upcomingCount : 0;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  id={`tab-${t.id}`}
+                  aria-selected={selected}
+                  aria-controls={`panel-${t.id}`}
+                  tabIndex={selected ? 0 : -1}
+                  ref={(el) => { tabRefs.current[i] = el; }}
+                  onClick={() => setActiveTab(t.id)}
+                  className={`inline-flex items-center gap-2 whitespace-nowrap px-4 py-2 text-sm font-semibold rounded-full transition-all duration-300 ease-spring min-h-[40px] ${
+                    selected
+                      ? 'bg-brand-500 text-white shadow-glow-brand'
+                      : 'bg-zinc-100/80 dark:bg-dark-800/80 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200/80 dark:hover:bg-dark-700'
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {t.label}
+                  {badge > 0 && (
+                    <span className={`ml-0.5 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-[11px] font-bold tabular-nums ${selected ? 'bg-white/25 text-white' : 'bg-brand-500 text-white'}`}>
+                      {badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </header>
 
@@ -214,130 +298,145 @@ export default function VenueDashboard() {
           </div>
         )}
 
-        {/* Queue — promoted to the top, this is the at-a-glance view owners care most about */}
-        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '40ms' }}>
-          <div className="flex items-start gap-3 mb-4">
-            <div className="p-2.5 bg-gradient-to-br from-green-100 to-green-200 dark:from-green-500/25 dark:to-green-600/10 rounded-xl ring-1 ring-green-500/20 shadow-sm">
-              <ListMusic className="h-5 w-5 text-green-600 dark:text-green-400" />
+        {/* ── Live ── Queue + earnings: the at-a-glance, during-service view */}
+        {activeTab === 'live' && (
+          <div role="tabpanel" id="panel-live" aria-labelledby="tab-live">
+            <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '40ms' }}>
+              <div className="flex items-start gap-3 mb-4">
+                <div className="p-2.5 bg-gradient-to-br from-green-100 to-green-200 dark:from-green-500/25 dark:to-green-600/10 rounded-xl ring-1 ring-green-500/20 shadow-sm">
+                  <ListMusic className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 uppercase tracking-wide mb-1">
+                    Queue
+                  </h3>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    Now playing + upcoming songs. Use the player bar to skip; the buttons here remove songs.
+                  </p>
+                </div>
+              </div>
+              <QueueManager
+                queue={queue}
+                onRemove={handleRemove}
+                onBan={handleBanArtist}
+                variant={cardVariant}
+              />
             </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 uppercase tracking-wide mb-1">
-                Queue
-              </h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                Now playing + upcoming songs. Use the player bar to skip; the buttons here remove songs.
-              </p>
+
+            <div className="p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '100ms' }}>
+              <EarningsCard
+                venueCode={venue.code}
+                showPlaceholder={!venue.settings?.requirePaymentForRequest}
+                variant={cardVariant}
+                embedded
+              />
             </div>
           </div>
-          <QueueManager
-            queue={queue}
-            onRemove={handleRemove}
-            onBan={handleBanArtist}
-            variant={cardVariant}
-          />
-        </div>
+        )}
 
-        {/* Pay-to-Play Earnings */}
-        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '100ms' }}>
-          <EarningsCard
-            venueCode={venue.code}
-            showPlaceholder={!venue.settings?.requirePaymentForRequest}
-            variant={cardVariant}
-            embedded
-          />
-        </div>
-
-        {/* Browse & schedule playlists (Figma-style) */}
-        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '160ms' }}>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 bg-gradient-to-br from-orange-100 to-orange-200 dark:from-orange-500/25 dark:to-orange-600/10 rounded-xl ring-1 ring-orange-500/20 shadow-sm">
-                <ListMusic className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 uppercase tracking-wide mb-1">
-                  Playlists &amp; schedule
-                </h3>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-xl">
-                  Set the active playlist and schedule different playlists by time of day. Autofill shuffles from the
-                  playlist that matches the current slot; customer requests are unchanged.
-                </p>
-                {effectiveAutoplayMode === 'playlist' && (
-                  <div className="mt-3 max-w-xl rounded-lg border border-orange-100 dark:border-orange-900/40 bg-orange-50/90 dark:bg-orange-950/20 px-3 py-2.5 text-sm">
-                    <span className="text-zinc-600 dark:text-zinc-300">Autoplay is on </span>
-                    <span className="font-semibold text-zinc-800 dark:text-zinc-100">playlist</span>
-                    <span className="text-zinc-600 dark:text-zinc-300"> mode — active library: </span>
-                    {activePlaylistName ? (
-                      <Link
-                        to="/venue/playlists"
-                        className="font-semibold text-brand-600 hover:text-brand-700 hover:underline"
-                      >
-                        {activePlaylistName}
-                      </Link>
-                    ) : (
-                      <span className="text-amber-800 font-medium">None set yet — open Browse &amp; schedule to choose one.</span>
+        {/* ── Music ── what plays automatically + what patrons can request */}
+        {activeTab === 'music' && (
+          <div role="tabpanel" id="panel-music" aria-labelledby="tab-music">
+            <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '40ms' }}>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 bg-gradient-to-br from-orange-100 to-orange-200 dark:from-orange-500/25 dark:to-orange-600/10 rounded-xl ring-1 ring-orange-500/20 shadow-sm">
+                    <ListMusic className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 uppercase tracking-wide mb-1">
+                      Playlists &amp; schedule
+                    </h3>
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-xl">
+                      Set the active playlist and schedule different playlists by time of day. Autofill shuffles from the
+                      playlist that matches the current slot; customer requests are unchanged.
+                    </p>
+                    {effectiveAutoplayMode === 'playlist' && (
+                      <div className="mt-3 max-w-xl rounded-lg border border-orange-100 dark:border-orange-900/40 bg-orange-50/90 dark:bg-orange-950/20 px-3 py-2.5 text-sm">
+                        <span className="text-zinc-600 dark:text-zinc-300">Autoplay is on </span>
+                        <span className="font-semibold text-zinc-800 dark:text-zinc-100">playlist</span>
+                        <span className="text-zinc-600 dark:text-zinc-300"> mode — active library: </span>
+                        {activePlaylistName ? (
+                          <Link
+                            to="/venue/playlists"
+                            className="font-semibold text-brand-600 hover:text-brand-700 hover:underline"
+                          >
+                            {activePlaylistName}
+                          </Link>
+                        ) : (
+                          <span className="text-amber-800 font-medium">None set yet — open Browse &amp; schedule to choose one.</span>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/venue/playlists')}
+                  className="shrink-0 inline-flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl bg-brand-500 text-white shadow-glow-brand hover:bg-brand-400 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.97] transition-all duration-300 ease-spring min-h-[44px]"
+                >
+                  <Clock className="h-4 w-4" />
+                  Browse &amp; schedule
+                </button>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => navigate('/venue/playlists')}
-              className="shrink-0 inline-flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl bg-brand-500 text-white shadow-glow-brand hover:bg-brand-400 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.97] transition-all duration-300 ease-spring min-h-[44px]"
-            >
-              <Clock className="h-4 w-4" />
-              Browse &amp; schedule
-            </button>
+
+            <UserRequestsCard
+              venueCode={venue.code}
+              onSaved={() => fetchVenue(venue.code)}
+            />
           </div>
-        </div>
+        )}
 
-        <UserRequestsCard
-          venueCode={venue.code}
-          onSaved={() => fetchVenue(venue.code)}
-        />
-
-        <VolumeAlertsCard venueCode={venue.code} variant={cardVariant} />
-
-        {/* Analytics */}
-        <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '220ms' }}>
-          <AnalyticsDashboard venueCode={venue.code} variant={cardVariant} />
-        </div>
-
-        {/* Customer Voting Link — moved below analytics since the queue is now the headline at the top */}
-        <div className="p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '280ms' }}>
-          <div className="flex items-start gap-3 mb-4">
-            <div className="p-2.5 bg-gradient-to-br from-purple-100 to-purple-200 dark:from-purple-500/25 dark:to-purple-600/10 rounded-xl ring-1 ring-purple-500/20 shadow-sm">
-              <QrCode className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+        {/* ── Share ── promoted out of the page bottom: the QR is needed at setup */}
+        {activeTab === 'share' && (
+          <div role="tabpanel" id="panel-share" aria-labelledby="tab-share">
+            <div className="p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '40ms' }}>
+              <div className="flex items-start gap-3 mb-4">
+                <div className="p-2.5 bg-gradient-to-br from-purple-100 to-purple-200 dark:from-purple-500/25 dark:to-purple-600/10 rounded-xl ring-1 ring-purple-500/20 shadow-sm">
+                  <QrCode className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 uppercase tracking-wide mb-1">
+                    Customer Voting Link
+                  </h3>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    Print or display this so patrons can scan to vote and request music at {venue.name}.
+                  </p>
+                </div>
+              </div>
+              <QRCodeDisplay venueCode={venue.code} venueName={venue.name} variant="light" />
+              <div className="flex items-center gap-2 mt-4">
+                <code className="flex-1 px-3 py-2 bg-zinc-50 dark:bg-dark-900 border border-zinc-200 dark:border-dark-600 rounded-lg text-xs text-zinc-600 dark:text-zinc-300 font-mono break-all">
+                  {votingUrl}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(votingUrl)}
+                  aria-label="Copy voting link"
+                  className="min-h-touch min-w-touch flex items-center justify-center border border-zinc-300 dark:border-dark-600 rounded-xl hover:bg-zinc-50 dark:hover:bg-dark-700 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 ease-spring shrink-0"
+                >
+                  {copiedVotingUrl ? (
+                    <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  ) : (
+                    <Copy className="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
+                  )}
+                </button>
+              </div>
             </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-300 uppercase tracking-wide mb-1">
-                Customer Voting Link
-              </h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                Scan with your phone to vote on music at {venue.name}
-              </p>
+          </div>
+        )}
+
+        {/* ── Insights ── analytics + volume feedback: how the room is responding */}
+        {activeTab === 'insights' && (
+          <div role="tabpanel" id="panel-insights" aria-labelledby="tab-insights">
+            <div className="mb-6 p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '40ms' }}>
+              <AnalyticsDashboard venueCode={venue.code} variant={cardVariant} />
             </div>
+
+            <VolumeAlertsCard venueCode={venue.code} variant={cardVariant} />
           </div>
-          <QRCodeDisplay venueCode={venue.code} venueName={venue.name} variant="light" />
-          <div className="flex items-center gap-2 mt-4">
-            <code className="flex-1 px-3 py-2 bg-zinc-50 dark:bg-dark-900 border border-zinc-200 dark:border-dark-600 rounded-lg text-xs text-zinc-600 dark:text-zinc-300 font-mono break-all">
-              {votingUrl}
-            </code>
-            <button
-              type="button"
-              onClick={() => copyToClipboard(votingUrl)}
-              aria-label="Copy voting link"
-              className="min-h-touch min-w-touch flex items-center justify-center border border-zinc-300 dark:border-dark-600 rounded-xl hover:bg-zinc-50 dark:hover:bg-dark-700 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 ease-spring shrink-0"
-            >
-              {copiedVotingUrl ? (
-                <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
-              ) : (
-                <Copy className="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
-              )}
-            </button>
-          </div>
-        </div>
+        )}
       </main>
     </div>
   );
