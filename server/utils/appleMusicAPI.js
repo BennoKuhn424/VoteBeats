@@ -465,7 +465,10 @@ async function applyLyricsFilter(songs, venue) {
   const toScan = songs.filter((s) => s.appleId && !(familyFriendly && s.isExplicit === false));
   if (toScan.length === 0) return songs;
 
-  const deadline = Date.now() + LYRIC_SCAN_BUDGET_MS;
+  // Budget is overridable via env so tests can prove the cap works without
+  // waiting seconds; defaults to the 5s production cap.
+  const budgetMs = Number(process.env.LYRIC_SCAN_BUDGET_MS) || LYRIC_SCAN_BUDGET_MS;
+  const deadline = Date.now() + budgetMs;
   const concurrency = 8;
   const results = new Map(); // appleId -> { hitCount, lyricsFound }
   let i = 0;
@@ -496,11 +499,15 @@ async function applyLyricsFilter(songs, venue) {
 
   return songs.filter((s) => {
     const r = results.get(s.appleId);
-    if (!r) return true; // clean-rated, or not reached before the budget — keep
+    // Not scanned: either Apple rated it CLEAN (trusted, skipped) or the time
+    // budget ran out before we reached it. Keep it — degrading gracefully beats
+    // emptying the results when LRCLIB is slow.
+    if (!r) return true;
     if (r.lyricsFound) return r.hitCount < threshold;
-    // No lyrics on LRCLIB. Family-friendly keeps them (explicit + title checks
-    // already removed the obvious offenders). Legacy honours strict mode.
-    return familyFriendly ? true : !strict;
+    // Scanned but LRCLIB had no lyrics. In family-friendly mode the only songs
+    // here are UNRATED (Apple gave no rating) AND unverifiable — treat unknown
+    // as risky and REMOVE. Legacy mode honours strict.
+    return familyFriendly ? false : !strict;
   });
 }
 

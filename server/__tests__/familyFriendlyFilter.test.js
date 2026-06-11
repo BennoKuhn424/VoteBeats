@@ -61,15 +61,67 @@ describe('applyLyricsFilter — family-friendly (deep lyric scan)', () => {
     expect(fetchPlainLyrics).not.toHaveBeenCalled();
   });
 
-  test('keeps songs when no lyrics are found (does not nuke the catalogue)', async () => {
+  test('removes an UNRATED song with no lyrics (unknown = risky)', async () => {
+    // Apple rating null + LRCLIB has nothing → can't verify → drop in FF mode.
     fetchPlainLyrics.mockResolvedValue(null);
     const songs = [{ appleId: 'L4', title: 'Obscure', artist: 'A', isExplicit: null }];
-    expect(await applyLyricsFilter(songs, ff())).toHaveLength(1);
+    expect(await applyLyricsFilter(songs, ff())).toHaveLength(0);
+  });
+
+  test('keeps an Apple-CLEAN song even with no lyrics (rating is enough)', async () => {
+    fetchPlainLyrics.mockResolvedValue(null);
+    const songs = [{ appleId: 'L4b', title: 'Instrumental', artist: 'A', isExplicit: false }];
+    const out = await applyLyricsFilter(songs, ff());
+    expect(out).toHaveLength(1);
+    expect(fetchPlainLyrics).not.toHaveBeenCalled(); // clean songs are never fetched
   });
 
   test('passes through entirely when family-friendly is off', async () => {
     const songs = [{ appleId: 'L5', title: 'x', artist: 'A', isExplicit: null }];
     expect(await applyLyricsFilter(songs, { settings: {} })).toHaveLength(1);
     expect(fetchPlainLyrics).not.toHaveBeenCalled();
+  });
+});
+
+describe('applyLyricsFilter — performance (cannot take ages)', () => {
+  const ORIGINAL_BUDGET = process.env.LYRIC_SCAN_BUDGET_MS;
+  afterEach(() => {
+    if (ORIGINAL_BUDGET === undefined) delete process.env.LYRIC_SCAN_BUDGET_MS;
+    else process.env.LYRIC_SCAN_BUDGET_MS = ORIGINAL_BUDGET;
+    jest.clearAllMocks();
+  });
+
+  test('honours the time budget when LRCLIB is slow — bounded, not 40×fetch', async () => {
+    process.env.LYRIC_SCAN_BUDGET_MS = '50'; // tiny budget for the test
+    // Every fetch is slow (200ms ≫ the 50ms budget).
+    fetchPlainLyrics.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve('clean happy lyrics here'), 200))
+    );
+    const songs = Array.from({ length: 40 }, (_, i) => ({
+      appleId: `slow${i}`, title: `T${i}`, artist: 'A', isExplicit: null,
+    }));
+
+    const start = Date.now();
+    const out = await applyLyricsFilter(songs, ff());
+    const elapsed = Date.now() - start;
+
+    // Only the first concurrent batch starts before the budget expires; the rest
+    // are never fetched. So this is ONE ~200ms batch, never 40×200ms = 8s.
+    expect(fetchPlainLyrics.mock.calls.length).toBeLessThanOrEqual(8);
+    expect(elapsed).toBeLessThan(800);
+    // Songs not reached in time are kept (graceful degradation, not an empty list).
+    expect(out.length).toBeGreaterThan(0);
+  });
+
+  test('uses a hard cap by default (no env) so production search stays responsive', async () => {
+    // Sanity: with the default budget and instant (cached-style) fetches, a big
+    // result set still resolves immediately.
+    fetchPlainLyrics.mockResolvedValue('clean lyrics');
+    const songs = Array.from({ length: 25 }, (_, i) => ({
+      appleId: `f${i}`, title: `T${i}`, artist: 'A', isExplicit: null,
+    }));
+    const start = Date.now();
+    await applyLyricsFilter(songs, ff());
+    expect(Date.now() - start).toBeLessThan(1000);
   });
 });
