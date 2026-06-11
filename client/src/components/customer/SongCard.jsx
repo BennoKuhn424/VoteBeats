@@ -8,6 +8,8 @@ export default function SongCard({ song, position }) {
         <img
           src={song.albumArt}
           alt={song.title}
+          loading="lazy"
+          decoding="async"
           className="w-14 h-14 rounded-xl object-cover shrink-0 ring-1 ring-white/5 transition-transform duration-300 ease-spring group-hover:scale-105"
         />
         <div className="flex-1 min-w-0">

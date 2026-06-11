@@ -122,6 +122,8 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
               <img
                 src={item.artwork || item.albumArt}
                 alt={item.trackName || item.title}
+                loading="lazy"
+                decoding="async"
                 className="w-14 h-14 rounded-lg object-cover shrink-0 ring-1 ring-white/5 transition-transform duration-300 ease-spring group-hover:scale-105"
               />
               <div className="flex-1 min-w-0">

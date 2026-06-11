@@ -7,6 +7,7 @@ const { patronPaymentWebhook } = require('./routes/webhooks');
 const { subscriptionWebhook } = require('./routes/subscriptionWebhooks');
 const { requestLogger } = require('./middleware/requestLogger');
 const { authLimiter, apiLimiter } = require('./middleware/rateLimiters');
+const { notFound, errorHandler } = require('./middleware/errorHandlers');
 
 const app = express();
 
@@ -147,9 +148,16 @@ app.use('/api/owner', require('./routes/owner'));
 app.use('/api/payouts', require('./routes/payouts'));
 app.use('/api/subscriptions', require('./routes/subscriptions'));
 
+// No route matched — return a JSON 404 (before the error handlers below).
+app.use(notFound);
+
+// Sentry captures the error first, then re-throws to our handler below.
 if (process.env.SENTRY_DSN) {
   const Sentry = require('@sentry/node');
   Sentry.setupExpressErrorHandler(app);
 }
+
+// Terminal JSON error handler — must be registered last.
+app.use(errorHandler);
 
 module.exports = { app, queueRouter, allowedOrigins };

@@ -104,6 +104,8 @@ export default function QueueManager({ queue, onRemove, onBan, variant = 'dark' 
                   <img
                     src={song.albumArt}
                     alt={song.title || 'Song'}
+                    loading="lazy"
+                    decoding="async"
                     className="w-10 h-10 rounded-lg object-cover shrink-0"
                     onError={(e) => { e.currentTarget.style.display = 'none'; }}
                   />
