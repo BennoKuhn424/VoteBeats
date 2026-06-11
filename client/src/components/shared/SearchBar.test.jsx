@@ -291,3 +291,38 @@ describe('SearchBar — content rules', () => {
     );
   });
 });
+
+// ── Request pending state (family-friendly lyric check can take ~1s) ───────────
+describe('SearchBar — request pending state', () => {
+  it('shows a Checking… spinner while the request is in flight, then clears on success', async () => {
+    const user = userEvent.setup();
+    let resolveRequest;
+    const onRequestSong = vi.fn(() => new Promise((r) => { resolveRequest = r; }));
+    mockSearch.mockResolvedValue({ data: { results: [SONG_ITEM] } });
+    render(<SearchBar venueCode="V1" onRequestSong={onRequestSong} />);
+    await user.type(screen.getByPlaceholderText(/search/i), 'test');
+    await user.click(screen.getByRole('button', { name: /^search$/i }));
+    await waitFor(() => screen.getByText('Test Track'));
+
+    await user.click(screen.getByText('Test Track'));
+    expect(screen.getByText(/checking/i)).toBeInTheDocument(); // spinner up while pending
+
+    resolveRequest(true);
+    await waitFor(() => expect(screen.queryByText('Test Track')).not.toBeInTheDocument());
+  });
+
+  it('keeps the results list up when the request is rejected (returns false)', async () => {
+    const user = userEvent.setup();
+    const onRequestSong = vi.fn().mockResolvedValue(false); // e.g. server "not family-friendly"
+    mockSearch.mockResolvedValue({ data: { results: [SONG_ITEM] } });
+    render(<SearchBar venueCode="V1" onRequestSong={onRequestSong} />);
+    await user.type(screen.getByPlaceholderText(/search/i), 'test');
+    await user.click(screen.getByRole('button', { name: /^search$/i }));
+    await waitFor(() => screen.getByText('Test Track'));
+
+    await user.click(screen.getByText('Test Track'));
+    // Rejected → the list stays so the patron can pick another song.
+    await waitFor(() => expect(screen.getByText('Test Track')).toBeInTheDocument());
+    expect(onRequestSong).toHaveBeenCalled();
+  });
+});

@@ -167,6 +167,10 @@ export default function CustomerVoting() {
   // ── Fallback poll — visibility-aware, pauses when phone screen off ───────
   useVisibilityAwarePolling(fetchQueue, 15000);
 
+  // Returns true when the request succeeded (or is redirecting to payment),
+  // false when it was rejected — so the SearchBar knows whether to clear its
+  // results and can show a per-song "checking…" spinner while this runs (the
+  // family-friendly lyric check can add ~1s on the server).
   async function handleRequestSong(song, paymentInfo) {
     setRequestError('');
     try {
@@ -181,17 +185,18 @@ export default function CustomerVoting() {
             document.cookie = `speeldit_checkout_${venueCode}=${id}; path=/; max-age=600; SameSite=Lax`;
           }
           window.location.href = res.data.redirectUrl;
-          return;
+          return true;
         }
         setRequestError('Payment could not be started. Please try again.');
-        return;
-      } else {
-        await api.requestSong(venueCode, song, deviceId);
-        // Socket push will update the queue; also fetch to refresh myVotes
-        fetchQueue();
+        return false;
       }
+      await api.requestSong(venueCode, song, deviceId);
+      // Socket push will update the queue; also fetch to refresh myVotes
+      fetchQueue();
+      return true;
     } catch (err) {
       setRequestError(err.response?.data?.error || 'Error requesting song');
+      return false;
     }
   }
 

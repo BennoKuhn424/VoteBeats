@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search } from 'lucide-react';
+import { Search, Loader2 } from 'lucide-react';
 import api from '../../utils/api';
 
 export default function SearchBar({ venueCode, onRequestSong, requestSettings }) {
@@ -11,6 +11,7 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState(null);
+  const [pendingId, setPendingId] = useState(null); // song currently being requested
   const debounceRef = useRef(null);
 
   async function runSearch(searchQuery) {
@@ -60,10 +61,11 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
     runSearch(query);
   }
 
-  function handleRequest(item) {
+  async function handleRequest(item) {
     // Explicit songs can't be requested in family-friendly mode — the UI marks
     // them, but guard here too so a stray click is a no-op.
     if (familyFriendly && item.explicit) return;
+    if (pendingId) return; // one request at a time
     // Support both /api/search format (trackName, artistName, artwork, songId) and legacy (title, artist, albumArt, appleId)
     const song = {
       id: `song_${item.songId || item.appleId}`,
@@ -77,9 +79,20 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
       explicit: item.explicit === true,
       rating: item.rating,
     };
-    onRequestSong(song, requiresPayment ? { requiresPayment, priceRand } : null);
-    setResults([]);
-    setQuery('');
+    const id = item.songId || item.appleId;
+    setPendingId(id);
+    try {
+      // The server runs the family-friendly lyric check here, so this can take
+      // ~1s for an unrated song. Only clear the results if it was accepted —
+      // a rejected song keeps the list up so the patron can pick another.
+      const ok = await onRequestSong(song, requiresPayment ? { requiresPayment, priceRand } : null);
+      if (ok !== false) {
+        setResults([]);
+        setQuery('');
+      }
+    } finally {
+      setPendingId(null);
+    }
   }
 
   return (
@@ -134,15 +147,16 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
         <div className="mt-4 bg-dark-800 rounded-2xl overflow-hidden border border-dark-600 shadow-elevated max-h-72 overflow-y-auto motion-safe:animate-scale-in">
           {results.map((item, index) => {
             const blocked = familyFriendly && item.explicit;
+            const isPending = pendingId === (item.songId || item.appleId);
             return (
               <button
                 key={item.songId || item.appleId}
                 type="button"
-                disabled={blocked}
+                disabled={blocked || pendingId !== null}
                 aria-label={blocked ? `${item.trackName ?? item.title} — explicit, not available in family-friendly mode` : undefined}
                 className={`group w-full flex items-center gap-4 p-4 text-left border-b border-dark-700 last:border-b-0 motion-safe:animate-fade-up transition-colors ${
-                  blocked ? 'opacity-60 cursor-not-allowed' : 'hover:bg-dark-700 active:bg-dark-600'
-                }`}
+                  blocked ? 'opacity-60 cursor-not-allowed' : isPending ? 'bg-dark-700' : 'hover:bg-dark-700 active:bg-dark-600'
+                } ${pendingId !== null && !isPending ? 'opacity-50' : ''}`}
                 style={{ animationDelay: `${Math.min(index, 6) * 45}ms` }}
                 onClick={() => handleRequest(item)}
               >
@@ -166,7 +180,12 @@ export default function SearchBar({ venueCode, onRequestSong, requestSettings })
                     {item.artistName ?? item.artist}
                   </p>
                 </div>
-                {blocked ? (
+                {isPending ? (
+                  <span className="min-h-touch w-28 px-4 flex items-center justify-center gap-1.5 bg-amethyst-600 text-white rounded-xl text-sm font-bold shrink-0">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    Checking…
+                  </span>
+                ) : blocked ? (
                   <span className="min-h-touch px-3 flex items-center justify-center text-center text-[11px] font-semibold leading-tight text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl shrink-0 w-24">
                     Not family-friendly
                   </span>
