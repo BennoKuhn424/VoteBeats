@@ -23,6 +23,14 @@ WAL mode means the most recent writes live in `speeldit.db-wal` and haven't
 been merged into the main file yet. A copy of just `speeldit.db` would be
 missing that data and would fail `integrity_check` on the next boot.
 
+**Every fresh backup is verified before it counts.** Right after writing, the
+script reopens the new file read-only and runs `PRAGMA integrity_check`. If it
+doesn't return `ok`, the backup is deleted and the script exits non-zero (code
+4) so alerting fires — a silently-corrupt backup is worse than none.
+
+Exit codes: `0` success · `1` no DB · `2` backup failed · `3` uncaught ·
+`4` fresh backup failed integrity · `5` off-disk upload failed.
+
 ## Where backups live
 
 `DATA_DIR/backups/speeldit-<UTC-timestamp>.db`, e.g.:
@@ -33,6 +41,40 @@ DATA_DIR/backups/speeldit-2026-05-04T14-06-12.db
 
 The 14 most recent are kept; older backups are pruned automatically on each
 run. Override retention with `BACKUP_RETENTION=N` in the environment.
+
+> ⚠️ **`DATA_DIR/backups/` is on the SAME disk as the database.** If that disk
+> fails, you lose the DB *and* every local backup with it. Local backups only
+> protect against logical mistakes (bad migration, accidental delete), not
+> hardware loss. For real disaster recovery you **must** also copy off-disk —
+> see the next section.
+
+## Off-disk copy (disaster recovery) — **set this up**
+
+`backup-db.js` ships each verified backup off-box when `BACKUP_REMOTE_CMD` is
+set. The command runs via the shell; the token `{file}` is replaced with the
+absolute backup path and `{base}` with the filename. No SDK is bundled — use
+whatever uploader you already have:
+
+```bash
+# Amazon S3
+BACKUP_REMOTE_CMD='aws s3 cp {file} s3://my-bucket/speeldit/'
+
+# Cloudflare R2 / Backblaze B2 / any S3-compatible store via rclone
+BACKUP_REMOTE_CMD='rclone copy {file} r2:speeldit-backups/'
+
+# Backblaze B2 CLI
+BACKUP_REMOTE_CMD='b2 upload-file my-bucket {file} speeldit/{base}'
+```
+
+Set `BACKUP_REMOTE_CMD` (and the uploader's own credentials, e.g.
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` or an `rclone.conf`) in the Render
+environment. If the upload fails the script exits `5` but **keeps the local
+copy**, so a transient network blip never loses the backup. Let the remote
+handle long-term retention (S3 lifecycle / object-lock rules) — that also gives
+you protection against ransomware/accidental deletion that local pruning can't.
+
+If `BACKUP_REMOTE_CMD` is unset the script logs `LOCAL ONLY` and succeeds — fine
+for dev, **not acceptable for production.**
 
 ## Cron / scheduled run
 
@@ -113,10 +155,9 @@ script failing partway through and being silently overwritten the next night.
   compression). With 14 retained backups and a 100 MB live DB, expect
   ~1.4 GB consumed in `DATA_DIR/backups/`. Bump `BACKUP_RETENTION` only as
   needed; favour off-host archival instead of long retention here.
-- **Off-host archival.** This script only writes to `DATA_DIR`. For
-  disaster recovery (the host itself dies), additionally rclone/rsync the
-  `backups/` directory to S3/B2/etc. on a separate cron line. We don't bake
-  cloud upload into the script to keep it dependency-free.
+- **Off-host archival.** Built into the script via `BACKUP_REMOTE_CMD` (see
+  "Off-disk copy" above). It stays dependency-free by shelling out to your
+  uploader of choice rather than bundling a cloud SDK.
 - **Encryption at rest.** The DB is not encrypted on disk. Only the
   `pending_payments.song` / `device_id` columns use field-level encryption
   (when `PAYMENT_ENCRYPTION_KEY` is set). If your backups are stored
