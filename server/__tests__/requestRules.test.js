@@ -21,6 +21,12 @@ describe('checkRequestAllowed — family-friendly', () => {
   it('allows explicit songs when family-friendly is off', () => {
     expect(checkRequestAllowed(venue({ familyFriendly: false }), { explicit: true })).toBeNull();
   });
+
+  it('rejects a song with profanity in the title even if Apple did not flag it', () => {
+    const r = checkRequestAllowed(venue({ familyFriendly: true }), { title: 'Fuck You', artist: 'X', explicit: false });
+    expect(r).not.toBeNull();
+    expect(r.body.code).toBe('QUEUE_NOT_FAMILY_FRIENDLY');
+  });
 });
 
 describe('checkRequestAllowed — genre restriction', () => {

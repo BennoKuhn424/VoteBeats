@@ -366,6 +366,19 @@ function filterByVenueSettings(songs, venue) {
 
   let filtered = songs;
 
+  // ── Family-friendly: instant, no-network swear filters ──
+  // 1. Drop anything Apple's label flagged explicit.
+  // 2. Drop anything with profanity in the TITLE or ARTIST — catches songs the
+  //    label didn't flag but whose name gives it away.
+  // Deeper lyric scanning for the survivors happens in applyLyricsFilter.
+  if (venue.settings.familyFriendly === true) {
+    const extras = Array.isArray(venue.settings.blockedTitleWords) ? venue.settings.blockedTitleWords : [];
+    filtered = filtered.filter((s) => s.isExplicit !== true);
+    filtered = filtered.filter(
+      (s) => countProfanity(`${s.title || ''} ${s.artist || ''}`, ['en', 'af'], extras) === 0
+    );
+  }
+
   // Time-based explicit filter: allow explicit after a certain hour (venue local time).
   // If explicitAfterHour is set, it overrides allowExplicit during the scheduled hours.
   const strict = venue.settings.strictExplicit === true;
@@ -407,52 +420,59 @@ function filterByVenueSettings(songs, venue) {
 }
 
 /**
- * Async filter that scans each song's lyrics (via LRCLIB, cached) and drops
- * songs whose profanity hit count meets or exceeds the venue threshold.
+ * Async filter that scans song lyrics (via LRCLIB, cached) and drops any whose
+ * profanity hit count meets the threshold. This is the deep swear filter that
+ * catches songs the label never flagged explicit.
  *
- * Behaviour:
- *   - Disabled unless venue.settings.lyricsFilter === true.
- *   - Threshold: venue.settings.lyricsThreshold (default 1).
- *   - Languages:  venue.settings.lyricsLanguages (default ['en']).
- *   - Parallel fetch for all songs, bounded by a concurrency limit so we
- *     don't slam LRCLIB on big result sets.
- *   - When lyrics can't be found, the song is KEPT by default. If the venue
- *     also has strictExplicit on, unknown-lyrics songs are dropped too
- *     (same "unknown = risky" semantics as the contentRating check).
- *   - Cached for 24h per (appleId, languages).
+ * Runs when either:
+ *   - venue.settings.familyFriendly === true  (EN+AF packs, threshold 1 — any
+ *     single swear drops the song), or
+ *   - venue.settings.lyricsFilter === true     (legacy: configurable threshold/langs)
+ *
+ * Performance: the whole pass is capped by a hard wall-clock budget so search
+ * can never hang the way it used to. Songs Apple already rated CLEAN
+ * (isExplicit === false) are trusted and skipped — only the unrated ones get a
+ * lyric fetch, which keeps the fetch count down. Anything not scanned in time
+ * (or with no lyrics on LRCLIB) is KEPT — the title/artist + explicit filters
+ * already removed the obvious offenders, so we don't nuke the whole catalogue.
+ * Results cache for 24h, so repeat searches are instant.
  */
+const LYRIC_SCAN_BUDGET_MS = 5000;
+
 async function applyLyricsFilter(songs, venue) {
   if (!Array.isArray(songs) || songs.length === 0) return songs;
-  if (!venue?.settings || venue.settings.lyricsFilter !== true) return songs;
+  const settings = venue?.settings;
+  if (!settings) return songs;
 
-  // Default threshold is 3 — at 1 even a single common swear drops the song,
-  // which removes most popular tracks. 3 is the sane "loud chorus of profanity"
-  // bar that still catches the songs venues actually want to block.
-  const threshold = Math.max(1, Number(venue.settings.lyricsThreshold) || 3);
-  // Empty languages array is now valid — it means "scan only with the venue's
-  // custom words". Falling back to ['en'] would silently re-enable a built-in
-  // pack the operator switched off.
-  const languages = Array.isArray(venue.settings.lyricsLanguages)
-    ? venue.settings.lyricsLanguages
-    : ['en'];
-  const extras = Array.isArray(venue.settings.blockedTitleWords)
-    ? venue.settings.blockedTitleWords
-    : [];
-  // No words at all → nothing to scan against; act as a passthrough.
+  const familyFriendly = settings.familyFriendly === true;
+  const legacy = settings.lyricsFilter === true;
+  if (!familyFriendly && !legacy) return songs;
+
+  // Family-friendly is intentionally strict: any single swear (threshold 1),
+  // both built-in packs. Legacy mode keeps its configurable knobs.
+  const threshold = familyFriendly ? 1 : Math.max(1, Number(settings.lyricsThreshold) || 3);
+  const languages = familyFriendly
+    ? ['en', 'af']
+    : (Array.isArray(settings.lyricsLanguages) ? settings.lyricsLanguages : ['en']);
+  const extras = Array.isArray(settings.blockedTitleWords) ? settings.blockedTitleWords : [];
   if (languages.length === 0 && extras.length === 0) return songs;
 
-  const strict = venue.settings.strictExplicit === true;
+  const strict = settings.strictExplicit === true;
 
-  // Pool-based concurrency to avoid hammering LRCLIB on 25+ results.
-  const concurrency = 6;
+  // Which songs to fetch lyrics for. In family-friendly mode we trust Apple's
+  // CLEAN rating and skip those (saves fetches). Legacy lyricsFilter mode scans
+  // everything the operator asked to scan.
+  const toScan = songs.filter((s) => s.appleId && !(familyFriendly && s.isExplicit === false));
+  if (toScan.length === 0) return songs;
+
+  const deadline = Date.now() + LYRIC_SCAN_BUDGET_MS;
+  const concurrency = 8;
   const results = new Map(); // appleId -> { hitCount, lyricsFound }
   let i = 0;
 
   async function worker() {
-    while (i < songs.length) {
-      const idx = i++;
-      const song = songs[idx];
-      if (!song || !song.appleId) continue;
+    while (i < toScan.length && Date.now() < deadline) {
+      const song = toScan[i++];
       const cached = lyricsCache.get(song.appleId, languages, extras);
       if (cached) {
         results.set(song.appleId, cached);
@@ -462,6 +482,7 @@ async function applyLyricsFilter(songs, venue) {
         title: song.title,
         artist: song.artist,
         duration: song.duration,
+        timeoutMs: 1800,
       });
       const entry = lyrics
         ? { hitCount: countProfanity(lyrics, languages, extras), lyricsFound: true }
@@ -471,14 +492,15 @@ async function applyLyricsFilter(songs, venue) {
     }
   }
 
-  await Promise.all(Array.from({ length: Math.min(concurrency, songs.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(concurrency, toScan.length) }, worker));
 
   return songs.filter((s) => {
     const r = results.get(s.appleId);
-    if (!r) return true; // couldn't scan (edge case) — keep
+    if (!r) return true; // clean-rated, or not reached before the budget — keep
     if (r.lyricsFound) return r.hitCount < threshold;
-    // Lyrics not found: drop only when strict mode is on.
-    return !strict;
+    // No lyrics on LRCLIB. Family-friendly keeps them (explicit + title checks
+    // already removed the obvious offenders). Legacy honours strict mode.
+    return familyFriendly ? true : !strict;
   });
 }
 
@@ -534,10 +556,10 @@ async function searchAppleMusic(query, venueCode) {
             ? false
             : null,
       }));
-      // Sync filters only (genre / blocked) — fast. Family-friendly is enforced
-      // via Apple's explicit flag at request time + flagged in the UI, so search
-      // never fetches lyrics. This is the fix for "search takes minutes".
-      return filterByVenueSettings(songs, venue);
+      // Sync filters (explicit flag, title/artist profanity, genre) run first
+      // and instantly; the lyric scan only runs when family-friendly is on and
+      // is hard-capped by a time budget, so search stays responsive.
+      return filterByVenueSettingsAsync(songs, venue);
     } catch (err) {
       console.error('Apple Music API error:', err);
       if (isMockCatalogEnabled()) return mockSearch(query, venue);
@@ -557,7 +579,7 @@ async function mockSearch(query, venue) {
       s.artist.toLowerCase().includes(q) ||
       s.genre.toLowerCase().includes(q)
   );
-  return filterByVenueSettings(matched.length ? matched : MOCK_CATALOG.slice(0, 5), venue);
+  return filterByVenueSettingsAsync(matched.length ? matched : MOCK_CATALOG.slice(0, 5), venue);
 }
 
 // Pick a random song from a venue's curated playlist.

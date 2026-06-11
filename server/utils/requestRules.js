@@ -1,4 +1,5 @@
 const E = require('./errorCodes');
+const { countProfanity } = require('./profanityFilter');
 
 /**
  * Enforce a venue's patron-facing content rules against a submitted song.
@@ -17,14 +18,20 @@ const E = require('./errorCodes');
 function checkRequestAllowed(venue, song) {
   const s = venue?.settings || {};
 
-  if (s.familyFriendly === true && song?.explicit === true) {
-    return {
-      status: 400,
-      body: {
-        error: "This song is explicit and can't be requested in family-friendly mode",
-        code: E.QUEUE_NOT_FAMILY_FRIENDLY,
-      },
-    };
+  if (s.familyFriendly === true) {
+    const extras = Array.isArray(s.blockedTitleWords) ? s.blockedTitleWords : [];
+    // Reject label-flagged explicit OR a swear in the title/artist. (The lyric
+    // scan runs at search time; this is the instant backstop for direct posts.)
+    const titleProfane = countProfanity(`${song?.title || ''} ${song?.artist || ''}`, ['en', 'af'], extras) > 0;
+    if (song?.explicit === true || titleProfane) {
+      return {
+        status: 400,
+        body: {
+          error: "This song isn't family-friendly and can't be requested here",
+          code: E.QUEUE_NOT_FAMILY_FRIENDLY,
+        },
+      };
+    }
   }
 
   const genres = Array.isArray(s.genreFilters) ? s.genreFilters.filter(Boolean) : [];
