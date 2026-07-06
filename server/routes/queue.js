@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../utils/database');
 const E = require('../utils/errorCodes');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 const authMiddleware = require('../middleware/authMiddleware');
 const requireSubscriptionActive = require('../middleware/requireSubscriptionActive');
 const { requireVenueSubscriptionActive } = require('../middleware/requireSubscriptionActive');
