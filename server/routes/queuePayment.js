@@ -63,7 +63,9 @@ function attachPaymentRoutes(router) {
     try {
       const { checkoutId, redirectUrl } = await provider.createCheckout({
         amountCents: priceCents,
-        currency: 'ZAR',
+        // ZAR for the SA providers; international deploys set PAYMENT_CURRENCY
+        // (e.g. USD, EUR) — Stripe prices the checkout in that currency.
+        currency: (process.env.PAYMENT_CURRENCY || 'ZAR').toUpperCase(),
         successUrl,
         cancelUrl,
         failureUrl,

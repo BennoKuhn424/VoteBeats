@@ -10,6 +10,7 @@
  */
 
 const YocoPatronPaymentProvider = require('./YocoPatronPaymentProvider');
+const StripePatronPaymentProvider = require('./StripePatronPaymentProvider');
 
 let cached = null;
 
@@ -18,6 +19,8 @@ function buildProvider() {
   switch (name) {
     case 'yoco':
       return new YocoPatronPaymentProvider();
+    case 'stripe':
+      return new StripePatronPaymentProvider();
     default:
       console.warn(
         `[providers] Unknown PATRON_PAYMENT_PROVIDER="${name}" — falling back to "yoco".`
