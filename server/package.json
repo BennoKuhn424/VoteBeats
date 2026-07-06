@@ -8,7 +8,8 @@
     "dev": "node --watch server.js",
     "build": "npm install",
     "test": "jest --runInBand --forceExit",
-    "hash-owner-password": "node scripts/hash-owner-password.js"
+    "hash-owner-password": "node scripts/hash-owner-password.js",
+    "seed-demo": "node scripts/seed-demo.js"
   },
   "dependencies": {
     "@sentry/node": "^10.47.0",

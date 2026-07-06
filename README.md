@@ -74,8 +74,15 @@ Optional env (full list):
 | `RATE_LIMIT_API_MAX` | General API cap per minute / IP (default `500`) |
 | `APPLE_MUSIC_DEVELOPER_TOKEN` | Pre-generated Apple Music token (optional if using key file) |
 | `PUBLIC_URL` | Frontend URL for redirects (e.g. `https://yourapp.vercel.app`) |
+| `PATRON_PAYMENT_PROVIDER` | `yoco` (default, South Africa) or `stripe` (international) — which checkout vendor handles pay-to-play |
+| `PAYMENT_CURRENCY` | Currency for patron song-request checkouts (default `ZAR`; Stripe supports `USD`, `EUR`, `GBP`, …) |
 | `YOCO_SECRET_KEY` | Yoco API secret for pay-to-play (Bearer token to verify checkouts) |
 | `YOCO_WEBHOOK_SECRET` | Optional `whsec_…` signing secret from Yoco — when set, incoming webhooks must pass HMAC verification (recommended in production) |
+| `STRIPE_SECRET_KEY` | Stripe API secret (`sk_…`) — required for either Stripe provider |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret (`whsec_…`) of the Stripe endpoint pointing at `/api/webhooks/payment` |
+| `STRIPE_PRICE_ID` | Stripe recurring Price id (`price_…`) for venue subscriptions |
+| `STRIPE_SUBSCRIPTION_WEBHOOK_SECRET` | Signing secret of the Stripe endpoint pointing at `/api/webhooks/subscription` (falls back to `STRIPE_WEBHOOK_SECRET`) |
+| `SUBSCRIPTION_PROVIDER` | `paystack` (default, South Africa) or `stripe` (international) — venue subscription billing vendor |
 | `VENUE_EARNINGS_PERCENT` | Venue revenue share % of Yoco song-request payments (default `70`) |
 | `PAYSTACK_SECRET_KEY` | Paystack secret key (`sk_test_...` or `sk_live_...`) for venue subscriptions |
 | `PAYSTACK_PUBLIC_KEY` | Paystack public key, used client-side in the inline popup |
@@ -84,6 +91,8 @@ Optional env (full list):
 | `PAYSTACK_SUBSCRIPTION_AMOUNT_ZAR` | Monthly subscription price in rand (default `599`) |
 | `PAYSTACK_TRIAL_DAYS` | Free-trial length in days (default `14`) |
 | `ADMIN_SECRET` | Admin API key (header `X-Admin-Key`) |
+| `RESEND_API_KEY` | [Resend](https://resend.com) key for transactional email (verification, password reset, billing notices). **Without it, no email is sent and new accounts are auto-verified at registration** — set it in production so email verification is actually enforced. |
+| `RESEND_FROM_EMAIL` | From-address for transactional email (default `onboarding@resend.dev`) |
 | `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_MUSIC_KEY_PATH` | MusicKit token generation (see below) |
 | `SENTRY_DSN` | Optional – [Sentry](https://sentry.io) DSN for API error reporting |
 | `SENTRY_ENVIRONMENT` | Optional – label in Sentry (defaults to `NODE_ENV`) |
@@ -250,13 +259,32 @@ For real search and full playback:
 
 Legacy: You can still set `APPLE_MUSIC_DEVELOPER_TOKEN` if you prefer a pre-generated token. Without either, mock catalog is used for search (playback requires real credentials).
 
-## Pay-to-play (Yoco)
+## Pay-to-play (Yoco or Stripe)
 
-Venue owners can enable “Require payment to suggest a song” in Settings. Customers then pay (R5–R50) via Yoco Checkout before their request is added to the queue.
+Venue owners can enable “Require payment to suggest a song” in Settings. Customers then pay (R5–R50 equivalent) via a hosted checkout before their request is added to the queue. Two vendors are supported — pick one with `PATRON_PAYMENT_PROVIDER`:
+
+**Yoco (South Africa, default):**
 
 1. Sign up at [Yoco](https://www.yoco.com/) and get API keys from the [Developer Hub](https://developer.yoco.com/).
 2. Set `YOCO_SECRET_KEY` (use `sk_test_...` for testing) and `PUBLIC_URL` on the server.
 3. Register your webhook URL `https://your-backend.com/api/webhooks/yoco` in the Yoco dashboard (see [webhooks guide](https://developer.yoco.com/guides/online-payments/webhooks)).
+
+**Stripe (international):**
+
+1. Set `PATRON_PAYMENT_PROVIDER=stripe`, `STRIPE_SECRET_KEY`, and optionally `PAYMENT_CURRENCY` (e.g. `USD`).
+2. In the Stripe dashboard, add a webhook endpoint for `https://your-backend.com/api/webhooks/payment` with events `checkout.session.completed` and `checkout.session.async_payment_succeeded`; paste its signing secret into `STRIPE_WEBHOOK_SECRET`.
+
+## Venue subscriptions (Paystack or Stripe)
+
+Monthly venue billing with a free trial. Pick a vendor with `SUBSCRIPTION_PROVIDER`:
+
+**Paystack (South Africa, default):** set `PAYSTACK_SECRET_KEY`, `PAYSTACK_PLAN_CODE` (R599/month plan), and `PAYSTACK_WEBHOOK_SECRET`; webhook URL is `https://your-backend.com/api/webhooks/paystack`.
+
+**Stripe (international):**
+
+1. Create a recurring monthly Price in the Stripe dashboard; set `SUBSCRIPTION_PROVIDER=stripe`, `STRIPE_SECRET_KEY`, and `STRIPE_PRICE_ID`.
+2. Add a webhook endpoint for `https://your-backend.com/api/webhooks/subscription` with events `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, and `invoice.payment_failed`; paste its signing secret into `STRIPE_SUBSCRIPTION_WEBHOOK_SECRET`.
+3. Venue owners get Stripe’s hosted Billing Portal from the “Manage subscription” button (card updates, cancellation) — no extra configuration needed.
 
 ## License
 

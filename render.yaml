@@ -1,0 +1,41 @@
+# Render Blueprint — one-click backend deploy.
+# https://render.com/docs/blueprint-spec
+#
+# Creates the API service with a persistent disk for the SQLite database.
+# After the first deploy:
+#   1. Set CORS_ORIGINS + PUBLIC_URL to your frontend URL (Vercel).
+#   2. Add payment credentials for your region:
+#      - South Africa: YOCO_SECRET_KEY, PAYSTACK_SECRET_KEY, PAYSTACK_PLAN_CODE
+#      - International: PATRON_PAYMENT_PROVIDER=stripe, SUBSCRIPTION_PROVIDER=stripe,
+#        STRIPE_SECRET_KEY, STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET(S), PAYMENT_CURRENCY
+#   3. Set RESEND_API_KEY so email verification is enforced.
+#   4. Set OWNER_EMAIL + OWNER_PASSWORD_HASH (npm run hash-owner-password).
+#   5. Schedule the nightly backup (see BACKUPS.md).
+
+services:
+  - type: web
+    name: speeldit-api
+    runtime: node
+    rootDir: server
+    plan: starter
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /health
+    disk:
+      name: speeldit-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PAYMENT_ENCRYPTION_KEY
+        generateValue: true
+      # Fill these in after the frontend is deployed:
+      - key: CORS_ORIGINS
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
