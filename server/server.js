@@ -115,6 +115,11 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000);
 
+// Nightly SQLite backup — in-process because Render web services have no
+// cron. Runs scripts/backup-db.js on a timer; see utils/backupScheduler.js.
+const { startBackupScheduler } = require('./utils/backupScheduler');
+const backupScheduler = startBackupScheduler();
+
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(JSON.stringify({
@@ -132,6 +137,7 @@ function gracefulShutdown(signal) {
   shuttingDown = true;
   clearInterval(advanceInterval);
   clearInterval(autofillSweepInterval);
+  backupScheduler?.stop();
   console.log(JSON.stringify({
     t: new Date().toISOString(),
     msg: 'speeldit-server-shutdown',

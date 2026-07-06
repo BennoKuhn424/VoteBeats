@@ -76,21 +76,28 @@ you protection against ransomware/accidental deletion that local pruning can't.
 If `BACKUP_REMOTE_CMD` is unset the script logs `LOCAL ONLY` and succeeds — fine
 for dev, **not acceptable for production.**
 
-## Cron / scheduled run
+## Scheduled runs — built in (no cron required)
 
-On Render's persistent-disk plan (or any host with cron), schedule:
+**In production the server schedules backups itself.** `server.js` starts an
+in-process scheduler (`server/utils/backupScheduler.js`) that spawns this
+script every `BACKUP_INTERVAL_HOURS` (default 24), with the first run 5
+minutes after boot. This exists because Render web services have no cron and
+Render's Cron Job service type cannot mount another service's disk — the only
+process that can reach the SQLite file is the server itself.
+
+- Success/failure is logged as JSON (`db-backup-ok` / `db-backup-failed` with
+  the script's exit code) — point your log-drain alerting at those lines.
+- Outside production the scheduler is off by default; set
+  `BACKUP_INTERVAL_HOURS` to enable it, or `0` to disable it anywhere.
+
+On hosts that DO have cron and where you prefer it, disable the in-process
+scheduler (`BACKUP_INTERVAL_HOURS=0`) and schedule:
 
 ```
 0 3 * * * cd /opt/render/project/src/server && node scripts/backup-db.js
 ```
 
-Adjust the path to wherever the server checkout lives. The script exits non-
-zero on failure — wire that into your alerting (Render's "command exit code"
-notifier, a wrapping script that pages on failure, etc.).
-
-For environments without cron (e.g. some Render web-service plans), run the
-backup as a **scheduled job**: a small worker that fires the script every
-24h. Render's "Cron Job" service type does exactly this.
+The script exits non-zero on failure — wire that into your alerting.
 
 ## How to restore
 
