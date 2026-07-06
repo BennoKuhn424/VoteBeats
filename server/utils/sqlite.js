@@ -158,6 +158,7 @@ db.exec(`
     location TEXT DEFAULT '',
     owner_email TEXT NOT NULL,
     owner_password_hash TEXT NOT NULL,
+    email_verified INTEGER,
     settings TEXT NOT NULL DEFAULT '{}',
     playlists TEXT NOT NULL DEFAULT '[]',
     active_playlist_id TEXT,
@@ -306,6 +307,11 @@ function addColumnIfMissing(table, column, definition) {
 addColumnIfMissing('subscriptions', 'paystack_email_token', 'TEXT');
 addColumnIfMissing('subscriptions', 'paystack_authorization_code', 'TEXT');
 addColumnIfMissing('subscriptions', 'paystack_init_reference', 'TEXT');
+
+// Email-verification state for venue owner logins. Three-valued on purpose:
+// 1 = verified, 0 = registered but not yet verified, NULL = legacy account
+// created before this column existed (grandfathered — never blocked at login).
+addColumnIfMissing('venues', 'email_verified', 'INTEGER');
 
 console.log('[DB] SQLite database:', DB_PATH, process.env.DATA_DIR ? '(persistent)' : '(ephemeral - set DATA_DIR for Render disk)');
 

@@ -40,9 +40,14 @@ export default function VenueLogin() {
 
     try {
       if (isRegister) {
-        await api.register(email, password, venueName, location);
-        // Registration no longer auto-logs in — show verification message
-        setInfo('Registration successful! Check your email for a verification link.');
+        const res = await api.register(email, password, venueName, location);
+        // Registration no longer auto-logs in. Usually the account needs email
+        // verification first — but a server without outbound email configured
+        // auto-verifies (requiresVerification: false), so don't tell the user
+        // to wait for an email that will never come.
+        setInfo(res.data?.requiresVerification === false
+          ? 'Registration successful! You can now log in.'
+          : 'Registration successful! Check your email for a verification link.');
         setIsRegister(false);
         setPassword('');
       } else {

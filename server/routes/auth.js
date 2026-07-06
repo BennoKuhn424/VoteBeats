@@ -10,7 +10,7 @@ const {
   resetPasswordSchema, resendVerificationSchema,
 } = require('../utils/schemas');
 const { revoke, isRevoked } = require('../utils/tokenBlacklist');
-const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
+const { isEmailConfigured, sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
 const { emailLimiter, tokenVerifyLimiter } = require('../middleware/rateLimiters');
 
 const router = express.Router();
@@ -118,11 +118,15 @@ router.post('/register', validate(registerSchema), async (req, res) => {
     const code = generateVenueCode();
     const passwordHash = await bcrypt.hash(password, 10);
 
+    // If outbound email isn't configured (no RESEND_API_KEY), the verify link
+    // can never arrive — auto-verify instead of locking the account out.
+    const canSendEmail = isEmailConfigured();
+
     const venue = {
       code,
       name: venueName,
       location: location || '',
-      owner: { email: emailNorm, passwordHash, emailVerified: false },
+      owner: { email: emailNorm, passwordHash, emailVerified: !canSendEmail },
       settings: {
         allowExplicit: false,
         strictExplicit: false,
@@ -142,6 +146,15 @@ router.post('/register', validate(registerSchema), async (req, res) => {
     };
 
     db.saveVenue(code, venue);
+
+    if (!canSendEmail) {
+      console.warn('[EMAIL] RESEND_API_KEY not set — account auto-verified at registration');
+      return res.status(201).json({
+        message: 'Registration successful. You can now log in.',
+        venueCode: code,
+        requiresVerification: false,
+      });
+    }
 
     // Send verification email
     const verifyToken = generateSecureToken();

@@ -8,6 +8,16 @@ const FROM = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
 const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:5173';
 
 /**
+ * True when outbound email can actually be delivered. Callers that gate access
+ * on a delivered email (e.g. registration → verify link → login) must check
+ * this first: every send function below silently no-ops without an API key,
+ * and blocking login on an email that can never arrive would lock the user out.
+ */
+function isEmailConfigured() {
+  return resend !== null;
+}
+
+/**
  * Send an email verification link to a newly registered venue owner.
  * @param {string} to - recipient email
  * @param {string} token - verification token
@@ -234,6 +244,7 @@ function escapeHtml(str) {
 }
 
 module.exports = {
+  isEmailConfigured,
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendTrialStartedEmail,

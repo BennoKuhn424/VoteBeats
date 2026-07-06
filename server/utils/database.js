@@ -9,11 +9,12 @@ const stmtGetVenue = db.prepare('SELECT * FROM venues WHERE code = ?');
 const stmtGetVenueByOwnerEmail = db.prepare('SELECT * FROM venues WHERE owner_email = ? COLLATE NOCASE LIMIT 1');
 const stmtGetAllVenues = db.prepare('SELECT * FROM venues');
 const stmtUpsertVenue = db.prepare(`
-  INSERT INTO venues (code, name, location, owner_email, owner_password_hash, settings, playlists, active_playlist_id, created_at)
-  VALUES (@code, @name, @location, @owner_email, @owner_password_hash, @settings, @playlists, @active_playlist_id, @created_at)
+  INSERT INTO venues (code, name, location, owner_email, owner_password_hash, email_verified, settings, playlists, active_playlist_id, created_at)
+  VALUES (@code, @name, @location, @owner_email, @owner_password_hash, @email_verified, @settings, @playlists, @active_playlist_id, @created_at)
   ON CONFLICT(code) DO UPDATE SET
     name = @name, location = @location, owner_email = @owner_email,
-    owner_password_hash = @owner_password_hash, settings = @settings,
+    owner_password_hash = @owner_password_hash, email_verified = @email_verified,
+    settings = @settings,
     playlists = @playlists, active_playlist_id = @active_playlist_id,
     created_at = @created_at
 `);
@@ -185,6 +186,12 @@ function rowToVenue(row) {
     owner: {
       email: row.owner_email,
       passwordHash: row.owner_password_hash,
+      // Three-valued: true/false from the column, or absent (undefined) for
+      // legacy rows where email_verified is NULL — login treats undefined as
+      // grandfathered and only blocks an explicit false.
+      ...(row.email_verified === 0 || row.email_verified === 1
+        ? { emailVerified: row.email_verified === 1 }
+        : {}),
     },
     settings,
     playlists: safeParseJSON(row.playlists, []),
@@ -195,12 +202,14 @@ function rowToVenue(row) {
 
 /** Flatten a venue object into DB row params. */
 function venueToRow(code, venue) {
+  const verified = venue.owner?.emailVerified;
   return {
     code,
     name: venue.name || code,
     location: venue.location || '',
     owner_email: venue.owner?.email || '',
     owner_password_hash: venue.owner?.passwordHash || '',
+    email_verified: verified === true ? 1 : verified === false ? 0 : null,
     settings: JSON.stringify(venue.settings || {}),
     playlists: JSON.stringify(venue.playlists || []),
     active_playlist_id: venue.activePlaylistId || null,

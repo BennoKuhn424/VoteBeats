@@ -18,6 +18,20 @@ jest.mock('../utils/yoco', () => ({
   verifyYocoWebhookSignature: jest.fn().mockReturnValue(true),
 }));
 jest.mock('../utils/appleMusicToken', () => ({ getToken: jest.fn().mockResolvedValue('mock-token') }));
+// Outbound email is "configured" here so register exercises the verification
+// flow. (Without this, no RESEND_API_KEY in the test env → auto-verify branch.)
+jest.mock('../utils/email', () => ({
+  // Plain function, NOT jest.fn — a jest.resetAllMocks() in this suite would
+  // strip a jest.fn implementation and make this return undefined.
+  isEmailConfigured: () => true,
+  sendVerificationEmail: jest.fn(async () => {}),
+  sendPasswordResetEmail: jest.fn(async () => {}),
+  sendTrialStartedEmail: jest.fn(async () => {}),
+  sendTrialEndingEmail: jest.fn(async () => {}),
+  sendSubscriptionReceiptEmail: jest.fn(async () => {}),
+  sendSubscriptionPaymentFailedEmail: jest.fn(async () => {}),
+  sendSubscriptionCanceledEmail: jest.fn(async () => {}),
+}));
 
 const request = require('supertest');
 const bcrypt = require('bcryptjs');
