@@ -8,14 +8,15 @@
 
 import { test, expect } from '@playwright/test';
 
-// Use any registered venue code — the E2E environment must have at least one.
-// Override via VITE_E2E_VENUE_CODE env var if needed.
+// Set by e2e/global-setup.js, which registers a fresh venue via the API.
 const VENUE_CODE = process.env.E2E_VENUE_CODE || 'TESTVN';
 
 test.describe('Customer voting page — page structure', () => {
-  test('renders the "Be the vibe" heading', async ({ page }) => {
+  test('renders the "Be the vibe" label and the venue-name heading', async ({ page }) => {
     await page.goto(`/v/${VENUE_CODE}`);
-    await expect(page.getByRole('heading', { name: /be the vibe/i })).toBeVisible();
+    // "Be the vibe" is the eyebrow label; the h1 is the venue's name.
+    await expect(page.getByText(/be the vibe/i)).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   });
 
   test('renders the search bar', async ({ page }) => {
@@ -77,7 +78,7 @@ test.describe('Customer voting page — mobile / QR-scan scenario', () => {
   test('page is responsive at 390x844 (iPhone 14 viewport)', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/v/${VENUE_CODE}`);
-    await expect(page.getByRole('heading', { name: /be the vibe/i })).toBeVisible();
+    await expect(page.getByText(/be the vibe/i)).toBeVisible();
     await expect(page.getByPlaceholder(/search for a song/i)).toBeVisible();
   });
 

@@ -145,6 +145,13 @@ describe('GET /api/queue/:venueCode', () => {
     expect(res.status).toBe(500);
     expect(res.body.error).toMatch(/could not read queue/i);
   });
+
+  test('returns 404 for a venue code that does not exist', async () => {
+    db.getVenue.mockReturnValue(undefined);
+    const res = await request(app).get('/api/queue/ZZZZZZ');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/venue not found/i);
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

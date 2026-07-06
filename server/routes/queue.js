@@ -100,8 +100,14 @@ router.get('/:venueCode', async (req, res) => {
   try {
     const { venueCode } = req.params;
     const { deviceId } = req.query;
-    const queue = queueRepo.get(venueCode);
     const venue = db.getVenue(venueCode);
+    // 404 for unknown codes so a patron scanning a stale/mistyped QR sees
+    // "Venue not found" instead of a working-looking page for a queue that
+    // no venue will ever play from.
+    if (!venue) {
+      return res.status(404).json({ error: 'Venue not found', code: E.QUEUE_VENUE_NOT_FOUND });
+    }
+    const queue = queueRepo.get(venueCode);
 
     let myVotes = {};
     if (deviceId) {
