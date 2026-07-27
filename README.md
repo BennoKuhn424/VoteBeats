@@ -82,7 +82,11 @@ Optional env (full list):
 | `STRIPE_WEBHOOK_SECRET` | Signing secret (`whsec_…`) of the Stripe endpoint pointing at `/api/webhooks/payment` |
 | `STRIPE_PRICE_ID` | Stripe recurring Price id (`price_…`) for venue subscriptions |
 | `STRIPE_SUBSCRIPTION_WEBHOOK_SECRET` | Signing secret of the Stripe endpoint pointing at `/api/webhooks/subscription` (falls back to `STRIPE_WEBHOOK_SECRET`) |
-| `SUBSCRIPTION_PROVIDER` | `paystack` (default, South Africa) or `stripe` (international) — venue subscription billing vendor |
+| `SUBSCRIPTION_PROVIDER` | `paystack` (default), `payfast` (South Africa, recommended) or `stripe` (international) — venue subscription billing vendor |
+| `PAYFAST_MERCHANT_ID` / `PAYFAST_MERCHANT_KEY` / `PAYFAST_PASSPHRASE` | PayFast merchant credentials (passphrase must match the account setting) |
+| `PAYFAST_SANDBOX` | `true` targets the PayFast sandbox and relaxes the ITN source-IP check — never in production |
+| `PUBLIC_API_URL` | Public https base of this API; PayFast ITNs are posted to `{PUBLIC_API_URL}/api/webhooks/subscription` |
+| `SUBSCRIPTION_GRACE_DAYS` | Days past the paid-through date before an active sub stops counting as paid (default `5`) |
 | `VENUE_EARNINGS_PERCENT` | Venue revenue share % of Yoco song-request payments (default `70`) |
 | `PAYSTACK_SECRET_KEY` | Paystack secret key (`sk_test_...` or `sk_live_...`) for venue subscriptions |
 | `PAYSTACK_PUBLIC_KEY` | Paystack public key, used client-side in the inline popup |
@@ -274,11 +278,13 @@ Venue owners can enable “Require payment to suggest a song” in Settings. Cus
 1. Set `PATRON_PAYMENT_PROVIDER=stripe`, `STRIPE_SECRET_KEY`, and optionally `PAYMENT_CURRENCY` (e.g. `USD`).
 2. In the Stripe dashboard, add a webhook endpoint for `https://your-backend.com/api/webhooks/payment` with events `checkout.session.completed` and `checkout.session.async_payment_succeeded`; paste its signing secret into `STRIPE_WEBHOOK_SECRET`.
 
-## Venue subscriptions (Paystack or Stripe)
+## Venue subscriptions (PayFast, Paystack or Stripe)
 
 Monthly venue billing with a free trial. Pick a vendor with `SUBSCRIPTION_PROVIDER`:
 
-**Paystack (South Africa, default):** set `PAYSTACK_SECRET_KEY`, `PAYSTACK_PLAN_CODE` (R599/month plan), and `PAYSTACK_WEBHOOK_SECRET`; webhook URL is `https://your-backend.com/api/webhooks/paystack`.
+**PayFast (South Africa, recommended):** set `SUBSCRIPTION_PROVIDER=payfast`, `PAYFAST_MERCHANT_ID`, `PAYFAST_MERCHANT_KEY`, `PAYFAST_PASSPHRASE` (must match the passphrase set on the PayFast account) and `PUBLIC_API_URL` (public https base of the API — PayFast posts its ITN webhook to `{PUBLIC_API_URL}/api/webhooks/subscription`, no dashboard webhook config needed). The free trial works via a 0.00 card-tokenization checkout; the first real charge lands on the trial-end date. ITNs are verified four ways (MD5 signature, PayFast source IP, server-to-server `/validate` postback, amount match) before anything activates. `PAYFAST_SANDBOX=true` targets sandbox.payfast.co.za for testing — never set it in production. PayFast has no hosted "manage subscription" page; venues cancel in-app (server-side cancel goes through PayFast's API).
+
+**Paystack (legacy default):** set `PAYSTACK_SECRET_KEY`, `PAYSTACK_PLAN_CODE` (R599/month plan), and `PAYSTACK_WEBHOOK_SECRET`; webhook URL is `https://your-backend.com/api/webhooks/paystack`.
 
 **Stripe (international):**
 

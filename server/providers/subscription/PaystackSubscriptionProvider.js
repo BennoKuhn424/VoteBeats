@@ -12,7 +12,10 @@ class PaystackSubscriptionProvider extends SubscriptionProvider {
   }
 
   isConfigured() {
-    return Boolean(process.env.PAYSTACK_SECRET_KEY && process.env.PAYSTACK_PLAN_CODE);
+    return Boolean(
+      process.env.PAYSTACK_SECRET_KEY
+        && (process.env.SUBSCRIPTION_PLAN_CODE || process.env.PAYSTACK_PLAN_CODE)
+    );
   }
 
   async createCustomer({ email, firstName, lastName, phone, metadata }) {

@@ -3,6 +3,20 @@ const db = require('../utils/database');
 const ACTIVE_STATUSES = new Set(['trialing', 'active']);
 
 /**
+ * Days past currentPeriodEnd before an active/trialing subscription stops
+ * counting as paid. The status flag alone is not enough: if the provider's
+ * renewal webhooks stop arriving (endpoint broken, provider outage, card
+ * cancelled at the bank with no notification), a sub would otherwise stay
+ * 'active' forever — service delivered, nothing paid. The grace window keeps
+ * a briefly-late webhook from blocking a paying venue, while a genuinely
+ * unpaid one expires on its own.
+ */
+function graceDays() {
+  const n = parseInt(process.env.SUBSCRIPTION_GRACE_DAYS, 10);
+  return Number.isFinite(n) && n >= 0 ? n : 5;
+}
+
+/**
  * Returns the subscription status of a venue and whether it's allowed to
  * operate. Centralised so the venue-auth guard and the patron-facing guard
  * stay in sync.
@@ -18,6 +32,16 @@ function checkVenueSubscription(venueCode) {
   if (!sub || status === 'none') {
     return { ok: !strict, status: 'none', strict };
   }
+
+  // Paid-through check: an "active" flag whose paid period lapsed beyond the
+  // grace window is treated as expired, not honoured on faith.
+  if (ACTIVE_STATUSES.has(status) && sub.currentPeriodEnd) {
+    const graceMs = graceDays() * 24 * 60 * 60 * 1000;
+    if (Date.now() > sub.currentPeriodEnd + graceMs) {
+      return { ok: false, status: 'expired', strict };
+    }
+  }
+
   return { ok: ACTIVE_STATUSES.has(status), status, strict };
 }
 

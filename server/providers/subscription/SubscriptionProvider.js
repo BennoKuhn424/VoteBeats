@@ -24,6 +24,44 @@ class SubscriptionProvider {
     throw new Error('SubscriptionProvider.name must be overridden');
   }
 
+  /**
+   * How a new subscription becomes active:
+   *  - 'verify'  — the /complete route verifies the card capture by reference
+   *                and creates the subscription itself (Paystack, Stripe).
+   *  - 'webhook' — the provider has no pre-webhook verification endpoint; the
+   *                subscription is activated by its (fully verified) webhook
+   *                and /complete only reports progress (PayFast ITN).
+   * @returns {'verify'|'webhook'}
+   */
+  get activationVia() {
+    return 'verify';
+  }
+
+  /**
+   * Parse a raw webhook body into the object handed to normalizeWebhookEvent.
+   * Default JSON; form-encoded providers (PayFast ITN) override.
+   * Throwing here means "malformed body" and the webhook is rejected.
+   * @param {Buffer} rawBody
+   * @returns {object}
+   */
+  parseWebhookBody(rawBody) {
+    const raw = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : String(rawBody || '');
+    return JSON.parse(raw || '{}');
+  }
+
+  /**
+   * Optional asynchronous webhook confirmation beyond verifyWebhook — e.g.
+   * PayFast's server-to-server /validate postback. Runs AFTER the synchronous
+   * signature check. Return false to reject the webhook; network failures
+   * should throw (caller answers non-2xx so the provider retries delivery).
+   * @param {Buffer} rawBody
+   * @returns {Promise<boolean>}
+   */
+  // eslint-disable-next-line no-unused-vars
+  async validateWebhook(rawBody) {
+    return true;
+  }
+
   /** @returns {boolean} Whether the provider has the env vars it needs. */
   isConfigured() {
     throw new Error('SubscriptionProvider.isConfigured must be overridden');

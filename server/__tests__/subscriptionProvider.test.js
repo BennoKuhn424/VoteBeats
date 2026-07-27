@@ -232,21 +232,32 @@ describe('PaystackSubscriptionProvider — response translation', () => {
       .rejects.toThrow(/Network error/);
   });
 
-  test('isConfigured requires both PAYSTACK_SECRET_KEY and PAYSTACK_PLAN_CODE', () => {
-    const prev = { secret: process.env.PAYSTACK_SECRET_KEY, plan: process.env.PAYSTACK_PLAN_CODE };
+  test('isConfigured requires PAYSTACK_SECRET_KEY and a plan code (either env spelling)', () => {
+    const prev = {
+      secret: process.env.PAYSTACK_SECRET_KEY,
+      plan: process.env.PAYSTACK_PLAN_CODE,
+      neutral: process.env.SUBSCRIPTION_PLAN_CODE,
+    };
     try {
       delete process.env.PAYSTACK_SECRET_KEY;
       delete process.env.PAYSTACK_PLAN_CODE;
+      delete process.env.SUBSCRIPTION_PLAN_CODE;
       expect(provider.isConfigured()).toBe(false);
       process.env.PAYSTACK_SECRET_KEY = 'sk_x';
       expect(provider.isConfigured()).toBe(false);
       process.env.PAYSTACK_PLAN_CODE = 'PLN_x';
+      expect(provider.isConfigured()).toBe(true);
+      // The provider-neutral spelling works too.
+      delete process.env.PAYSTACK_PLAN_CODE;
+      process.env.SUBSCRIPTION_PLAN_CODE = 'PLN_y';
       expect(provider.isConfigured()).toBe(true);
     } finally {
       if (prev.secret !== undefined) process.env.PAYSTACK_SECRET_KEY = prev.secret;
       else delete process.env.PAYSTACK_SECRET_KEY;
       if (prev.plan !== undefined) process.env.PAYSTACK_PLAN_CODE = prev.plan;
       else delete process.env.PAYSTACK_PLAN_CODE;
+      if (prev.neutral !== undefined) process.env.SUBSCRIPTION_PLAN_CODE = prev.neutral;
+      else delete process.env.SUBSCRIPTION_PLAN_CODE;
     }
   });
 });

@@ -124,9 +124,15 @@ app.post('/api/webhooks/payment', express.raw({ type: 'application/json' }), pat
 app.post('/api/webhooks/yoco', express.raw({ type: 'application/json' }), patronPaymentWebhook);
 
 // Subscription webhook — raw body for provider signature verification.
+// Accepts BOTH content types: Paystack/Stripe post JSON, PayFast's ITN posts
+// application/x-www-form-urlencoded. The active provider parses the raw bytes
+// itself (parseWebhookBody), so no urlencoded body parser may run first.
 // Generic route + legacy Paystack alias so existing dashboard config keeps working.
-app.post('/api/webhooks/subscription', express.raw({ type: 'application/json' }), subscriptionWebhook);
-app.post('/api/webhooks/paystack', express.raw({ type: 'application/json' }), subscriptionWebhook);
+const subscriptionRawBody = express.raw({
+  type: ['application/json', 'application/x-www-form-urlencoded'],
+});
+app.post('/api/webhooks/subscription', subscriptionRawBody, subscriptionWebhook);
+app.post('/api/webhooks/paystack', subscriptionRawBody, subscriptionWebhook);
 
 // 50kb covers all legitimate API payloads (song requests, settings, votes).
 // Rejects oversized bodies before they reach route handlers.

@@ -31,7 +31,10 @@ const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:5173';
 
 function requireProviderConfigured(req, res, next) {
   const provider = getProvider();
-  if (!provider.isConfigured() || !process.env.SUBSCRIPTION_PLAN_CODE && !process.env.PAYSTACK_PLAN_CODE) {
+  // Each provider's isConfigured() knows its own requirements (Paystack needs
+  // a plan code, Stripe a price id, PayFast merchant credentials) — no
+  // provider-specific env checks belong here.
+  if (!provider.isConfigured()) {
     return res.status(503).json({
       error: 'Subscription billing is not configured on the server.',
       code: 'SUBSCRIPTION_NOT_CONFIGURED',
@@ -139,6 +142,17 @@ router.post('/complete', authMiddleware, requireProviderConfigured, async (req, 
       return res.json({ status: pendingSub.status, alreadyComplete: true });
     }
 
+    // Webhook-activated providers (PayFast): there is no pre-webhook
+    // verification endpoint — the fully verified ITN is what activates the
+    // subscription (see routes/subscriptionWebhooks.js). Nothing is activated
+    // here on trust; the client polls until the webhook lands.
+    if (provider.activationVia === 'webhook') {
+      return res.status(202).json({
+        status: 'pending_activation',
+        message: 'Waiting for payment confirmation from the provider.',
+      });
+    }
+
     const verification = await provider.verifyCardCapture(reference);
     if (!verification.verified) {
       return res.status(400).json({ error: 'Payment authorisation failed', code: 'AUTH_FAILED' });
@@ -200,6 +214,14 @@ router.post('/manage-link', authMiddleware, requireProviderConfigured, async (re
     });
     res.json({ link });
   } catch (err) {
+    // Providers without a hosted manage surface (PayFast) are a normal case,
+    // not a failure — tell the client so it can show its fallback copy.
+    if (err.code === 'PROVIDER_NO_MANAGE_LINK') {
+      return res.status(404).json({
+        error: 'This billing provider has no hosted management page.',
+        code: 'NO_MANAGE_LINK',
+      });
+    }
     console.error('[SUB] /manage-link failed:', err.message, err.paystack);
     res.status(502).json({ error: 'Could not generate manage link', code: 'SUBSCRIPTION_LINK_FAILED' });
   }

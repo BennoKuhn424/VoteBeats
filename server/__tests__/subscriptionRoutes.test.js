@@ -117,9 +117,10 @@ describe('POST /api/subscriptions/start', () => {
     expect(res.status).toBe(401);
   });
 
-  test('returns 503 when provider has no plan code configured', async () => {
-    delete process.env.PAYSTACK_PLAN_CODE;
-    delete process.env.SUBSCRIPTION_PLAN_CODE;
+  test('returns 503 when the provider reports itself unconfigured (e.g. Paystack without a plan code)', async () => {
+    // Each provider's isConfigured() owns its env requirements — the Paystack
+    // plan-code requirement itself is pinned in subscriptionProvider.test.js.
+    providerStub.isConfigured.mockReturnValue(false);
     const res = await authed('post', '/api/subscriptions/start', {});
     expect(res.status).toBe(503);
     expect(res.body.code).toBe('SUBSCRIPTION_NOT_CONFIGURED');
@@ -229,6 +230,44 @@ describe('POST /api/subscriptions/complete', () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('AUTH_FAILED');
     expect(providerStub.createSubscription).not.toHaveBeenCalled();
+  });
+
+  test('webhook-activated provider (PayFast) → 202 pending_activation, nothing activated on trust', async () => {
+    db.getSubscriptionByInitReference.mockReturnValue({
+      venueCode: 'TSTSUB',
+      status: 'incomplete',
+      providerCustomerId: 'cus_test',
+    });
+    providerStub.activationVia = 'webhook';
+    try {
+      const res = await authed('post', '/api/subscriptions/complete', { reference: REFERENCE });
+      expect(res.status).toBe(202);
+      expect(res.body.status).toBe('pending_activation');
+      // The route must not verify, create, or upsert anything — the verified
+      // webhook is the only activation path for these providers.
+      expect(providerStub.verifyCardCapture).not.toHaveBeenCalled();
+      expect(providerStub.createSubscription).not.toHaveBeenCalled();
+      expect(db.upsertSubscription).not.toHaveBeenCalled();
+    } finally {
+      delete providerStub.activationVia;
+    }
+  });
+
+  test('webhook-activated provider: once the ITN landed, /complete reports alreadyComplete', async () => {
+    db.getSubscriptionByInitReference.mockReturnValue({
+      venueCode: 'TSTSUB',
+      status: 'trialing',
+      providerCustomerId: 'cus_test',
+    });
+    providerStub.activationVia = 'webhook';
+    try {
+      const res = await authed('post', '/api/subscriptions/complete', { reference: REFERENCE });
+      expect(res.status).toBe(200);
+      expect(res.body.alreadyComplete).toBe(true);
+      expect(res.body.status).toBe('trialing');
+    } finally {
+      delete providerStub.activationVia;
+    }
   });
 
   test('rejects card that cannot be saved for recurring billing', async () => {

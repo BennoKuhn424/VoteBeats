@@ -13,6 +13,7 @@
 
 const PaystackSubscriptionProvider = require('./PaystackSubscriptionProvider');
 const StripeSubscriptionProvider = require('./StripeSubscriptionProvider');
+const PayfastSubscriptionProvider = require('./PayfastSubscriptionProvider');
 
 let cached = null;
 
@@ -23,6 +24,8 @@ function buildProvider() {
       return new PaystackSubscriptionProvider();
     case 'stripe':
       return new StripeSubscriptionProvider();
+    case 'payfast':
+      return new PayfastSubscriptionProvider();
     default:
       console.warn(
         `[providers] Unknown SUBSCRIPTION_PROVIDER="${name}" — falling back to "paystack".`

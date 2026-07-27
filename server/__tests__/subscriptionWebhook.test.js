@@ -12,6 +12,7 @@ jest.mock('../utils/email', () => ({
   sendSubscriptionReceiptEmail: jest.fn().mockResolvedValue(undefined),
   sendSubscriptionPaymentFailedEmail: jest.fn().mockResolvedValue(undefined),
   sendSubscriptionCanceledEmail: jest.fn().mockResolvedValue(undefined),
+  sendTrialStartedEmail: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('../providers/subscription', () => ({
   getProvider: jest.fn(),

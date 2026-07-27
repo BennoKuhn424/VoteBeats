@@ -34,6 +34,7 @@ export default function VenueBilling() {
     if (!callbackStatus) return;
     const map = {
       active: { tone: 'success', text: 'Your trial is live. You won\'t be charged until the trial ends.' },
+      pending: { tone: 'success', text: 'Payment received — we\'re waiting for final confirmation from the payment provider. Your subscription will activate automatically; check back in a few minutes.' },
       auth_failed: { tone: 'error', text: 'Card authorisation failed. Please try again with a different card.' },
       card_not_reusable: { tone: 'error', text: 'This card can\'t be saved for recurring billing. Please try another.' },
       missing_reference: { tone: 'error', text: 'Something went wrong during the redirect. Please try again.' },
@@ -75,6 +76,10 @@ export default function VenueBilling() {
       const r = await api.getSubscriptionManageLink();
       window.open(r.data.link, '_blank', 'noopener');
     } catch (e) {
+      if (e.response?.data?.code === 'NO_MANAGE_LINK') {
+        setError('Your billing provider has no self-service page. To change your card, cancel here and subscribe again — or contact support and we\'ll help.');
+        return;
+      }
       setError(e.response?.data?.error || 'Could not open manage link');
     }
   }

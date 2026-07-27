@@ -5,7 +5,10 @@
 # After the first deploy:
 #   1. Set CORS_ORIGINS + PUBLIC_URL to your frontend URL (Vercel).
 #   2. Add payment credentials for your region:
-#      - South Africa: YOCO_SECRET_KEY, PAYSTACK_SECRET_KEY, PAYSTACK_PLAN_CODE
+#      - South Africa: YOCO_SECRET_KEY (patron payments) plus subscriptions via
+#        SUBSCRIPTION_PROVIDER=payfast, PAYFAST_MERCHANT_ID, PAYFAST_MERCHANT_KEY,
+#        PAYFAST_PASSPHRASE, PUBLIC_API_URL (ITN webhook base)
+#        — or legacy Paystack: PAYSTACK_SECRET_KEY, PAYSTACK_PLAN_CODE
 #      - International: PATRON_PAYMENT_PROVIDER=stripe, SUBSCRIPTION_PROVIDER=stripe,
 #        STRIPE_SECRET_KEY, STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET(S), PAYMENT_CURRENCY
 #   3. Set RESEND_API_KEY so email verification is enforced.
