@@ -313,6 +313,44 @@ addColumnIfMissing('subscriptions', 'paystack_init_reference', 'TEXT');
 // created before this column existed (grandfathered — never blocked at login).
 addColumnIfMissing('venues', 'email_verified', 'INTEGER');
 
+// Proof of payment for payouts. Recorded when the owner marks a payout paid so
+// a venue disputing a transfer can be shown the bank reference and date rather
+// than just a status flag. Free-text reference (EFT ref / transaction number)
+// plus who recorded it — deliberately not a file upload: Render's disk is
+// ephemeral and money evidence must not live somewhere it can vanish.
+addColumnIfMissing('payouts', 'proof_reference', 'TEXT');
+addColumnIfMissing('payouts', 'proof_recorded_at', 'INTEGER');
+addColumnIfMissing('payouts', 'proof_recorded_by', 'TEXT');
+
+// Trace every payment row back to the checkout that produced it. Without this
+// a payment cannot be reconciled against the provider, and nothing stops the
+// same checkout being credited twice (the row id embeds Date.now(), so it is
+// unique per call rather than per checkout). The UNIQUE index below is the
+// real double-credit guard.
+addColumnIfMissing('payments', 'checkout_id', 'TEXT');
+db.exec(
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_checkout ON payments(checkout_id) WHERE checkout_id IS NOT NULL'
+);
+
+// Money that the provider confirmed but that we could not turn into a payment
+// row (abandoned checkout purged before the webhook landed, fulfilment crash,
+// amount-guard rejection). These are NOT lost — they are parked here for the
+// owner to inspect and settle by hand, instead of vanishing silently.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS orphaned_payments (
+    checkout_id TEXT PRIMARY KEY,
+    venue_code TEXT,
+    amount_cents INTEGER,
+    reason TEXT NOT NULL,
+    detail TEXT,
+    resolved INTEGER NOT NULL DEFAULT 0,
+    resolved_at INTEGER,
+    resolved_note TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_orphaned_resolved ON orphaned_payments(resolved, created_at);
+`);
+
 console.log('[DB] SQLite database:', DB_PATH, process.env.DATA_DIR ? '(persistent)' : '(ephemeral - set DATA_DIR for Render disk)');
 
 // Expose `close` as an own property of the exported handle so test cleanup can

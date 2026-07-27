@@ -15,6 +15,7 @@ import {
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import Logo from '../components/shared/Logo';
+import PayoutsPanel from '../components/owner/PayoutsPanel';
 
 export default function OwnerDashboard() {
   const navigate = useNavigate();
@@ -252,6 +253,8 @@ export default function OwnerDashboard() {
             ))}
           </ul>
         </div>
+
+        <PayoutsPanel />
 
         <AuditLogPanel
           entries={auditEntries}

@@ -24,6 +24,7 @@ import QRCodeDisplay from '../components/venue/QRCodeDisplay';
 import QueueManager from '../components/venue/QueueManager';
 import VenueSettings from '../components/venue/Settings';
 import EarningsCard from '../components/venue/EarningsCard';
+import OutstandingBalanceCard from '../components/venue/OutstandingBalanceCard';
 import AnalyticsDashboard from '../components/venue/AnalyticsDashboard';
 import VolumeAlertsCard from '../components/venue/VolumeAlertsCard';
 import UserRequestsCard from '../components/venue/UserRequestsCard';
@@ -331,6 +332,12 @@ export default function VenueDashboard() {
                 embedded
               />
             </div>
+
+            {venue.settings?.requirePaymentForRequest && (
+              <div className="p-6 bg-white dark:bg-dark-800 rounded-2xl border border-zinc-200/80 dark:border-dark-600 shadow-soft hover:shadow-elevated transition-all duration-300 ease-spring hover:-translate-y-0.5 motion-safe:animate-fade-up" style={{ animationDelay: '140ms' }}>
+                <OutstandingBalanceCard venueCode={venue.code} embedded />
+              </div>
+            )}
           </div>
         )}
 

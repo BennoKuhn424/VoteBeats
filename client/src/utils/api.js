@@ -181,16 +181,25 @@ export default {
     api.put(`/payouts/venue/${venueCode}/bank-details`, bankDetails),
   getVenuePayouts: (venueCode) =>
     api.get(`/payouts/venue/${venueCode}`),
+  getVenueOutstanding: (venueCode) =>
+    api.get(`/payouts/venue/${venueCode}/outstanding`),
 
   // Payouts — owner side
   generatePayouts: (year, month) =>
     api.post('/payouts/generate', { year, month }),
   listPayouts: (params) => api.get('/payouts', { params }),
-  updatePayoutStatus: (id, status, notes) =>
-    api.put(`/payouts/${id}/status`, { status, notes }),
-  markAllPayoutsPaid: (year, month) =>
-    api.post('/payouts/mark-all-paid', { year, month }),
+  // proofReference is required by the server when status === 'paid'.
+  updatePayoutStatus: (id, status, notes, proofReference) =>
+    api.put(`/payouts/${id}/status`, { status, notes, proofReference }),
+  markAllPayoutsPaid: (year, month, proofReference) =>
+    api.post('/payouts/mark-all-paid', { year, month, proofReference }),
   getPayoutSummary: () => api.get('/payouts/summary'),
+  getOutstandingPayouts: () => api.get('/payouts/outstanding'),
+  getOrphanedPayments: () => api.get('/payouts/orphaned'),
+  resolveOrphanedPayment: (checkoutId, note) =>
+    api.put(`/payouts/orphaned/${checkoutId}/resolve`, { note }),
+  reconcilePayouts: (year, month) =>
+    api.get('/payouts/reconcile', { params: { year, month } }),
 
   // Subscriptions (Paystack)
   getSubscription: () => api.get('/subscriptions/me'),

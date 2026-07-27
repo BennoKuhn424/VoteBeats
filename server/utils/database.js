@@ -1,3 +1,4 @@
+const { randomUUID } = require('crypto');
 const db = require('./sqlite');
 const paymentCrypto = require('./paymentCrypto');
 const { normalizePendingPayload, buildPendingPayload } = require('./pendingPaymentPayload');
@@ -49,9 +50,29 @@ const stmtSetPending = db.prepare(`
 `);
 const stmtRemovePending = db.prepare('DELETE FROM pending_payments WHERE checkout_id = ?');
 const stmtPurgeStalePending = db.prepare('DELETE FROM pending_payments WHERE created_at < ?');
+const stmtGetStalePending = db.prepare('SELECT * FROM pending_payments WHERE created_at < ?');
+
+// Orphaned payments — provider took money we could not book as a payment.
+const stmtAddOrphan = db.prepare(`
+  INSERT OR IGNORE INTO orphaned_payments
+    (checkout_id, venue_code, amount_cents, reason, detail, created_at)
+  VALUES (?, ?, ?, ?, ?, ?)
+`);
+const stmtGetUnresolvedOrphans = db.prepare(
+  'SELECT * FROM orphaned_payments WHERE resolved = 0 ORDER BY created_at DESC'
+);
+const stmtGetAllOrphans = db.prepare('SELECT * FROM orphaned_payments ORDER BY created_at DESC');
+const stmtResolveOrphan = db.prepare(
+  'UPDATE orphaned_payments SET resolved = 1, resolved_at = ?, resolved_note = ? WHERE checkout_id = ?'
+);
 
 // Payments
-const stmtAddPayment = db.prepare('INSERT INTO payments (id, venue_code, amount_cents, created_at) VALUES (?, ?, ?, ?)');
+// INSERT OR IGNORE + the UNIQUE index on checkout_id makes crediting a
+// checkout twice a no-op rather than double-paying the venue.
+const stmtAddPayment = db.prepare(
+  'INSERT OR IGNORE INTO payments (id, venue_code, amount_cents, created_at, checkout_id) VALUES (?, ?, ?, ?, ?)'
+);
+const stmtGetPaymentByCheckout = db.prepare('SELECT * FROM payments WHERE checkout_id = ?');
 const stmtGetPaymentsForVenueMonth = db.prepare(
   'SELECT * FROM payments WHERE venue_code = ? AND created_at >= ? AND created_at <= ?'
 );
@@ -164,6 +185,12 @@ const stmtInsertPayout = db.prepare(`
     @venue_amount_cents, @platform_amount_cents, @status, @paid_at, @notes, @created_at)
 `);
 const stmtUpdatePayoutStatus = db.prepare('UPDATE payouts SET status = ?, paid_at = ?, notes = ? WHERE id = ?');
+const stmtUpdatePayoutStatusWithProof = db.prepare(`
+  UPDATE payouts
+     SET status = ?, paid_at = ?, notes = ?,
+         proof_reference = ?, proof_recorded_at = ?, proof_recorded_by = ?
+   WHERE id = ?
+`);
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -282,6 +309,9 @@ function rowToPayout(row) {
     status: row.status,
     paidAt: row.paid_at || null,
     notes: row.notes || '',
+    proofReference: row.proof_reference || null,
+    proofRecordedAt: row.proof_recorded_at || null,
+    proofRecordedBy: row.proof_recorded_by || null,
     createdAt: row.created_at,
     monthLabel: `${row.year}-${String(row.month).padStart(2, '0')}`,
   };
@@ -466,16 +496,87 @@ module.exports = {
     stmtRemovePending.run(checkoutId);
   },
 
+  /** Pending payments older than maxAgeMs, for pre-purge verification. */
+  getStalePendingPayments: (maxAgeMs) => {
+    const cutoff = Date.now() - maxAgeMs;
+    return stmtGetStalePending.all(cutoff).map((row) => ({
+      checkoutId: row.checkout_id,
+      venueCode: row.venue_code,
+      amountCents: row.amount_cents,
+      createdAt: row.created_at,
+    }));
+  },
+
   purgeStalePendingPayments: (maxAgeMs) => {
     const cutoff = Date.now() - maxAgeMs;
     const result = stmtPurgeStalePending.run(cutoff);
     return result.changes;
   },
 
+  // ── Orphaned payments ───────────────────────────────────────────────────────
+  // Money the provider took that we could not turn into a payment row. Parked
+  // for manual settlement rather than dropped.
+
+  recordOrphanedPayment: ({ checkoutId, venueCode, amountCents, reason, detail }) => {
+    stmtAddOrphan.run(
+      checkoutId,
+      venueCode || null,
+      Number.isFinite(amountCents) ? amountCents : null,
+      reason,
+      detail ? JSON.stringify(detail) : null,
+      Date.now()
+    );
+  },
+
+  getOrphanedPayments: ({ includeResolved = false } = {}) => {
+    const rows = includeResolved ? stmtGetAllOrphans.all() : stmtGetUnresolvedOrphans.all();
+    return rows.map((row) => ({
+      checkoutId: row.checkout_id,
+      venueCode: row.venue_code,
+      amountCents: row.amount_cents,
+      amountRand: Number.isFinite(row.amount_cents) ? (row.amount_cents / 100).toFixed(2) : null,
+      reason: row.reason,
+      detail: row.detail ? JSON.parse(row.detail) : null,
+      resolved: Boolean(row.resolved),
+      resolvedAt: row.resolved_at || null,
+      resolvedNote: row.resolved_note || '',
+      createdAt: row.created_at,
+    }));
+  },
+
+  resolveOrphanedPayment: (checkoutId, note) => {
+    const result = stmtResolveOrphan.run(Date.now(), note || '', checkoutId);
+    return result.changes > 0;
+  },
+
   // Payments log
+  /**
+   * Record money received. Idempotent per checkoutId — a repeated call for the
+   * same checkout is ignored rather than crediting the venue twice.
+   * @returns {boolean} true if a new payment row was written.
+   */
   addPayment: (venueCode, amountCents, checkoutId) => {
-    const id = `pay_${Date.now()}_${checkoutId || ''}`.slice(0, 50);
-    stmtAddPayment.run(id, venueCode, amountCents, Date.now());
+    // Random suffix, not just Date.now(): two payments booked in the same
+    // millisecond (bulk fulfilment, or rows with no checkoutId) would otherwise
+    // collide on the primary key and the second would be silently dropped.
+    // Double-credit protection comes from the UNIQUE index on checkout_id.
+    const suffix = randomUUID().slice(0, 8);
+    const id = `pay_${Date.now()}_${suffix}_${checkoutId || ''}`.slice(0, 60);
+    const result = stmtAddPayment.run(id, venueCode, amountCents, Date.now(), checkoutId || null);
+    return result.changes > 0;
+  },
+
+  /** Look up a payment by the checkout that produced it (reconciliation). */
+  getPaymentByCheckout: (checkoutId) => {
+    const row = stmtGetPaymentByCheckout.get(checkoutId);
+    if (!row) return null;
+    return {
+      id: row.id,
+      venueCode: row.venue_code,
+      amountCents: row.amount_cents,
+      checkoutId: row.checkout_id,
+      createdAt: row.created_at,
+    };
   },
 
   getVenueEarningsForMonth: (venueCode, year, month) => {
@@ -761,9 +862,82 @@ module.exports = {
     return stmtGetAllPayoutsForMonth.all(year, month).map(rowToPayout);
   },
 
-  /** Mark a payout as paid, failed, or back to pending. */
-  updatePayoutStatus: (id, status, notes) => {
+  /**
+   * Total still owed to a venue across every unpaid month.
+   * 'failed' counts as outstanding — the money never reached the venue, so it
+   * stays on the books until a later attempt is marked paid.
+   */
+  getVenueOutstanding: (venueCode) => {
+    const payouts = stmtGetPayoutsForVenue.all(venueCode).map(rowToPayout);
+    const unpaid = payouts.filter((p) => p.status === 'pending' || p.status === 'failed');
+    const outstandingCents = unpaid.reduce((sum, p) => sum + (p.venueAmountCents || 0), 0);
+    return {
+      outstandingCents,
+      outstandingRand: (outstandingCents / 100).toFixed(2),
+      unpaidMonths: unpaid.length,
+      months: unpaid.map((p) => ({
+        id: p.id,
+        monthLabel: p.monthLabel,
+        venueAmountCents: p.venueAmountCents,
+        venueAmountRand: p.venueAmountRand,
+        status: p.status,
+      })),
+    };
+  },
+
+  /**
+   * Outstanding balance per venue across all unpaid months, for the owner
+   * dashboard. Newest-owing first so the biggest debts surface at the top.
+   */
+  getAllVenuesOutstanding: () => {
+    const unpaid = [
+      ...stmtGetPayoutsByStatus.all('pending').map(rowToPayout),
+      ...stmtGetPayoutsByStatus.all('failed').map(rowToPayout),
+    ];
+
+    const byVenue = new Map();
+    for (const p of unpaid) {
+      const entry = byVenue.get(p.venueCode) || { venueCode: p.venueCode, outstandingCents: 0, months: [] };
+      entry.outstandingCents += p.venueAmountCents || 0;
+      entry.months.push({
+        id: p.id,
+        monthLabel: p.monthLabel,
+        venueAmountCents: p.venueAmountCents,
+        status: p.status,
+      });
+      byVenue.set(p.venueCode, entry);
+    }
+
+    return [...byVenue.values()]
+      .map((e) => ({
+        ...e,
+        outstandingRand: (e.outstandingCents / 100).toFixed(2),
+        unpaidMonths: e.months.length,
+        months: e.months.sort((a, b) => a.monthLabel.localeCompare(b.monthLabel)),
+      }))
+      .sort((a, b) => b.outstandingCents - a.outstandingCents);
+  },
+
+  /**
+   * Mark a payout as paid, failed, or back to pending.
+   * `proof` ({ reference, recordedBy }) attaches evidence of the transfer —
+   * only meaningful when moving to 'paid'. Omitting it leaves any existing
+   * proof untouched so a status correction can't silently erase the record.
+   */
+  updatePayoutStatus: (id, status, notes, proof) => {
     const paidAt = status === 'paid' ? Date.now() : null;
+    if (proof && proof.reference) {
+      stmtUpdatePayoutStatusWithProof.run(
+        status,
+        paidAt,
+        notes || '',
+        String(proof.reference).trim(),
+        Date.now(),
+        proof.recordedBy || null,
+        id
+      );
+      return;
+    }
     stmtUpdatePayoutStatus.run(status, paidAt, notes || '', id);
   },
 
