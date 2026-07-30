@@ -67,6 +67,14 @@ async function patronPaymentWebhook(req, res) {
     return res.sendStatus(200);
   }
 
+  // Not every checkout buys a queued song. AI playlist generation goes through
+  // the same provider and therefore the same webhook, but it is a platform fee
+  // redeemed by the venue on POST /venue/:code/playlists/:id/generate — never
+  // a patron request. Ack and leave the pending row for that route to claim.
+  if (pending.kind && pending.kind !== 'song_request') {
+    return res.sendStatus(200);
+  }
+
   if (!provider.isConfigured()) {
     console.error('Patron-payment webhook: provider not configured — cannot verify, rejecting');
     return res.sendStatus(503);

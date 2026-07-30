@@ -179,6 +179,13 @@ router.post('/register', validate(registerSchema), async (req, res) => {
       requiresVerification: true,
     });
   } catch (err) {
+    // The findVenueByEmail check above is not atomic with the insert, so two
+    // simultaneous signups on one address both pass it. The UNIQUE index on
+    // venues(owner_email) is what actually stops the second one — report it as
+    // the same friendly "already registered" rather than a 500.
+    if (/UNIQUE constraint failed: venues\.owner_email/i.test(err?.message || '')) {
+      return res.status(400).json({ error: 'Email already registered', code: E.AUTH_EMAIL_TAKEN });
+    }
     console.error('Register error:', err);
     res.status(500).json({ error: 'Registration failed', code: E.AUTH_REGISTER_FAILED });
   }

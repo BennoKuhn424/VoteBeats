@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Search, Check, ListMusic, Clock, Loader2, Pencil, Plus, X,
@@ -132,6 +132,9 @@ export default function VenueBrowsePlaylists() {
   const [schedulePlaylistId, setSchedulePlaylistId] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [generateStatus, setGenerateStatus] = useState(null);
+  // Guards against a second redemption POST for the same receipt (React strict
+  // mode double-invoke, or an impatient second tap on Try again).
+  const redeemingRef = useRef(false);
   // When a playlist card is tapped, scroll to the PlaylistManager and select it
   const [openPlaylistId, setOpenPlaylistId] = useState(null);
   const [editorBump, setEditorBump] = useState(0);
@@ -157,31 +160,68 @@ export default function VenueBrowsePlaylists() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadVenue(); }, [venueCode]);
 
-  // ── Detect ?generatePlaylist=1 after Yoco redirect ────────────────────────
-  useEffect(() => {
-    if (!venueCode) return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('generatePlaylist') !== '1') return;
+  // ── AI playlist redemption ────────────────────────────────────────────────
+  // The receipt in localStorage is proof of a payment the venue has ALREADY
+  // made. It is cleared only once the songs are actually delivered (or the
+  // server tells us the checkout was already spent) — never before the request
+  // settles, because a generation that fails mid-flight has to stay redeemable.
 
-    window.history.replaceState({}, '', window.location.pathname);
+  function readReceipt() {
     const checkoutId = localStorage.getItem(`speeldit_generate_${venueCode}`);
-    if (!checkoutId) return;
-    const savedPrompt = localStorage.getItem(`speeldit_generate_prompt_${venueCode}`) || '';
-    const savedPlaylistId = localStorage.getItem(`speeldit_generate_playlist_${venueCode}`) || 'pl_default';
+    if (!checkoutId) return null;
     const rawCount = Number(localStorage.getItem(`speeldit_generate_count_${venueCode}`));
-    const savedCount = (!isNaN(rawCount) && rawCount > 0 && rawCount <= 500) ? rawCount : 100;
+    return {
+      checkoutId,
+      prompt: localStorage.getItem(`speeldit_generate_prompt_${venueCode}`) || '',
+      playlistId: localStorage.getItem(`speeldit_generate_playlist_${venueCode}`) || 'pl_default',
+      count: (!isNaN(rawCount) && rawCount > 0 && rawCount <= 500) ? rawCount : 100,
+    };
+  }
+
+  function clearReceipt() {
     localStorage.removeItem(`speeldit_generate_${venueCode}`);
     localStorage.removeItem(`speeldit_generate_prompt_${venueCode}`);
     localStorage.removeItem(`speeldit_generate_playlist_${venueCode}`);
     localStorage.removeItem(`speeldit_generate_count_${venueCode}`);
+  }
 
+  function redeemGeneration(receipt) {
+    if (!receipt || redeemingRef.current) return;
+    redeemingRef.current = true;
     setGenerateStatus('generating');
 
-    let mounted = true;
-    api.generatePlaylist(venueCode, savedPlaylistId, checkoutId, savedPrompt, savedCount)
-      .then((res) => { if (mounted) { setGenerateStatus({ added: res.data.added?.length ?? 0 }); loadVenue(); } })
-      .catch((err) => { if (mounted) setGenerateStatus({ error: err.response?.data?.error || 'Generation failed' }); });
-    return () => { mounted = false; };
+    api.generatePlaylist(venueCode, receipt.playlistId, receipt.checkoutId, receipt.prompt, receipt.count)
+      .then((res) => {
+        clearReceipt();
+        setGenerateStatus({ added: res.data.added?.length ?? 0 });
+        loadVenue();
+      })
+      .catch((err) => {
+        // The checkout was already spent on a delivered playlist — the receipt
+        // is used up, so holding on to it would only offer a retry that can
+        // never succeed.
+        if (err.response?.data?.code === 'CHECKOUT_ALREADY_USED') {
+          clearReceipt();
+          setGenerateStatus({ error: err.response?.data?.error || 'This payment has already been used.' });
+          return;
+        }
+        // Anything else: the venue paid and got nothing. Keep the receipt so
+        // the retry below can redeem it.
+        setGenerateStatus({ error: err.response?.data?.error || 'Generation failed', retryable: true });
+      })
+      .finally(() => { redeemingRef.current = false; });
+  }
+
+  // Redeem on return from the payment page, and also resume any receipt left
+  // over from an attempt that failed or was closed before it finished.
+  useEffect(() => {
+    if (!venueCode) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('generatePlaylist') === '1') {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    redeemGeneration(readReceipt());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [venueCode]);
 
   const playlists = venue?.playlists || [];
@@ -336,11 +376,22 @@ export default function VenueBrowsePlaylists() {
               {generateStatus === 'generating'
                 ? 'Generating your AI playlist… this takes ~30 seconds'
                 : generateStatus.error
-                  ? `Generation failed: ${generateStatus.error}`
+                  ? `Generation failed: ${generateStatus.error}${generateStatus.retryable ? ' — your payment is safe, you can try again.' : ''}`
                   : `Added ${generateStatus.added} songs to your playlist!`}
             </p>
             {generateStatus !== 'generating' && (
-              <button type="button" onClick={() => setGenerateStatus(null)} className="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 shrink-0">Dismiss</button>
+              <div className="flex items-center gap-3 shrink-0">
+                {generateStatus.retryable && (
+                  <button
+                    type="button"
+                    onClick={() => redeemGeneration(readReceipt())}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-500 min-h-touch"
+                  >
+                    Try again
+                  </button>
+                )}
+                <button type="button" onClick={() => setGenerateStatus(null)} className="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 shrink-0">Dismiss</button>
+              </div>
             )}
           </div>
         </div>

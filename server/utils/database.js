@@ -52,11 +52,33 @@ const stmtRemovePending = db.prepare('DELETE FROM pending_payments WHERE checkou
 const stmtPurgeStalePending = db.prepare('DELETE FROM pending_payments WHERE created_at < ?');
 const stmtGetStalePending = db.prepare('SELECT * FROM pending_payments WHERE created_at < ?');
 
+// Consumed checkouts — one-shot claim for non-song purchases.
+const stmtClaimCheckout = db.prepare(`
+  INSERT OR IGNORE INTO consumed_checkouts (checkout_id, purpose, venue_code, created_at)
+  VALUES (?, ?, ?, ?)
+`);
+const stmtIsCheckoutConsumed = db.prepare('SELECT 1 FROM consumed_checkouts WHERE checkout_id = ?');
+const stmtReleaseCheckout = db.prepare('DELETE FROM consumed_checkouts WHERE checkout_id = ?');
+
 // Orphaned payments — provider took money we could not book as a payment.
+// Re-opens on conflict rather than IGNOREing. A checkout can be orphaned,
+// resolved (the venue redeemed it late, or the owner settled it by hand), and
+// then orphaned AGAIN by a second failed delivery. With INSERT OR IGNORE that
+// second orphan hit the existing resolved row and vanished — money owed a
+// second time, showing as settled. `created_at` is kept so the age of the
+// original problem is not reset.
 const stmtAddOrphan = db.prepare(`
-  INSERT OR IGNORE INTO orphaned_payments
+  INSERT INTO orphaned_payments
     (checkout_id, venue_code, amount_cents, reason, detail, created_at)
   VALUES (?, ?, ?, ?, ?, ?)
+  ON CONFLICT(checkout_id) DO UPDATE SET
+    venue_code = excluded.venue_code,
+    amount_cents = excluded.amount_cents,
+    reason = excluded.reason,
+    detail = excluded.detail,
+    resolved = 0,
+    resolved_at = NULL,
+    resolved_note = NULL
 `);
 const stmtGetUnresolvedOrphans = db.prepare(
   'SELECT * FROM orphaned_payments WHERE resolved = 0 ORDER BY created_at DESC'
@@ -504,6 +526,9 @@ module.exports = {
       venueCode: row.venue_code,
       amountCents: row.amount_cents,
       createdAt: row.created_at,
+      // The sweep must know what the checkout was buying — an AI playlist
+      // purchase must never be swept into the song queue as a patron request.
+      kind: normalizePendingPayload(safeParseJSON(maybeDecrypt(row.song), {})).kind,
     }));
   },
 
@@ -512,6 +537,44 @@ module.exports = {
     const result = stmtPurgeStalePending.run(cutoff);
     return result.changes;
   },
+
+  /**
+   * Atomically claim a checkout for a one-shot, non-song purchase.
+   *
+   * Returns true only for the FIRST caller; every later attempt with the same
+   * checkoutId returns false. Deleting the pending_payments row is not enough
+   * on its own — the provider keeps answering "paid" for a spent checkout
+   * forever, so without a durable claim the same receipt can be redeemed
+   * repeatedly.
+   *
+   * @returns {boolean} true if this call claimed it, false if already spent.
+   */
+  claimCheckout: (checkoutId, purpose, venueCode) => {
+    const result = stmtClaimCheckout.run(
+      String(checkoutId),
+      String(purpose || 'unknown'),
+      venueCode || null,
+      Date.now()
+    );
+    return result.changes > 0;
+  },
+
+  /** Has this checkout already been spent on a one-shot purchase? */
+  isCheckoutConsumed: (checkoutId) => Boolean(stmtIsCheckoutConsumed.get(String(checkoutId))),
+
+  /**
+   * Give a claimed checkout back, for the case where the claim was taken but
+   * the goods were never delivered.
+   *
+   * The claim is spent BEFORE the slow work (Claude + catalog search) starts,
+   * because that is the only ordering that makes concurrent redemptions safe.
+   * The cost is that a failed generation would otherwise leave the venue having
+   * paid for a receipt it can never redeem again. Releasing is only correct on
+   * a path where nothing was delivered — call it nowhere else.
+   *
+   * @returns {boolean} true if a claim was actually released.
+   */
+  releaseCheckoutClaim: (checkoutId) => stmtReleaseCheckout.run(String(checkoutId)).changes > 0,
 
   // ── Orphaned payments ───────────────────────────────────────────────────────
   // Money the provider took that we could not turn into a payment row. Parked

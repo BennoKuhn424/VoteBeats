@@ -7,6 +7,7 @@
 
 const express = require('express');
 const db = require('../utils/database');
+const sqlite = require('../utils/sqlite');
 const ownerAuthMiddleware = require('../middleware/ownerAuthMiddleware');
 const authMiddleware = require('../middleware/authMiddleware');
 const E = require('../utils/errorCodes');
@@ -185,16 +186,22 @@ router.post('/mark-all-paid', ownerAuthMiddleware, (req, res) => {
     const payouts = db.getAllPayoutsForMonth(year, month);
     const markedIds = [];
     let totalCents = 0;
-    for (const p of payouts) {
-      if (p.status === 'pending') {
-        db.updatePayoutStatus(p.id, 'paid', 'Bulk marked as paid', {
-          reference: proofRef,
-          recordedBy: req.owner?.jti,
-        });
-        markedIds.push(p.id);
-        totalCents += p.venueAmountCents || 0;
+    // All-or-nothing. Marking money paid without an audit row is indefensible
+    // later, and the audit row is written after this loop — so a throw halfway
+    // through used to leave some payouts flipped to 'paid' with no record at
+    // all of who did it or why. The transaction makes that state unreachable.
+    sqlite.transaction(() => {
+      for (const p of payouts) {
+        if (p.status === 'pending') {
+          db.updatePayoutStatus(p.id, 'paid', 'Bulk marked as paid', {
+            reference: proofRef,
+            recordedBy: req.owner?.jti,
+          });
+          markedIds.push(p.id);
+          totalCents += p.venueAmountCents || 0;
+        }
       }
-    }
+    })();
 
     db.recordAuditEvent({
       actorRole: 'owner',

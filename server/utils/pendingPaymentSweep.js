@@ -57,7 +57,8 @@ async function sweepStalePendingPayments({
 
   for (const pending of stale) {
     stats.checked++;
-    const { checkoutId, venueCode, amountCents } = pending;
+    const { checkoutId, venueCode, amountCents, kind } = pending;
+    const isSongRequest = !kind || kind === 'song_request';
 
     let verified = false;
     let providerAmount = null;
@@ -81,6 +82,31 @@ async function sweepStalePendingPayments({
       // Provider confirms no payment — the patron abandoned checkout.
       database.removePendingPayment(checkoutId);
       stats.deleted++;
+      continue;
+    }
+
+    // Paid, but this checkout was never buying a queued song (AI playlist
+    // generation). `fulfill` would push a blank song into the venue's queue and
+    // credit the venue a platform fee, so it must not run. The venue paid and
+    // an hour later still had not redeemed it — that is money owed with nothing
+    // delivered, which is exactly what the orphan ledger exists to surface.
+    if (!isSongRequest) {
+      database.recordOrphanedPayment({
+        checkoutId,
+        venueCode,
+        amountCents: Number.isFinite(providerAmount) ? providerAmount : amountCents,
+        reason: 'unredeemed_non_song_purchase',
+        detail: { kind, expectedCents: amountCents, providerCents: providerAmount },
+      });
+      database.removePendingPayment(checkoutId);
+      stats.orphaned++;
+      console.error(JSON.stringify({
+        t: new Date().toISOString(),
+        msg: 'pending-sweep-unredeemed-purchase',
+        checkoutId,
+        venueCode,
+        kind,
+      }));
       continue;
     }
 

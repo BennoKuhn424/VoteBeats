@@ -4,6 +4,9 @@ const E = require('../utils/errorCodes');
 
 const router = express.Router();
 
+/** Longest accepted `q`. The longest real track titles are well under this. */
+const MAX_QUERY_LENGTH = 200;
+
 /**
  * GET /api/search?q=songname&venueCode=xxx
  * venueCode optional - used for venue-specific filtering (explicit, genre, blocked artists)
@@ -14,6 +17,11 @@ router.get('/', async (req, res) => {
 
   if (!q || typeof q !== 'string') {
     return res.status(400).json({ error: 'Query parameter q is required', code: E.SEARCH_QUERY_REQUIRED });
+  }
+  // Unbounded here would forward a multi-kilobyte string straight into the
+  // upstream catalog API on every hit. No real song title is this long.
+  if (q.length > MAX_QUERY_LENGTH) {
+    return res.status(400).json({ error: 'Query too long', code: E.SEARCH_QUERY_TOO_LONG });
   }
 
   try {

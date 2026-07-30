@@ -346,3 +346,78 @@ describe('activation without a trial', () => {
     expect(email.sendTrialStartedEmail).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Only ONE init reference is stored per venue. A venue that opens the billing
+ * page twice overwrites the first reference with the second — and if it then
+ * completes the FIRST hosted checkout, the ITN carries an m_payment_id that no
+ * longer matches any row. That ITN used to fall through as
+ * "subscription-charge-unmatched": PayFast had taken the money and the venue
+ * was never activated. The reference is server-minted (vbsub_<CODE>_<ts>) and
+ * arrives only through a signature-, IP- and postback-verified ITN, so the
+ * venue code can be recovered from it.
+ */
+describe('activation via a superseded init reference', () => {
+  const VENUE3 = 'PFVEN3';
+  const OLD_REF = `vbsub_${VENUE3}_1700000000001`;
+  const NEW_REF = `vbsub_${VENUE3}_1700000009999`;
+
+  test('an ITN for the overwritten reference still activates the venue', async () => {
+    db.saveVenue(VENUE3, {
+      code: VENUE3, name: 'Second Attempt Bar',
+      owner: { email: 'own3@bar.co.za' }, settings: {},
+    });
+    // /start ran twice — only the newest reference survived on the row.
+    db.upsertSubscription({
+      venueCode: VENUE3,
+      providerCustomerId: 'own3@bar.co.za',
+      status: 'incomplete',
+      paystackInitReference: NEW_REF,
+    });
+    expect(db.getSubscriptionByInitReference(OLD_REF)).toBeNull();
+
+    const billingDate = dateStr(daysFromNow(30));
+    const res = await postItn(itnBody({
+      m_payment_id: OLD_REF, // the venue paid on the FIRST checkout page
+      payment_status: 'COMPLETE',
+      amount_gross: '599.00',
+      token: 'pf-tok-333',
+      billing_date: billingDate,
+      merchant_id: MERCHANT_ID,
+      email_address: 'own3@bar.co.za',
+    }));
+
+    expect(res.sendStatus).toHaveBeenCalledWith(200);
+    const sub = db.getSubscription(VENUE3);
+    expect(sub.status).toBe('active');
+    expect(sub.providerSubscriptionId).toBe('pf-tok-333');
+  });
+
+  test('a reference for a venue with no subscription row is still unmatched', async () => {
+    const res = await postItn(itnBody({
+      m_payment_id: 'vbsub_NOSUCH_1700000000002',
+      payment_status: 'COMPLETE',
+      amount_gross: '599.00',
+      token: 'pf-tok-444',
+      merchant_id: MERCHANT_ID,
+      email_address: 'ghost@bar.co.za',
+    }));
+
+    // Acked so PayFast stops retrying, but nothing was created out of thin air.
+    expect(res.sendStatus).toHaveBeenCalledWith(200);
+    expect(db.getSubscription('NOSUCH')).toBeNull();
+  });
+
+  test('a reference that is not ours is not parsed for a venue code', async () => {
+    const res = await postItn(itnBody({
+      m_payment_id: 'somebody-elses-ref',
+      payment_status: 'COMPLETE',
+      amount_gross: '599.00',
+      token: 'pf-tok-555',
+      merchant_id: MERCHANT_ID,
+      email_address: 'other@bar.co.za',
+    }));
+
+    expect(res.sendStatus).toHaveBeenCalledWith(200);
+  });
+});

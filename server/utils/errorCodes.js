@@ -72,6 +72,7 @@ module.exports = {
 
   // ── Search ────────────────────────────────────────────────────────────────
   SEARCH_QUERY_REQUIRED:      'SEARCH_QUERY_REQUIRED',
+  SEARCH_QUERY_TOO_LONG:      'SEARCH_QUERY_TOO_LONG',
   SEARCH_FAILED:              'SEARCH_FAILED',
 
   // ── Owner ─────────────────────────────────────────────────────────────────

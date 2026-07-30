@@ -150,6 +150,19 @@ function findSubscription(evt) {
   if (evt.reference) {
     const byRef = db.getSubscriptionByInitReference(evt.reference);
     if (byRef) return byRef;
+
+    // Last resort: recover the venue from our own reference format.
+    // /start stores exactly ONE init reference per venue, so a venue that
+    // started checkout twice and completed the FIRST hosted page produces an
+    // ITN whose reference has already been overwritten. Without this the venue
+    // pays and is never activated. The reference is server-minted and reaches
+    // us only through a signature-, source-IP- and postback-verified ITN, so
+    // reading the venue code back out of it is safe.
+    const m = /^vbsub_([A-Za-z0-9]+)_\d+$/.exec(evt.reference);
+    if (m) {
+      const byVenue = db.getSubscription(m[1]);
+      if (byVenue) return byVenue;
+    }
   }
   return null;
 }

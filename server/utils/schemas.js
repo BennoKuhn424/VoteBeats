@@ -104,6 +104,8 @@ const banArtistSchema = z.object({
 const generateCheckoutSchema = z.object({
   prompt: z.string().trim().min(1, 'Prompt is required').max(500, 'Prompt too long'),
   count: z.number().int().min(25).max(400).optional().default(100),
+  // Advisory only — the server validates it against its own origin allowlist.
+  clientOrigin: z.string().max(200).optional(),
 });
 
 const generatePlaylistSchema = z.object({

@@ -42,3 +42,23 @@ services:
         sync: false
       - key: PUBLIC_URL
         sync: false
+      # ── Venue subscriptions (PayFast) ────────────────────────────────────
+      # PUBLIC_API_URL is not optional: PayFast is told to send its ITN to
+      # {PUBLIC_API_URL}/api/webhooks/subscription, and activation happens ONLY
+      # on that ITN. Without it the provider refuses to start a checkout at all
+      # (isConfigured() requires it) — better than taking money that can never
+      # activate a venue. It is this service's own https URL.
+      - key: SUBSCRIPTION_PROVIDER
+        value: payfast
+      - key: PUBLIC_API_URL
+        sync: false
+      - key: PAYFAST_MERCHANT_ID
+        sync: false
+      - key: PAYFAST_MERCHANT_KEY
+        sync: false
+      - key: PAYFAST_PASSPHRASE
+        sync: false
+      # Set to "true" ONLY while testing against sandbox.payfast.co.za.
+      # Leave unset in production — it relaxes the source-IP check.
+      - key: PAYFAST_SANDBOX
+        sync: false

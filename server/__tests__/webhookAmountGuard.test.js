@@ -225,3 +225,61 @@ describe('GET /request-status — amount guard', () => {
     expect(fulfillPaidRequest).toHaveBeenCalledWith(CHECKOUT_ID, PAID_AMOUNT);
   });
 });
+
+/**
+ * pending_payments is shared by two kinds of purchase. A patron paying to
+ * queue a song and a venue paying for AI playlist generation both create a
+ * checkout at the same provider, so both fire the same payment.succeeded
+ * webhook. Fulfilling the second kind here would push a title-less song into
+ * the venue's live queue and book a platform fee as venue patron revenue —
+ * revenue the 70/30 payout split then hands most of back to the venue.
+ *
+ * The playlist purchase is redeemed by the venue on
+ * POST /venue/:code/playlists/:id/generate, so the webhook must ack and leave
+ * the pending row alone for that route to claim.
+ */
+describe('webhook — purchases that are not song requests', () => {
+  test('acks an AI playlist-generation checkout without fulfilling it', async () => {
+    db.getPendingPayment.mockReturnValue({
+      kind: 'playlist_generation',
+      venueCode: VENUE_CODE,
+      amountCents: 2500,
+      playlistId: 'pl_1',
+      prompt: 'jazz',
+      count: 25,
+    });
+    verifyCheckout.mockResolvedValue({ verified: true, amountCents: 2500 });
+
+    const res = await postWebhook();
+
+    expect(res.status).toBe(200); // acked, so the provider stops retrying
+    expect(fulfillPaidRequest).not.toHaveBeenCalled();
+    // The row must survive — it is the venue's proof of purchase.
+    expect(db.removePendingPayment).not.toHaveBeenCalled();
+  });
+
+  test('an explicit song_request kind still fulfils', async () => {
+    db.getPendingPayment.mockReturnValue({
+      kind: 'song_request',
+      venueCode: VENUE_CODE,
+      amountCents: PAID_AMOUNT,
+      song: { id: 'song_x', appleId: '1' },
+      deviceId: 'd1',
+    });
+    verifyCheckout.mockResolvedValue({ verified: true, amountCents: PAID_AMOUNT });
+
+    const res = await postWebhook();
+
+    expect(res.status).toBe(200);
+    expect(fulfillPaidRequest).toHaveBeenCalledWith(CHECKOUT_ID, PAID_AMOUNT);
+  });
+
+  test('a legacy row with no kind is still treated as a song request', async () => {
+    verifyCheckout.mockResolvedValue({ verified: true, amountCents: PAID_AMOUNT });
+
+    const res = await postWebhook();
+
+    expect(res.status).toBe(200);
+    expect(fulfillPaidRequest).toHaveBeenCalledWith(CHECKOUT_ID, PAID_AMOUNT);
+  });
+});

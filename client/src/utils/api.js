@@ -152,7 +152,11 @@ export default {
   removeFromPlaylist: (venueCode, playlistId, appleId) =>
     api.delete(`/venue/${venueCode}/playlists/${playlistId}/songs/${appleId}`),
   generatePlaylistCheckout: (venueCode, playlistId, prompt, count) =>
-    api.post(`/venue/${venueCode}/playlists/${playlistId}/generate-checkout`, { prompt, count }),
+    api.post(`/venue/${venueCode}/playlists/${playlistId}/generate-checkout`, {
+      prompt,
+      count,
+      clientOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
+    }),
   generatePlaylist: (venueCode, playlistId, checkoutId, prompt, count) =>
     // AI generation can take 30s — override timeout for this call only
     api.post(`/venue/${venueCode}/playlists/${playlistId}/generate`, { checkoutId, prompt, count }, { timeout: 60000 }),

@@ -99,6 +99,41 @@ describe('POST /api/auth/register', () => {
     expect(res.body.error).toMatch(/already registered/i);
   });
 
+  /**
+   * The "is this email taken?" read and the insert are not one atomic step, so
+   * two signups racing on the same address both pass the read. The UNIQUE index
+   * on venues(owner_email) is what actually stops the second one — the check
+   * above only exists to produce a friendly message. When the constraint is the
+   * thing that fires, the loser must still see "already registered", not a 500
+   * that reads like the site is broken.
+   */
+  test('400 when the UNIQUE constraint catches a signup race the check missed', async () => {
+    stubEmptyVenues();
+    db.saveVenue.mockImplementation(() => {
+      throw new Error('UNIQUE constraint failed: venues.owner_email');
+    });
+
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'race@bar.com', password: 'secret123', venueName: 'My Bar' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/already registered/i);
+    expect(res.body.code).toBe('AUTH_EMAIL_TAKEN');
+  });
+
+  test('an unrelated database failure is still a 500, not a misleading 400', async () => {
+    stubEmptyVenues();
+    db.saveVenue.mockImplementation(() => { throw new Error('SQLITE_IOERR: disk I/O error'); });
+
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'broken@bar.com', password: 'secret123', venueName: 'My Bar' });
+
+    expect(res.status).toBe(500);
+    expect(res.body.code).toBe('AUTH_REGISTER_FAILED');
+  });
+
   test('400 when using the reserved owner email', async () => {
     stubEmptyVenues();
     const prev = process.env.OWNER_EMAIL;

@@ -14,6 +14,7 @@ const {
   generatePlaylistSchema,
 } = require('../utils/schemas');
 const { findScheduleOverlap } = require('../utils/playlistSchedule');
+const { resolveRedirectBase } = require('../utils/redirectOrigin');
 
 const validateVenueCode = require('../middleware/validateVenueCode');
 
@@ -405,47 +406,62 @@ router.post('/:venueCode/playlists/:playlistId/generate-checkout', authMiddlewar
     return res.status(404).json({ error: 'Playlist not found' });
   }
 
-  const yocoSecret = process.env.YOCO_SECRET_KEY;
-  if (!yocoSecret) return res.status(503).json({ error: 'Payment not configured' });
+  // Go through the PatronPaymentProvider factory rather than calling Yoco
+  // directly: the checkout has to be created at the SAME provider that
+  // POST .../generate later verifies it against. Hard-coding Yoco here meant a
+  // deploy running PATRON_PAYMENT_PROVIDER=stripe took the venue's money at
+  // Yoco and then asked Stripe about it — always "unverified", so the venue
+  // paid and never received the playlist.
+  const provider = getPatronPaymentProvider();
+  if (!provider.isConfigured()) {
+    return res.status(503).json({ error: 'Payment not configured' });
+  }
 
   const venueCode = req.params.venueCode;
-  const base = (req.headers.origin || process.env.PUBLIC_URL || 'http://localhost:5173').replace(/\/$/, '');
+  // SECURITY: server-controlled allowlist only — never req.headers.origin.
+  // See server/utils/redirectOrigin.js.
+  const clientOrigin = req.body?.clientOrigin;
+  const { baseUrl: base, source } = resolveRedirectBase(clientOrigin);
+  if (typeof clientOrigin === 'string' && clientOrigin && source !== 'client') {
+    // Same signal the patron checkout emits: either a venue is on a host ops
+    // forgot to allowlist, or someone is probing the redirect.
+    console.warn(JSON.stringify({
+      t: new Date().toISOString(),
+      msg: 'redirect-origin-rejected',
+      venueCode: req.params.venueCode,
+      clientOrigin,
+      usedSource: source,
+    }));
+  }
   const successUrl = `${base}/venue/playlists?generatePlaylist=1`;
   const cancelUrl = `${base}/venue/playlists`;
 
+  const amountCents = count * 100; // R1 per song
+
   try {
-    const response = await fetch('https://payments.yoco.com/api/checkouts', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${yocoSecret}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        amount: count * 100, // R1 per song
-        currency: 'ZAR',
-        successUrl,
-        cancelUrl,
-        failureUrl: cancelUrl,
-        metadata: { venueCode },
-      }),
+    const { checkoutId, redirectUrl } = await provider.createCheckout({
+      amountCents,
+      currency: (process.env.PAYMENT_CURRENCY || 'ZAR').toUpperCase(),
+      successUrl,
+      cancelUrl,
+      failureUrl: cancelUrl,
+      metadata: { venueCode },
     });
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      return res.status(response.status).json({ error: err.message || 'Payment creation failed' });
-    }
-    const data = await response.json();
-    const { id: checkoutId, redirectUrl } = data;
     if (!checkoutId || !redirectUrl) return res.status(500).json({ error: 'Invalid payment response' });
 
     db.setPendingPayment(checkoutId, {
       kind: 'playlist_generation',
       venueCode,
       playlistId: req.params.playlistId,
-      amountCents: count * 100,
+      amountCents,
       count,
       prompt: prompt.trim(),
     });
     res.json({ redirectUrl, checkoutId });
   } catch (err) {
-    console.error('Generate checkout error:', err);
-    res.status(500).json({ error: 'Could not create payment' });
+    console.error(`[${provider.name}] generate checkout error:`, err.message);
+    const status = err.status && err.status >= 400 && err.status < 500 ? err.status : 500;
+    res.status(status).json({ error: err.message || 'Could not create payment' });
   }
 });
 
@@ -460,6 +476,20 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, requir
   let resolvedPrompt;
   let resolvedPlaylistId = req.params.playlistId;
   let resolvedCount = 100;
+  // What the venue actually paid, for the orphan record if delivery fails.
+  let paidCents = null;
+
+  // REPLAY GUARD — must come before any verification path.
+  // Redeeming deletes the pending row, but the provider keeps answering "paid"
+  // for that checkout forever. Without a durable claim, a venue could re-post
+  // the same receipt indefinitely (and, via the no-pending branch below, name
+  // its own `count`) to mint unlimited playlists off one R25 payment.
+  if (db.isCheckoutConsumed(checkoutId)) {
+    return res.status(409).json({
+      error: 'This payment has already been used to generate a playlist.',
+      code: 'CHECKOUT_ALREADY_USED',
+    });
+  }
 
   const patronProvider = getPatronPaymentProvider();
   if (!pending) {
@@ -471,7 +501,14 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, requir
       return res.status(402).json({ error: 'Payment could not be verified. Please try again.' });
     }
     resolvedPrompt = bodyPrompt.trim();
-    resolvedCount = Math.min(Math.max(Math.round(Number(bodyCount) || 100), 25), 400);
+    // With no pending row the client names its own count, so the song budget
+    // must come from what was actually paid (R1/song), not from the request.
+    paidCents = Number.isFinite(fallbackVerify.amountCents) ? fallbackVerify.amountCents : null;
+    const askedCount = Math.min(Math.max(Math.round(Number(bodyCount) || 100), 25), 400);
+    resolvedCount = paidCents === null ? askedCount : Math.min(askedCount, Math.floor(paidCents / 100));
+    if (resolvedCount < 1) {
+      return res.status(402).json({ error: 'Payment could not be verified. Please try again.' });
+    }
   } else {
     if (pending.venueCode !== req.params.venueCode) return res.status(403).json({ error: 'Invalid checkout' });
     if (pending.kind && pending.kind !== 'playlist_generation') return res.status(400).json({ error: 'Invalid checkout type' });
@@ -481,13 +518,59 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, requir
     if (patronProvider.isConfigured()) {
       const v = await patronProvider.verifyCheckout(checkoutId);
       if (!v.verified) return res.status(402).json({ error: 'Payment not completed yet' });
+      if (Number.isFinite(v.amountCents)) paidCents = v.amountCents;
     }
+    if (paidCents === null && Number.isFinite(pending.amountCents)) paidCents = pending.amountCents;
     db.removePendingPayment(checkoutId);
     resolvedPrompt = pending.prompt;
   }
 
+  // Claim it. Two concurrent redemptions of one checkout both reach here; only
+  // the INSERT that actually lands may spend it.
+  if (!db.claimCheckout(checkoutId, 'playlist_generation', req.params.venueCode)) {
+    return res.status(409).json({
+      error: 'This payment has already been used to generate a playlist.',
+      code: 'CHECKOUT_ALREADY_USED',
+    });
+  }
+  // A late redemption (paid, redeemed after the stale-pending sweep parked it)
+  // is settled business, not money owed — clear the orphan the sweep recorded.
+  db.resolveOrphanedPayment(checkoutId, 'Redeemed by the venue after the pending checkout expired.');
+
+  /**
+   * Nothing was delivered. Undo the claim so the venue can redeem the receipt
+   * it already paid for, and park the money in the orphan ledger so it is
+   * visible to the owner even if the venue never comes back.
+   *
+   * By this point the pending row has been deleted, so without this the money
+   * exists nowhere: no pending row for the sweep to find, no payment row, no
+   * orphan — the venue is simply charged for nothing. A successful retry calls
+   * resolveOrphanedPayment above, which clears the orphan again.
+   */
+  function undeliverable(status, error, reason) {
+    db.releaseCheckoutClaim(checkoutId);
+    db.recordOrphanedPayment({
+      checkoutId,
+      venueCode: req.params.venueCode,
+      amountCents: paidCents,
+      reason: 'playlist_generation_failed',
+      detail: { stage: reason, count: resolvedCount },
+    });
+    console.error(JSON.stringify({
+      t: new Date().toISOString(),
+      msg: 'playlist-generation-undeliverable',
+      checkoutId,
+      venueCode: req.params.venueCode,
+      amountCents: paidCents,
+      stage: reason,
+    }));
+    return res.status(status).json({ error, code: 'GENERATION_FAILED_RETRYABLE' });
+  }
+
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  if (!anthropicKey) return res.status(503).json({ error: 'AI generation not configured. Set ANTHROPIC_API_KEY.' });
+  if (!anthropicKey) {
+    return undeliverable(503, 'AI generation not configured. Set ANTHROPIC_API_KEY.', 'not_configured');
+  }
 
   try {
     // Ask Claude for search queries (artist names / keywords) rather than specific song titles.
@@ -520,7 +603,7 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, requir
       if (m) try { queries = JSON.parse(m[0]).queries; } catch {}
     }
     if (!Array.isArray(queries) || queries.length === 0) {
-      return res.status(500).json({ error: 'AI returned no search queries' });
+      return undeliverable(500, 'AI returned no search queries', 'no_queries');
     }
 
     const { getProvider } = require('../providers');
@@ -568,11 +651,38 @@ router.post('/:venueCode/playlists/:playlistId/generate', authMiddleware, requir
       }
     }
 
-    db.saveVenue(venue.code, venue);
-    res.json({ added, total: pl.songs.length, playlistId: pl.id });
+    // Persist through the repo's locked read-modify-write, re-reading the venue
+    // and re-appending onto whatever it looks like NOW. Search + Claude above
+    // take tens of seconds; a plain saveVenue of the snapshot taken before that
+    // wait would silently discard any settings or playlist edit made meanwhile.
+    let finalTotal = pl.songs.length;
+    let finalPlaylistId = pl.id;
+    await venueRepo.update(req.params.venueCode, (fresh) => {
+      normalizePlaylists(fresh);
+      let target = fresh.playlists.find((p) => p.id === finalPlaylistId)
+        || fresh.playlists.find((p) => p.id === fresh.activePlaylistId);
+      if (!target) {
+        target = { id: finalPlaylistId, name: 'AI Generated', songs: [] };
+        fresh.playlists.push(target);
+        fresh.activePlaylistId = target.id;
+      }
+      const have = new Set(target.songs.map((s) => s.appleId));
+      for (const entry of added) {
+        if (have.has(entry.appleId) || target.songs.length >= 500) continue;
+        target.songs.push(entry);
+        have.add(entry.appleId);
+      }
+      finalTotal = target.songs.length;
+      finalPlaylistId = target.id;
+      return fresh;
+    });
+
+    res.json({ added, total: finalTotal, playlistId: finalPlaylistId });
   } catch (err) {
     console.error('Generate playlist error:', err);
-    res.status(500).json({ error: 'Failed to generate playlist' });
+    // Everything above either persists in one locked write or not at all, so
+    // reaching here means the venue received nothing for its money.
+    return undeliverable(500, 'Failed to generate playlist', 'generation_error');
   }
 });
 

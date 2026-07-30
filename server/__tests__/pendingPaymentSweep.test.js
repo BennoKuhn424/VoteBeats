@@ -156,3 +156,59 @@ describe('sweepStalePendingPayments', () => {
     expect(stats).toMatchObject({ checked: 3, deleted: 1, fulfilled: 1, orphaned: 1 });
   });
 });
+
+/**
+ * pending_payments also holds AI playlist-generation checkouts. Passing one to
+ * `fulfill` would push a blank song into the venue's queue and book a platform
+ * fee as venue patron revenue, so the sweep must recognise the kind. A paid one
+ * still sitting here an hour later means the venue paid and never received the
+ * playlist — money owed with nothing delivered, which belongs in the orphan
+ * ledger rather than being fulfilled or quietly deleted.
+ */
+describe('sweepStalePendingPayments — non-song purchases', () => {
+  test('a paid playlist-generation checkout is orphaned, never fulfilled', async () => {
+    const database = makeDb([pending({ kind: 'playlist_generation', amountCents: 2500 })]);
+    const provider = makeProvider({
+      verify: jest.fn().mockResolvedValue({ verified: true, amountCents: 2500 }),
+    });
+    const fulfill = jest.fn().mockResolvedValue(true);
+
+    const stats = await sweepStalePendingPayments({ database, provider, fulfill });
+
+    expect(fulfill).not.toHaveBeenCalled();
+    expect(database.recordOrphanedPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        checkoutId: 'chk_1',
+        reason: 'unredeemed_non_song_purchase',
+        amountCents: 2500,
+      })
+    );
+    expect(database.removePendingPayment).toHaveBeenCalledWith('chk_1');
+    expect(stats).toMatchObject({ checked: 1, orphaned: 1, fulfilled: 0 });
+  });
+
+  test('an UNPAID playlist-generation checkout is just deleted, not orphaned', async () => {
+    const database = makeDb([pending({ kind: 'playlist_generation' })]);
+    const provider = makeProvider({
+      verify: jest.fn().mockResolvedValue({ verified: false }),
+    });
+
+    const stats = await sweepStalePendingPayments({ database, provider, fulfill: jest.fn() });
+
+    expect(database.recordOrphanedPayment).not.toHaveBeenCalled();
+    expect(stats).toMatchObject({ checked: 1, deleted: 1, orphaned: 0 });
+  });
+
+  test('an explicit song_request kind still fulfils', async () => {
+    const database = makeDb([pending({ kind: 'song_request' })]);
+    const provider = makeProvider({
+      verify: jest.fn().mockResolvedValue({ verified: true, amountCents: 3000 }),
+    });
+    const fulfill = jest.fn().mockResolvedValue(true);
+
+    const stats = await sweepStalePendingPayments({ database, provider, fulfill });
+
+    expect(fulfill).toHaveBeenCalledWith('chk_1', 3000);
+    expect(stats).toMatchObject({ fulfilled: 1, orphaned: 0 });
+  });
+});

@@ -9,7 +9,8 @@
     "build": "npm install",
     "test": "jest --runInBand --forceExit",
     "hash-owner-password": "node scripts/hash-owner-password.js",
-    "seed-demo": "node scripts/seed-demo.js"
+    "seed-demo": "node scripts/seed-demo.js",
+    "payfast:check": "node scripts/payfast-preflight.js"
   },
   "dependencies": {
     "@sentry/node": "^10.47.0",

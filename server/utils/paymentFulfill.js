@@ -9,20 +9,29 @@ const queueRepo = require('../repos/queueRepo');
 const inFlightCheckouts = new Set();
 
 /**
- * Fulfill a paid song request: add song to queue, log payment, remove pending.
+ * Fulfill a paid song request: log payment, add song to queue, remove pending.
  *
  * Idempotency strategy:
  *  1. In-flight Set prevents two concurrent calls for the same checkoutId.
  *  2. `removePendingPayment` runs BEFORE the queue write so a crash after
  *     removal but before the write loses the song (safe) rather than adding
  *     it twice (unsafe — user charged once, song appears twice).
- *  3. If the queue write fails, the payment is still logged (user was charged)
- *     and an error is thrown so the caller can log it.
+ *  3. The payment row is written BEFORE the queue write, so a failing queue
+ *     write cannot erase the fact that the patron was charged. `addPayment` is
+ *     idempotent per checkout, so ordering it first risks nothing.
  */
 async function fulfillPaidRequest(checkoutId, amountCentsOverride) {
   // ── Idempotent: already fulfilled or no record ──
   const pending = db.getPendingPayment(checkoutId);
   if (!pending) return false;
+
+  // ── Only song requests belong in the queue ──
+  // pending_payments is shared with AI playlist-generation checkouts, which
+  // arrive through the SAME provider webhook. Fulfilling one here would push a
+  // song-shaped blank into the venue's live queue and book a platform fee as
+  // venue patron revenue — money the payout split would then hand 70% of to
+  // the venue. Leave the row alone: routes/venue.js owns that flow.
+  if (pending.kind && pending.kind !== 'song_request') return false;
 
   // ── Concurrent-call guard ──
   if (inFlightCheckouts.has(checkoutId)) return false;
@@ -36,7 +45,16 @@ async function fulfillPaidRequest(checkoutId, amountCentsOverride) {
       return false;
     }
 
-    // ── Remove pending FIRST (crash-safe: lose the song, not double-add) ──
+    // ── Record the money FIRST ──
+    // The patron has already been charged by this point. If the queue write
+    // below throws, the song is lost but the venue is still credited — the
+    // alternative (booking last) silently dropped the payment from the ledger
+    // entirely, so nothing surfaced it and no payout ever included it.
+    const amountCentsToLog =
+      amountCentsOverride ?? amountCents ?? venue?.settings?.requestPriceCents ?? 1000;
+    db.addPayment(venueCode, amountCentsToLog, checkoutId);
+
+    // ── Remove pending (crash-safe: lose the song, not double-add) ──
     db.removePendingPayment(checkoutId);
 
     const song = {
@@ -65,9 +83,6 @@ async function fulfillPaidRequest(checkoutId, amountCentsOverride) {
       songId: song.id,
     });
 
-    const amountCentsToLog =
-      amountCentsOverride ?? amountCents ?? venue?.settings?.requestPriceCents ?? 1000;
-    db.addPayment(venueCode, amountCentsToLog, checkoutId);
     return true;
   } finally {
     inFlightCheckouts.delete(checkoutId);

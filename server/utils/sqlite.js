@@ -332,6 +332,21 @@ db.exec(
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_checkout ON payments(checkout_id) WHERE checkout_id IS NOT NULL'
 );
 
+// One-shot claim ledger for checkouts that buy something other than a queued
+// song (currently AI playlist generation). The pending_payments row is deleted
+// the moment the goods are delivered, so it cannot be the replay guard: once
+// it is gone, `verifyCheckout` still answers "paid" for that checkout forever,
+// and the same receipt can be redeemed again and again. Claiming the id here
+// is the durable "this checkout has been spent" record.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS consumed_checkouts (
+    checkout_id TEXT PRIMARY KEY,
+    purpose TEXT NOT NULL,
+    venue_code TEXT,
+    created_at INTEGER NOT NULL
+  );
+`);
+
 // Money that the provider confirmed but that we could not turn into a payment
 // row (abandoned checkout purged before the webhook landed, fulfilment crash,
 // amount-guard rejection). These are NOT lost — they are parked here for the
@@ -350,6 +365,34 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_orphaned_resolved ON orphaned_payments(resolved, created_at);
 `);
+
+// One account per email address. Registration checks for an existing venue
+// before inserting, but that read and the insert are not atomic — two requests
+// racing on the same address both pass the check and both write. The loser is
+// then unreachable forever: getVenueByOwnerEmail does LIMIT 1, so one of the
+// two venues can never be logged into again. The constraint is what actually
+// prevents it; the route's check only produces the friendly error message.
+//
+// Deliberately non-fatal: a database that already contains duplicates from
+// before this index existed must still boot, so the operator can merge them
+// by hand rather than being locked out by a crash loop.
+try {
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_venues_owner_email_unique ON venues(owner_email COLLATE NOCASE)');
+} catch (err) {
+  console.error(JSON.stringify({
+    t: new Date().toISOString(),
+    level: 'CRITICAL',
+    msg: 'venues-owner-email-not-unique',
+    error: err.message,
+    action: 'Duplicate owner_email rows exist — merge them, then restart to enforce uniqueness.',
+  }));
+}
+
+// `payments` is append-only and grows for the life of the deployment, and every
+// earnings/payout/reconcile query filters it by created_at (often with a venue).
+// Without this index each of those is a full table scan.
+db.exec('CREATE INDEX IF NOT EXISTS idx_payments_venue_created ON payments(venue_code, created_at)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_payments_created ON payments(created_at)');
 
 console.log('[DB] SQLite database:', DB_PATH, process.env.DATA_DIR ? '(persistent)' : '(ephemeral - set DATA_DIR for Render disk)');
 
