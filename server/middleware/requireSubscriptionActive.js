@@ -16,6 +16,24 @@ function graceDays() {
   return Number.isFinite(n) && n >= 0 ? n : 5;
 }
 
+// This runs on every gated request, so a malformed row must not log on every
+// one of them. One line per venue per process is enough to find it.
+const warnedMissingPaidThrough = new Set();
+
+function warnMissingPaidThrough(venueCode, status) {
+  if (warnedMissingPaidThrough.has(venueCode)) return;
+  warnedMissingPaidThrough.add(venueCode);
+  console.error(JSON.stringify({
+    t: new Date().toISOString(),
+    msg: 'subscription-no-paid-through-date',
+    venueCode,
+    status,
+    detail:
+      'active/trialing with neither currentPeriodEnd nor trialEndsAt — cannot prove this venue is paid up. '
+      + 'Service is still being delivered; check the provider dashboard and repair the row.',
+  }));
+}
+
 /**
  * Returns the subscription status of a venue and whether it's allowed to
  * operate. Centralised so the venue-auth guard and the patron-facing guard
@@ -35,10 +53,32 @@ function checkVenueSubscription(venueCode) {
 
   // Paid-through check: an "active" flag whose paid period lapsed beyond the
   // grace window is treated as expired, not honoured on faith.
-  if (ACTIVE_STATUSES.has(status) && sub.currentPeriodEnd) {
+  if (ACTIVE_STATUSES.has(status)) {
     const graceMs = graceDays() * 24 * 60 * 60 * 1000;
-    if (Date.now() > sub.currentPeriodEnd + graceMs) {
-      return { ok: false, status: 'expired', strict };
+
+    // Which date proves this venue is paid up? currentPeriodEnd is the real
+    // one, but a subscription can legitimately sit in 'trialing' before any
+    // renewal event has set it — then the trial end is the only deadline we
+    // have. Checking currentPeriodEnd ALONE (the previous behaviour) meant a
+    // trialing row with no currentPeriodEnd skipped the expiry check
+    // completely and got free service forever, which is precisely what this
+    // guard exists to prevent.
+    const paidUntil = sub.currentPeriodEnd || sub.trialEndsAt || null;
+
+    if (paidUntil) {
+      if (Date.now() > paidUntil + graceMs) {
+        return { ok: false, status: 'expired', strict };
+      }
+    } else {
+      // Active/trialing with no paid-through date at all. Every provider sets
+      // one on activation, so this means a malformed row rather than a normal
+      // state — but it is NOT treated as expired, deliberately. This function
+      // guards every request from every venue, so a rule that blocks on a
+      // missing date would turn one bad write (or one provider that stopped
+      // sending dates) into a total outage for everyone at once. That is a
+      // worse failure than the free service it would prevent. Surface it
+      // loudly instead and let a human decide.
+      warnMissingPaidThrough(venueCode, status);
     }
   }
 

@@ -50,6 +50,14 @@ function getPlanCode() {
 
 // ── GET /api/subscriptions/me ───────────────────────────────────────────────
 router.get('/me', authMiddleware, (req, res) => {
+  // Which processor the venue is actually sent to. The billing page used to
+  // hardcode "Paystack" in its copy, which kept telling venues their card was
+  // going somewhere it wasn't after the provider switched — the one claim on
+  // that page a venue has no way to check for themselves.
+  const providerName = (() => {
+    try { return getProvider().name; } catch { return null; }
+  })();
+
   const sub = db.getSubscription(req.venue.code);
   if (!sub) {
     return res.json({
@@ -57,6 +65,7 @@ router.get('/me', authMiddleware, (req, res) => {
       venueCode: req.venue.code,
       trialDays: TRIAL_DAYS,
       amountZar: SUBSCRIPTION_AMOUNT_ZAR,
+      provider: providerName,
     });
   }
   res.json({
@@ -67,6 +76,7 @@ router.get('/me', authMiddleware, (req, res) => {
     venueCode: sub.venueCode,
     trialDays: TRIAL_DAYS,
     amountZar: SUBSCRIPTION_AMOUNT_ZAR,
+    provider: providerName,
   });
 });
 
@@ -249,6 +259,23 @@ router.post('/cancel', authMiddleware, requireProviderConfigured, async (req, re
     res.json({ ok: true, status: 'canceled' });
   } catch (err) {
     console.error('[SUB] /cancel failed:', err.message, err.paystack);
+
+    // A subscription the ACTIVE provider cannot address — typically a record
+    // created under a previous provider, or one whose activation event never
+    // arrived so we only ever held our own reference. We must not mark it
+    // canceled locally: the other provider may still be charging the card, and
+    // showing "canceled" while money keeps leaving is the worst outcome. Say
+    // exactly that instead of a bare failure, so the venue knows the next step
+    // is elsewhere rather than retrying a button that can never work.
+    if (err.code === 'PROVIDER_CANCEL_UNADDRESSABLE') {
+      return res.status(409).json({
+        error:
+          'This subscription was set up with a different payment provider, so we cannot cancel it '
+          + 'automatically. Contact support and we will close it off for you — you will not be charged by Speeldit in the meantime.',
+        code: 'SUBSCRIPTION_CANCEL_UNADDRESSABLE',
+      });
+    }
+
     res.status(502).json({ error: 'Could not cancel subscription', code: 'SUBSCRIPTION_CANCEL_FAILED' });
   }
 });

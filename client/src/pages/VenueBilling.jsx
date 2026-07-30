@@ -12,6 +12,13 @@ const STATUS_LABELS = {
   incomplete: { label: 'Setup incomplete', color: 'text-amber-600' },
 };
 
+/** Display names for the provider the server reports as active. */
+const PROVIDER_LABELS = {
+  payfast: 'PayFast',
+  paystack: 'Paystack',
+  stripe: 'Stripe',
+};
+
 function formatDate(ts) {
   if (!ts) return '—';
   return new Date(ts).toLocaleDateString('en-ZA', {
@@ -112,6 +119,10 @@ export default function VenueBilling() {
   const info = STATUS_LABELS[status] || STATUS_LABELS.none;
   const amountZar = sub?.amountZar ?? 599;
   const trialDays = sub?.trialDays ?? 14;
+  // Named by the server from the ACTIVE provider — never hardcoded. Telling a
+  // venue their card goes to a processor it doesn't is the one claim on this
+  // page they can't verify for themselves.
+  const providerLabel = PROVIDER_LABELS[sub?.provider] || 'our payment provider';
 
   const showStartButton = status === 'none' || status === 'incomplete' || status === 'canceled';
   const showManageCancel = status === 'trialing' || status === 'active' || status === 'past_due';
@@ -198,7 +209,7 @@ export default function VenueBilling() {
               disabled={starting}
               className="w-full min-h-touch rounded-xl bg-brand-500 hover:bg-brand-400 text-white font-semibold py-3 shadow-glow-brand hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 ease-spring disabled:opacity-50 disabled:hover:translate-y-0"
             >
-              {starting ? 'Redirecting to Paystack…' : `Start ${trialDays}-day free trial`}
+              {starting ? `Redirecting to ${providerLabel}…` : `Start ${trialDays}-day free trial`}
             </button>
           </>
         )}
@@ -223,7 +234,7 @@ export default function VenueBilling() {
       </div>
 
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
-        Payments processed by Paystack. Speeldit never sees or stores your card details.
+        Payments processed by {providerLabel}. Speeldit never sees or stores your card details.
       </p>
     </div>
   );

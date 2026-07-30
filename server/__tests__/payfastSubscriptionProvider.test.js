@@ -272,3 +272,39 @@ describe('getManageLink', () => {
       .rejects.toMatchObject({ code: 'PROVIDER_NO_MANAGE_LINK' });
   });
 });
+
+/**
+ * A subscription id issued by a DIFFERENT provider must never reach PayFast's
+ * cancel API. payfast.cancelSubscription treats HTTP 404 as "already
+ * cancelled", so a leftover Paystack/Stripe id would 404, be reported as a
+ * successful cancellation, and the venue would be marked canceled here while
+ * the other provider kept charging their card — the one outcome worse than
+ * failing to cancel.
+ */
+describe('cancel — foreign subscription ids', () => {
+  const provider = new PayfastSubscriptionProvider();
+
+  test('a Paystack subscription code is refused, not sent to PayFast', async () => {
+    const fetchImpl = jest.fn();
+    await expect(provider.cancel({ providerSubscriptionId: 'SUB_abc123xyz' }))
+      .rejects.toMatchObject({ code: 'PROVIDER_CANCEL_UNADDRESSABLE' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test('a Stripe subscription id is refused too', async () => {
+    await expect(provider.cancel({ providerSubscriptionId: 'sub_1PabcdEFGH' }))
+      .rejects.toMatchObject({ code: 'PROVIDER_CANCEL_UNADDRESSABLE' });
+  });
+
+  test('our own pre-activation reference is still refused', async () => {
+    await expect(provider.cancel({ providerSubscriptionId: 'vbsub_ABC123_1700000000000' }))
+      .rejects.toMatchObject({ code: 'PROVIDER_CANCEL_UNADDRESSABLE' });
+  });
+
+  test('an unrecognised shape is allowed through — assume PayFast changed format', async () => {
+    // Refusing these would break real cancellations if PayFast ever alters its
+    // token format, which is likelier than a fourth provider appearing.
+    await expect(provider.cancel({ providerSubscriptionId: 'whatever-new-format' }))
+      .rejects.not.toMatchObject({ code: 'PROVIDER_CANCEL_UNADDRESSABLE' });
+  });
+});

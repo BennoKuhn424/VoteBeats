@@ -164,14 +164,39 @@ class PayfastSubscriptionProvider extends SubscriptionProvider {
    */
   async cancel({ providerSubscriptionId }) {
     if (!providerSubscriptionId) return;
-    if (String(providerSubscriptionId).startsWith('vbsub_')) {
+    const id = String(providerSubscriptionId);
+
+    if (id.startsWith('vbsub_')) {
       const err = new Error(
         'No PayFast subscription token on record (activation ITN never received) — cannot cancel at PayFast. Resolve manually via the PayFast dashboard.'
       );
       err.code = 'PROVIDER_CANCEL_UNADDRESSABLE';
       throw err;
     }
-    await payfast.cancelSubscription(providerSubscriptionId);
+
+    // Never hand another provider's subscription id to PayFast's cancel API.
+    //
+    // This matters more than it looks: cancelSubscription treats HTTP 404 as
+    // "already cancelled, nothing to do". So a Paystack SUB_xxx or Stripe
+    // sub_xxx left over from a provider switch would 404, be reported as a
+    // successful cancellation, and we would mark the venue canceled locally
+    // while the OTHER provider carried on charging their card. Refusing keeps
+    // "we cancelled it" honest.
+    //
+    // Deliberately a denylist of the formats we know are foreign, not an
+    // allowlist of PayFast's: a token shape we don't recognise is far more
+    // likely to be PayFast changing its format than a fourth provider
+    // appearing, and refusing those would break real cancellations.
+    if (/^sub_/i.test(id)) {
+      const err = new Error(
+        `Subscription id "${id}" is not a PayFast token — it was issued by a different provider. `
+        + 'Cancel it in that provider\'s dashboard; cancelling here would stop service without stopping the billing.'
+      );
+      err.code = 'PROVIDER_CANCEL_UNADDRESSABLE';
+      throw err;
+    }
+
+    await payfast.cancelSubscription(id);
   }
 
   /** ITN bodies are form-encoded, not JSON. */

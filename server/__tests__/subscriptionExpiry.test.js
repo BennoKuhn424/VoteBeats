@@ -66,13 +66,76 @@ describe('paid-through enforcement', () => {
     expect(checkVenueSubscription('VEN001').ok).toBe(false);
   });
 
-  test('no currentPeriodEnd on record → no expiry check (legacy subs unaffected)', () => {
+  // A row with NO paid-through date at all still gets service — see the
+  // comment in the middleware. This guard runs on every request from every
+  // venue, so blocking on a missing date would convert one malformed write
+  // into a platform-wide outage. It is logged loudly instead. (A record with
+  // only a trialEndsAt is a different case and IS enforced — see below.)
+  test('no paid-through date of any kind → served, but logged loudly', () => {
     subWith({ currentPeriodEnd: null });
+    const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+
     expect(checkVenueSubscription('VEN001')).toMatchObject({ ok: true, status: 'active' });
+    expect(err.mock.calls.map((c) => c[0]).join('\n')).toContain('subscription-no-paid-through-date');
+
+    err.mockRestore();
   });
 
   test('non-active statuses are untouched by the grace logic', () => {
     subWith({ status: 'past_due', currentPeriodEnd: Date.now() - 30 * DAY });
     expect(checkVenueSubscription('VEN001')).toMatchObject({ ok: false, status: 'past_due' });
+  });
+});
+
+/**
+ * THE BUG, found in production 2026-07-30: a venue's trial ended 23 May and it
+ * was still playing music on 30 July.
+ *
+ * The paid-through check was written as
+ *   `if (ACTIVE_STATUSES.has(status) && sub.currentPeriodEnd)`
+ * so a subscription that reached 'trialing' but never received a renewal event
+ * — no currentPeriodEnd — skipped the expiry branch entirely. `trialEndsAt`
+ * was never consulted by this function at all, so the trial end was pure
+ * decoration: the venue got unlimited free service, permanently, and nothing
+ * surfaced it.
+ */
+describe('paid-through date falls back to the trial end', () => {
+  test('REGRESSION: a trialing sub whose trial ended long ago is expired', () => {
+    subWith({ status: 'trialing', currentPeriodEnd: null, trialEndsAt: Date.now() - 60 * DAY });
+
+    expect(checkVenueSubscription('VEN001')).toMatchObject({ ok: false, status: 'expired' });
+  });
+
+  test('a trial still running is fine', () => {
+    subWith({ status: 'trialing', currentPeriodEnd: null, trialEndsAt: Date.now() + 5 * DAY });
+
+    expect(checkVenueSubscription('VEN001')).toMatchObject({ ok: true, status: 'trialing' });
+  });
+
+  test('the grace window still applies to a just-ended trial', () => {
+    process.env.SUBSCRIPTION_GRACE_DAYS = '5';
+    // Ended 2 days ago — inside grace, so a late activation ITN can still land.
+    subWith({ status: 'trialing', currentPeriodEnd: null, trialEndsAt: Date.now() - 2 * DAY });
+
+    expect(checkVenueSubscription('VEN001')).toMatchObject({ ok: true });
+  });
+
+  test('past the trial end plus grace → expired', () => {
+    process.env.SUBSCRIPTION_GRACE_DAYS = '5';
+    subWith({ status: 'trialing', currentPeriodEnd: null, trialEndsAt: Date.now() - 6 * DAY });
+
+    expect(checkVenueSubscription('VEN001')).toMatchObject({ ok: false, status: 'expired' });
+  });
+
+  test('currentPeriodEnd wins when both are present', () => {
+    // Trial long gone, but a renewal was paid — the venue is current.
+    subWith({ status: 'active', currentPeriodEnd: Date.now() + 20 * DAY, trialEndsAt: Date.now() - 60 * DAY });
+
+    expect(checkVenueSubscription('VEN001')).toMatchObject({ ok: true, status: 'active' });
+  });
+
+  test('non-active statuses are unaffected by the fallback', () => {
+    subWith({ status: 'canceled', currentPeriodEnd: null, trialEndsAt: null });
+    expect(checkVenueSubscription('VEN001')).toMatchObject({ ok: false, status: 'canceled' });
   });
 });
