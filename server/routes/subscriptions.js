@@ -17,6 +17,7 @@ const express = require('express');
 const db = require('../utils/database');
 const authMiddleware = require('../middleware/authMiddleware');
 const { getProvider } = require('../providers/subscription');
+const { checkVenueSubscription } = require('../middleware/requireSubscriptionActive');
 const { sendTrialStartedEmail } = require('../utils/email');
 
 const router = express.Router();
@@ -54,8 +55,10 @@ router.get('/me', authMiddleware, (req, res) => {
   // hardcode "Paystack" in its copy, which kept telling venues their card was
   // going somewhere it wasn't after the provider switched — the one claim on
   // that page a venue has no way to check for themselves.
+  // Always string-or-null, never undefined: an omitted key would silently fall
+  // back to the client's default label rather than showing it has no answer.
   const providerName = (() => {
-    try { return getProvider().name; } catch { return null; }
+    try { return getProvider().name || null; } catch { return null; }
   })();
 
   const sub = db.getSubscription(req.venue.code);
@@ -68,8 +71,17 @@ router.get('/me', authMiddleware, (req, res) => {
       provider: providerName,
     });
   }
+  // Report the EFFECTIVE status, not the stored flag. A subscription whose
+  // trial or paid period lapsed keeps `trialing`/`active` in the database
+  // forever — only checkVenueSubscription knows it has run out. Echoing the
+  // raw flag left the billing page insisting the venue was on a free trial
+  // that ended months ago, with no way to re-subscribe.
+  const { ok, status: effectiveStatus } = checkVenueSubscription(sub.venueCode);
+
   res.json({
-    status: sub.status,
+    status: effectiveStatus,
+    storedStatus: sub.status,
+    entitled: ok,
     trialEndsAt: sub.trialEndsAt,
     currentPeriodEnd: sub.currentPeriodEnd,
     cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
@@ -87,7 +99,13 @@ router.post('/start', authMiddleware, requireProviderConfigured, async (req, res
     const provider = req.subscriptionProvider;
 
     const existing = db.getSubscription(venue.code);
-    if (existing && (existing.status === 'trialing' || existing.status === 'active')) {
+    // Block only a subscription that is STILL ENTITLED. Testing the stored
+    // flag alone trapped venues whose trial had long since lapsed: the row
+    // stays 'trialing' forever, so every attempt to subscribe again was
+    // rejected as ALREADY_SUBSCRIBED while the venue was being told its trial
+    // had ended. Nothing could clear it from the app.
+    const stillEntitled = existing ? checkVenueSubscription(venue.code).ok : false;
+    if (existing && stillEntitled && (existing.status === 'trialing' || existing.status === 'active')) {
       return res.status(400).json({
         error: 'This venue already has an active subscription.',
         code: 'ALREADY_SUBSCRIBED',

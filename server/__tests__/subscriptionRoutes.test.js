@@ -370,3 +370,82 @@ describe('POST /api/subscriptions/cancel', () => {
     expect(db.upsertSubscription).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * A lapsed subscription keeps its stored flag ('trialing'/'active') forever —
+ * only checkVenueSubscription knows the period ran out. Echoing the raw flag
+ * from /me, and gating /start on it, trapped venues completely: the page
+ * insisted they were on a trial that ended months ago, offered Manage/Cancel
+ * instead of a Start button, and /start refused with ALREADY_SUBSCRIBED. There
+ * was no way out of that state from inside the app.
+ */
+describe('a lapsed subscription can be replaced', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  test('GET /me reports the effective status, not the stale stored flag', async () => {
+    db.getSubscription.mockReturnValue({
+      venueCode: 'TSTSUB',
+      status: 'trialing',
+      currentPeriodEnd: null,
+      trialEndsAt: Date.now() - 60 * DAY,
+    });
+
+    const res = await authed('get', '/api/subscriptions/me');
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('expired');
+    expect(res.body.storedStatus).toBe('trialing');
+    expect(res.body.entitled).toBe(false);
+  });
+
+  test('GET /me still reports a live trial as trialing', async () => {
+    db.getSubscription.mockReturnValue({
+      venueCode: 'TSTSUB',
+      status: 'trialing',
+      currentPeriodEnd: null,
+      trialEndsAt: Date.now() + 5 * DAY,
+    });
+
+    const res = await authed('get', '/api/subscriptions/me');
+
+    expect(res.body.status).toBe('trialing');
+    expect(res.body.entitled).toBe(true);
+  });
+
+  test('GET /me names the active payment provider', async () => {
+    db.getSubscription.mockReturnValue({
+      venueCode: 'TSTSUB', status: 'active', currentPeriodEnd: Date.now() + 10 * DAY,
+    });
+
+    const res = await authed('get', '/api/subscriptions/me');
+
+    expect(typeof res.body.provider === 'string' || res.body.provider === null).toBe(true);
+  });
+});
+
+describe('/start is not blocked by a lapsed subscription', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  test('a venue whose trial lapsed can subscribe again', async () => {
+    db.getSubscription.mockReturnValue({
+      venueCode: 'TSTSUB', status: 'trialing', currentPeriodEnd: null, trialEndsAt: Date.now() - 60 * DAY,
+    });
+
+    const res = await authed('post', '/api/subscriptions/start', {});
+
+    expect(res.status).toBe(200);
+    expect(providerStub.createCustomer).toHaveBeenCalled();
+  });
+
+  test('a venue still inside its trial is still blocked from double-subscribing', async () => {
+    db.getSubscription.mockReturnValue({
+      venueCode: 'TSTSUB', status: 'trialing', currentPeriodEnd: null, trialEndsAt: Date.now() + 5 * DAY,
+    });
+
+    const res = await authed('post', '/api/subscriptions/start', {});
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('ALREADY_SUBSCRIBED');
+    expect(providerStub.createCustomer).not.toHaveBeenCalled();
+  });
+});

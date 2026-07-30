@@ -10,6 +10,7 @@ const STATUS_LABELS = {
   past_due: { label: 'Payment failed', color: 'text-red-600' },
   canceled: { label: 'Canceled', color: 'text-zinc-500' },
   incomplete: { label: 'Setup incomplete', color: 'text-amber-600' },
+  expired: { label: 'Expired', color: 'text-red-600' },
 };
 
 /** Display names for the provider the server reports as active. */
@@ -124,7 +125,11 @@ export default function VenueBilling() {
   // page they can't verify for themselves.
   const providerLabel = PROVIDER_LABELS[sub?.provider] || 'our payment provider';
 
-  const showStartButton = status === 'none' || status === 'incomplete' || status === 'canceled';
+  // 'expired' belongs with the re-subscribe states: the server reports it when
+  // a trial or paid period lapsed, and the venue's only way forward is to
+  // start again. Leaving it out of both lists showed a venue no buttons at all.
+  const showStartButton = status === 'none' || status === 'incomplete'
+    || status === 'canceled' || status === 'expired';
   const showManageCancel = status === 'trialing' || status === 'active' || status === 'past_due';
 
   return (
@@ -166,6 +171,18 @@ export default function VenueBilling() {
             <div className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">R{amountZar}</div>
           </div>
         </div>
+
+        {status === 'expired' && (
+          <div className="rounded-lg bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-800 dark:text-red-200 mb-4">
+            <strong>Your subscription has run out.</strong><br />
+            {sub?.trialEndsAt && !sub?.currentPeriodEnd
+              ? `Your free trial ended on ${formatDate(sub.trialEndsAt)}.`
+              : sub?.currentPeriodEnd
+                ? `Your last paid period ended on ${formatDate(sub.currentPeriodEnd)}.`
+                : 'We could not confirm a current payment.'}
+            {' '}Start a new subscription below to keep using Speeldit.
+          </div>
+        )}
 
         {status === 'trialing' && sub?.trialEndsAt && (
           <div className="rounded-lg bg-zinc-50 dark:bg-dark-900 p-4 text-sm text-zinc-700 dark:text-zinc-200 mb-4">
