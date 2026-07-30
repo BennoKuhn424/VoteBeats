@@ -154,6 +154,70 @@ section('Signature implementation');
   }
 }
 
+// ── 5b. Raw env inspection ──────────────────────────────────────────────────
+// Whitespace in a dashboard-pasted value is invisible and fatal: it gets signed
+// (encoded as '+'), so PayFast computes a different hash and answers
+// "Generated signature does not match submitted signature" — an error that
+// looks like a code bug. Show the exact bytes.
+section('Raw values (│ marks the exact boundaries)');
+
+for (const key of ['PAYFAST_MERCHANT_ID', 'PAYFAST_MERCHANT_KEY', 'PAYFAST_PASSPHRASE', 'PUBLIC_API_URL', 'SUBSCRIPTION_PROVIDER']) {
+  const raw = process.env[key];
+  if (raw === undefined) { info(`${key.padEnd(22)} (not set)`); continue; }
+  const dirty = raw !== raw.trim();
+  const shown = /KEY|PASSPHRASE/.test(key) && raw.trim()
+    ? `${raw.slice(0, raw.length - raw.trimStart().length)}${raw.trim().slice(0, 4)}…${raw.slice(raw.trimEnd().length)}`
+    : raw;
+  if (dirty) {
+    fail(`${key} has leading/trailing whitespace:  │${shown}│`, 'This is signed verbatim and breaks the signature. Delete the value and retype it.');
+  } else {
+    info(`${key.padEnd(22)} │${shown}│`);
+  }
+}
+
+// ── 5c. Checkout dry-run ────────────────────────────────────────────────────
+// Reproduces exactly what /subscriptions/start would send, without creating
+// anything. Run with --dry-run-checkout when PayFast rejects the signature.
+async function dryRunCheckout() {
+  if (!args.includes('--dry-run-checkout')) return;
+  section('Checkout dry-run');
+
+  const Provider = require('../providers/subscription/PayfastSubscriptionProvider');
+  const instance = new Provider();
+
+  return instance
+    .initCardCapture({
+      email: 'preflight@example.test',
+      amountZar: parseInt(process.env.SUBSCRIPTION_AMOUNT_ZAR, 10) || 599,
+      reference: 'vbsub_PREFLT_0000000000000',
+      callbackUrl: `${(process.env.PUBLIC_URL || 'https://example.test').replace(/\/+$/, '')}/venue/billing/complete`,
+      metadata: {},
+    })
+    .then(({ authorizationUrl }) => {
+      const url = new URL(authorizationUrl);
+      const creds = payfast.credentials();
+      const signed = [];
+      for (const [k, v] of url.searchParams.entries()) {
+        if (k === 'signature') continue;
+        signed.push(`${k}=${payfast.pfEncode(v)}`);
+      }
+      if (creds.passphrase) signed.push(`passphrase=${payfast.pfEncode(creds.passphrase)}`);
+
+      line('  Signed string (this exact text is MD5-hashed):');
+      line(`  \x1b[90m${signed.join('&')}\x1b[0m`);
+      line();
+      line(`  Signature sent: ${url.searchParams.get('signature')}`);
+      line(`  Passphrase in signature: ${creds.passphrase ? 'YES' : 'no'}`);
+      line();
+      info('If PayFast rejects this, the usual cause is the passphrase: it must match the');
+      info('dashboard EXACTLY, and must be absent here if the account has none.');
+      line();
+      line('  Full checkout URL:');
+      line(`  \x1b[90m${authorizationUrl}\x1b[0m`);
+    })
+    .catch((e) => fail('Could not build a checkout', e.message));
+}
+
 // ── 6. Live probes ──────────────────────────────────────────────────────────
 async function probe() {
   if (!API_URL || !/^https?:\/\//.test(API_URL) || /localhost|127\.0\.0\.1/.test(API_URL)) {
@@ -234,7 +298,7 @@ async function probe() {
   }
 }
 
-probe().then(() => {
+dryRunCheckout().then(probe).then(() => {
   section('Result');
   if (fails === 0 && warns === 0) {
     line('  \x1b[32mReady.\x1b[0m All checks passed.');

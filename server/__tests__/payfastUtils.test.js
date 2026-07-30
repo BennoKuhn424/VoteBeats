@@ -231,3 +231,54 @@ describe('cancelSubscription', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Credentials pasted into a hosting dashboard routinely carry a stray leading
+ * or trailing space. Here that is invisible and fatal: the space is signed
+ * (RFC1738-encoded as '+'), so PayFast recomputes a different hash and rejects
+ * the checkout with "Generated signature does not match submitted signature" —
+ * an error that points at the signing code rather than the stray character.
+ * Trimming centrally removes the whole failure class.
+ */
+describe('credentials', () => {
+  const KEYS = ['PAYFAST_MERCHANT_ID', 'PAYFAST_MERCHANT_KEY', 'PAYFAST_PASSPHRASE'];
+  const savedEnv = {};
+  beforeEach(() => { for (const k of KEYS) savedEnv[k] = process.env[k]; });
+  afterEach(() => {
+    for (const k of KEYS) {
+      if (savedEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = savedEnv[k];
+    }
+  });
+
+  test('strips surrounding whitespace from every credential', () => {
+    expect(payfast.credentials({
+      PAYFAST_MERCHANT_ID: ' 10000100',
+      PAYFAST_MERCHANT_KEY: '46f0cd694581a ',
+      PAYFAST_PASSPHRASE: '  secret  ',
+    })).toEqual({ merchantId: '10000100', merchantKey: '46f0cd694581a', passphrase: 'secret' });
+  });
+
+  test('a whitespace-only passphrase is treated as absent, not as a value', () => {
+    // "" and "   " must behave exactly like unset: an empty passphrase must
+    // never be appended to the signed string.
+    expect(payfast.credentials({ PAYFAST_PASSPHRASE: '   ' }).passphrase).toBeUndefined();
+    expect(payfast.credentials({ PAYFAST_PASSPHRASE: '' }).passphrase).toBeUndefined();
+    expect(payfast.credentials({}).passphrase).toBeUndefined();
+  });
+
+  test('a padded credential signs identically to a clean one', () => {
+    const clean = payfast.credentials({ PAYFAST_MERCHANT_ID: '10000100' });
+    const padded = payfast.credentials({ PAYFAST_MERCHANT_ID: '  10000100  ' });
+    const sign = (c) => payfast.signParams([['merchant_id', c.merchantId], ['amount', '0.00']]);
+
+    expect(sign(padded)).toBe(sign(clean));
+  });
+
+  test('isSandbox tolerates padding too', () => {
+    expect(payfast.isSandbox({ PAYFAST_SANDBOX: ' true ' })).toBe(true);
+    expect(payfast.isSandbox({ PAYFAST_SANDBOX: 'TRUE' })).toBe(true);
+    expect(payfast.isSandbox({ PAYFAST_SANDBOX: 'false' })).toBe(false);
+    expect(payfast.isSandbox({})).toBe(false);
+  });
+});

@@ -40,11 +40,8 @@ class PayfastSubscriptionProvider extends SubscriptionProvider {
     // PUBLIC_API_URL is not optional here: without it the checkout's
     // notify_url is garbage, the ITN never arrives, and no subscription can
     // ever activate — refuse up front instead of failing silently later.
-    return Boolean(
-      process.env.PAYFAST_MERCHANT_ID
-        && process.env.PAYFAST_MERCHANT_KEY
-        && process.env.PUBLIC_API_URL
-    );
+    const { merchantId, merchantKey } = payfast.credentials();
+    return Boolean(merchantId && merchantKey && String(process.env.PUBLIC_API_URL || '').trim());
   }
 
   getTrialDays() {
@@ -97,13 +94,14 @@ class PayfastSubscriptionProvider extends SubscriptionProvider {
 
     const returnUrl = callbackUrl;
     const cancelUrl = callbackUrl;
-    const notifyUrl = `${(process.env.PUBLIC_API_URL || '').replace(/\/$/, '')}/api/webhooks/subscription`;
+    const notifyUrl = `${String(process.env.PUBLIC_API_URL || '').trim().replace(/\/+$/, '')}/api/webhooks/subscription`;
+    const { merchantId, merchantKey, passphrase } = payfast.credentials();
 
     // Field ORDER matters for the signature — this is PayFast's documented
     // order for a subscription. Keep insertion order stable.
     const ordered = [
-      ['merchant_id', process.env.PAYFAST_MERCHANT_ID],
-      ['merchant_key', process.env.PAYFAST_MERCHANT_KEY],
+      ['merchant_id', merchantId],
+      ['merchant_key', merchantKey],
       ['return_url', returnUrl],
       ['cancel_url', cancelUrl],
       ['notify_url', notifyUrl],
@@ -118,7 +116,7 @@ class PayfastSubscriptionProvider extends SubscriptionProvider {
       ['cycles', '0'], // 0 = indefinite until cancelled
     ];
 
-    const signature = payfast.signParams(ordered, process.env.PAYFAST_PASSPHRASE);
+    const signature = payfast.signParams(ordered, passphrase);
     const params = new URLSearchParams();
     for (const [k, v] of ordered) if (v !== undefined && v !== null && v !== '') params.append(k, v);
     params.append('signature', signature);
@@ -218,7 +216,7 @@ class PayfastSubscriptionProvider extends SubscriptionProvider {
    * carry the source IP via req (the route passes it through as x-real-ip).
    */
   verifyWebhook(rawBody, headers) {
-    const sigOk = payfast.verifyItnSignature(rawBody, process.env.PAYFAST_PASSPHRASE);
+    const sigOk = payfast.verifyItnSignature(rawBody, payfast.credentials().passphrase);
     if (!sigOk) return false;
     const ip = headers['x-payfast-source-ip'] || headers['x-real-ip'] || '';
     // In sandbox the source-IP check is relaxed (requests come from your own
@@ -233,7 +231,7 @@ class PayfastSubscriptionProvider extends SubscriptionProvider {
     // A notification for someone else's merchant account is not ours to act
     // on, no matter how it got here. (Signature + IP + /validate all passed
     // by this point, so a mismatch means gross misconfiguration.)
-    const ourMerchantId = process.env.PAYFAST_MERCHANT_ID;
+    const ourMerchantId = payfast.credentials().merchantId;
     if (ourMerchantId && payload.merchant_id && String(payload.merchant_id) !== String(ourMerchantId)) {
       return { kind: 'unhandled', rawEvent: 'payfast:merchant-mismatch' };
     }

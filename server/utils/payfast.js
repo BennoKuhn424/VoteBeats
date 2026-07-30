@@ -43,7 +43,32 @@ const PAYFAST_IP_RANGES = [
 ];
 
 function isSandbox(env = process.env) {
-  return String(env.PAYFAST_SANDBOX || '').toLowerCase() === 'true';
+  return String(env.PAYFAST_SANDBOX || '').trim().toLowerCase() === 'true';
+}
+
+/**
+ * PayFast credentials, whitespace-stripped.
+ *
+ * Always read credentials through this. Values pasted into a hosting
+ * dashboard routinely carry a leading or trailing space, and here that is
+ * invisible and brutal: the space is signed (encoded as '+'), so PayFast
+ * recomputes a different hash and rejects the checkout with
+ * "Generated signature does not match submitted signature" — an error that
+ * points at the signing code rather than at the stray character actually
+ * causing it. Trimming once, centrally, removes the whole failure class.
+ *
+ * A passphrase of empty-string is normalised to undefined, because "" and
+ * "not set" must behave identically — an empty passphrase must never be
+ * appended to the signature string.
+ */
+function credentials(env = process.env) {
+  const trim = (v) => (typeof v === 'string' ? v.trim() : v);
+  const passphrase = trim(env.PAYFAST_PASSPHRASE);
+  return {
+    merchantId: trim(env.PAYFAST_MERCHANT_ID) || undefined,
+    merchantKey: trim(env.PAYFAST_MERCHANT_KEY) || undefined,
+    passphrase: passphrase || undefined,
+  };
 }
 
 function processHost(env = process.env) {
@@ -222,7 +247,7 @@ function apiSignature(params, passphrase) {
  * @returns {Promise<boolean>}
  */
 async function cancelSubscription(token, { fetchImpl = fetch, env = process.env, now = new Date() } = {}) {
-  const merchantId = env.PAYFAST_MERCHANT_ID;
+  const { merchantId, passphrase } = credentials(env);
   if (!merchantId) throw new Error('PAYFAST_MERCHANT_ID not set');
   if (!token) throw new Error('PayFast subscription token required');
 
@@ -233,7 +258,7 @@ async function cancelSubscription(token, { fetchImpl = fetch, env = process.env,
     version: 'v1',
     timestamp,
   };
-  const signature = apiSignature(headers, env.PAYFAST_PASSPHRASE);
+  const signature = apiSignature(headers, passphrase);
 
   const testing = isSandbox(env) ? '?testing=true' : '';
   const res = await fetchImpl(
@@ -255,6 +280,7 @@ module.exports = {
   API_HOST,
   PAYFAST_IP_RANGES,
   isSandbox,
+  credentials,
   processHost,
   pfEncode,
   signParams,
