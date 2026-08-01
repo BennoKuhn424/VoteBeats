@@ -173,6 +173,51 @@ describe('POST /api/subscriptions/start', () => {
     expect(res.status).toBe(502);
     expect(res.body.code).toBe('SUBSCRIPTION_START_FAILED');
   });
+
+  // ── Double-checkout guard ──
+  // An 'incomplete' subscription is not entitled and its status is neither
+  // trialing nor active, so it slips past the ALREADY_SUBSCRIBED check above.
+  // Without a separate guard a venue could open two hosted pages, complete
+  // both, and leave the provider running two recurring subscriptions while the
+  // one-row-per-venue table could only ever track (and cancel) the last token.
+  test('refuses a second checkout while one is still in flight', async () => {
+    db.getSubscription.mockReturnValue({ status: 'incomplete', venueCode: 'TSTSUB' });
+    db.getOpenSubscriptionCheckout.mockReturnValue({
+      reference: 'vbsub_TSTSUB_1', venueCode: 'TSTSUB', status: 'open', createdAt: Date.now() - 30_000,
+    });
+    const res = await authed('post', '/api/subscriptions/start', {});
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('CHECKOUT_IN_PROGRESS');
+    expect(res.body.retryAfterMs).toBeGreaterThan(0);
+    // Nothing may reach the provider — a second hosted page is the bug.
+    expect(providerStub.initCardCapture).not.toHaveBeenCalled();
+  });
+
+  test('an abandoned checkout stops blocking once the lock window passes', async () => {
+    // The venue must never be permanently trapped: that is the failure this
+    // codebase already fixed once for lapsed subscriptions.
+    db.getSubscription.mockReturnValue({ status: 'incomplete', venueCode: 'TSTSUB' });
+    db.getOpenSubscriptionCheckout.mockReturnValue({
+      reference: 'vbsub_TSTSUB_1', venueCode: 'TSTSUB', status: 'open', createdAt: Date.now() - 6 * 60 * 1000,
+    });
+    const res = await authed('post', '/api/subscriptions/start', {});
+    expect(res.status).toBe(200);
+    expect(res.body.authorizationUrl).toBeTruthy();
+  });
+
+  test('records the checkout in the ledger and supersedes older open ones', async () => {
+    db.getSubscription.mockReturnValue(null);
+    const res = await authed('post', '/api/subscriptions/start', {});
+    expect(res.status).toBe(200);
+    const reference = res.body.reference;
+    // The subscriptions row keeps only the newest reference, so the ledger is
+    // the only place an earlier checkout survives.
+    expect(db.recordSubscriptionCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({ venueCode: 'TSTSUB' }),
+    );
+    expect(db.supersedeOpenSubscriptionCheckouts).toHaveBeenCalledWith('TSTSUB', expect.any(String));
+    expect(reference).toMatch(/^vbsub_TSTSUB_/);
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -232,7 +277,7 @@ describe('POST /api/subscriptions/complete', () => {
     expect(providerStub.createSubscription).not.toHaveBeenCalled();
   });
 
-  test('webhook-activated provider (PayFast) → 202 pending_activation, nothing activated on trust', async () => {
+  test('webhook-activated provider (PayFast), free trial → activates immediately, no waiting on the ITN', async () => {
     db.getSubscriptionByInitReference.mockReturnValue({
       venueCode: 'TSTSUB',
       status: 'incomplete',
@@ -241,15 +286,47 @@ describe('POST /api/subscriptions/complete', () => {
     providerStub.activationVia = 'webhook';
     try {
       const res = await authed('post', '/api/subscriptions/complete', { reference: REFERENCE });
-      expect(res.status).toBe(202);
-      expect(res.body.status).toBe('pending_activation');
-      // The route must not verify, create, or upsert anything — the verified
-      // webhook is the only activation path for these providers.
+      // A trial checkout moves R0.00, so there is no payment to confirm and no
+      // reason to make the venue wait on an inbound webhook.
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('trialing');
+      expect(res.body.pendingConfirmation).toBe(true);
+      expect(res.body.trialEndsAt).toBeGreaterThan(Date.now());
+
+      const saved = db.upsertSubscription.mock.calls[0][0];
+      expect(saved.status).toBe('trialing');
+      // Must stay unset: it is what tells the webhook this subscription has
+      // never been confirmed, so the first ITN is still handled as the
+      // activation rather than as a renewal.
+      expect(saved.providerSubscriptionId).toBeFalsy();
+
+      // Still nothing verified or created provider-side — that is the ITN's job.
       expect(providerStub.verifyCardCapture).not.toHaveBeenCalled();
       expect(providerStub.createSubscription).not.toHaveBeenCalled();
+    } finally {
+      delete providerStub.activationVia;
+    }
+  });
+
+  test('webhook-activated provider, NO trial → still 202, real money waits for the ITN', async () => {
+    db.getSubscriptionByInitReference.mockReturnValue({
+      venueCode: 'TSTSUB',
+      status: 'incomplete',
+      providerCustomerId: 'cus_test',
+    });
+    providerStub.activationVia = 'webhook';
+    const prevTrial = process.env.SUBSCRIPTION_TRIAL_DAYS;
+    process.env.SUBSCRIPTION_TRIAL_DAYS = '0';
+    try {
+      const res = await authed('post', '/api/subscriptions/complete', { reference: REFERENCE });
+      expect(res.status).toBe(202);
+      expect(res.body.status).toBe('pending_activation');
+      // Nothing may be activated on trust when the charge is real.
       expect(db.upsertSubscription).not.toHaveBeenCalled();
     } finally {
       delete providerStub.activationVia;
+      if (prevTrial === undefined) delete process.env.SUBSCRIPTION_TRIAL_DAYS;
+      else process.env.SUBSCRIPTION_TRIAL_DAYS = prevTrial;
     }
   });
 

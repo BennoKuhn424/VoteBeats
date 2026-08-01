@@ -124,7 +124,19 @@ async function subscriptionWebhook(req, res) {
         handlePaymentFailed(evt);
         break;
       default:
-        // Ack unhandled events so the provider stops retrying.
+        // Ack unhandled events so the provider stops retrying — but say so.
+        // Silence here was a real trap: a merchant_id mismatch (see
+        // PayfastSubscriptionProvider.normalizeWebhookEvent) normalises to
+        // 'unhandled', so a mis-set PAYFAST_MERCHANT_ID produced a fully
+        // successful-looking 200 with no trace anywhere, while every venue sat
+        // waiting for an activation that would never come.
+        console.warn(JSON.stringify({
+          t: new Date().toISOString(),
+          msg: 'subscription-webhook-unhandled',
+          rawEvent: evt.rawEvent || evt.kind || 'unknown',
+          reference: evt.reference || null,
+          providerSubscriptionId: evt.providerSubscriptionId || null,
+        }));
         break;
     }
     res.sendStatus(200);
@@ -150,6 +162,15 @@ function findSubscription(evt) {
   if (evt.reference) {
     const byRef = db.getSubscriptionByInitReference(evt.reference);
     if (byRef) return byRef;
+
+    // The subscriptions row keeps only the NEWEST init reference, so an ITN for
+    // a checkout that was later superseded no longer matches above. The
+    // append-only checkout ledger still has it.
+    const checkout = db.getSubscriptionCheckout(evt.reference);
+    if (checkout) {
+      const byLedger = db.getSubscription(checkout.venueCode);
+      if (byLedger) return byLedger;
+    }
 
     // Last resort: recover the venue from our own reference format.
     // /start stores exactly ONE init reference per venue, so a venue that
@@ -214,8 +235,49 @@ function handleChargeSucceeded(evt) {
   }
 
   const now = Date.now();
-  const isActivation = sub.status === 'incomplete';
+  // "Has this subscription ever been confirmed by the provider?" — NOT "does
+  // the row say incomplete?". A trial is activated optimistically on return
+  // from the hosted page (see routes/subscriptions.js /complete) so the venue
+  // gets instant access, which leaves the row 'trialing' with no provider
+  // token. Testing the status alone would then treat the very first ITN as a
+  // RENEWAL: it would skip storing the durable token and push
+  // currentPeriodEnd a month out for a R0.00 tokenization.
+  const hasProviderToken = !!sub.providerSubscriptionId
+    && !String(sub.providerSubscriptionId).startsWith('vbsub_');
+  const isActivation = sub.status === 'incomplete' || !hasProviderToken;
   const expectedZar = subscriptionAmountZar();
+
+  // ── Duplicate-subscription guard ──
+  // A token that differs from the confirmed one already on file means the
+  // provider is running TWO recurring subscriptions for this venue. Only one
+  // can be stored, so the other would bill every month with nothing in the app
+  // able to reach it. Keep the tracked one, cancel the newcomer, and make the
+  // whole thing loud — money may already have moved on it.
+  const incomingToken = evt.providerSubscriptionId;
+  if (hasProviderToken && incomingToken && incomingToken !== sub.providerSubscriptionId) {
+    console.error(JSON.stringify({
+      t: new Date().toISOString(),
+      msg: 'subscription-duplicate-token',
+      venueCode: sub.venueCode,
+      keptProviderSubscriptionId: sub.providerSubscriptionId,
+      duplicateProviderSubscriptionId: incomingToken,
+      amountGrossZar: evt.amountGrossZar ?? null,
+      rawEvent: evt.rawEvent,
+      detail: 'Two live subscriptions at the provider for one venue. Cancelling the duplicate; '
+        + 'check the provider dashboard for money already taken on it.',
+    }));
+
+    getProvider()
+      .cancel({ providerSubscriptionId: incomingToken })
+      .then(() => db.markSubscriptionCheckout(evt.reference || '', { status: 'superseded' }))
+      .catch((e) => console.error(
+        `[SUB WEBHOOK] could not cancel duplicate subscription ${incomingToken}: ${e.message}`
+      ));
+
+    // Do NOT extend service on the duplicate — the tracked subscription already
+    // governs this venue's period.
+    return;
+  }
 
   // ── Amount guard ──
   // Providers that report the charged amount (PayFast amount_gross) must match
@@ -269,6 +331,16 @@ function handleChargeSucceeded(evt) {
       trialEndsAt: trialEndsAt || sub.trialEndsAt,
       currentPeriodEnd: periodEnd,
     });
+
+    // Close the ledger entry against the token it produced. This is what makes
+    // a second live subscription detectable later — and what proves an
+    // optimistically-started trial was confirmed by the provider after all.
+    if (evt.reference) {
+      db.markSubscriptionCheckout(evt.reference, {
+        status: 'activated',
+        providerSubscriptionId: evt.providerSubscriptionId || null,
+      });
+    }
 
     const recip = getVenueEmail(sub);
     if (recip && trialActive) {

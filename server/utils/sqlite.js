@@ -290,6 +290,30 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_sub ON subscriptions(stripe_subscription_id);
   CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
+
+  -- Every hosted checkout ever opened for a venue, one row per init reference.
+  --
+  -- The subscriptions table holds ONE row per venue, so starting a second
+  -- checkout used to overwrite the first one's init reference and erase all
+  -- trace of it. If the venue then completed both hosted pages, the provider
+  -- created TWO recurring subscriptions while we could only ever store (and
+  -- therefore only ever cancel) the last token to arrive — the other one bills
+  -- the venue every month, invisibly, forever.
+  --
+  -- This ledger is append-only so no checkout can be lost:
+  --   open       — hosted page issued, nothing confirmed yet
+  --   activated  — an ITN matched this reference and activated the venue
+  --   superseded — abandoned; a later checkout replaced it before it activated
+  CREATE TABLE IF NOT EXISTS subscription_checkouts (
+    reference TEXT PRIMARY KEY,
+    venue_code TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'activated', 'superseded')),
+    provider_subscription_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_sub_checkouts_venue ON subscription_checkouts(venue_code, status);
+  CREATE INDEX IF NOT EXISTS idx_sub_checkouts_provider ON subscription_checkouts(provider_subscription_id);
 `);
 
 // Paystack uses the same subscriptions table — the stripe_* columns hold

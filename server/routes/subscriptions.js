@@ -22,13 +22,42 @@ const { sendTrialStartedEmail } = require('../utils/email');
 
 const router = express.Router();
 
-const TRIAL_DAYS = parseInt(process.env.SUBSCRIPTION_TRIAL_DAYS || process.env.PAYSTACK_TRIAL_DAYS, 10) || 14;
+// Read at call time (not module load) so tests and live config changes see the
+// current value — same convention as subscriptionAmountZar() in the webhook
+// route. Zero is meaningful here (it switches the venue to a paid signup with
+// no trial), so an explicit 0 must survive rather than falling through to 14.
+function trialDays() {
+  const raw = process.env.SUBSCRIPTION_TRIAL_DAYS ?? process.env.PAYSTACK_TRIAL_DAYS;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : 14;
+}
 const SUBSCRIPTION_AMOUNT_ZAR = parseInt(
   process.env.SUBSCRIPTION_AMOUNT_ZAR || process.env.PAYSTACK_SUBSCRIPTION_AMOUNT_ZAR,
   10,
 ) || 599;
 const AUTH_CHARGE_ZAR = 1; // Small authorisation hold, refunded by provider
 const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:5173';
+
+/**
+ * How long a freshly-issued hosted checkout blocks a second one.
+ *
+ * Opening two hosted pages is not a harmless double-click: each completed page
+ * creates its OWN recurring subscription at the provider, and the venue's row
+ * can only hold one token — so the other one bills every month with nothing in
+ * the app able to cancel it.
+ *
+ * Short and bounded on purpose. A venue that abandons the provider page must be
+ * able to try again quickly — blocking until something clears the row is what
+ * trapped venues before (see the ALREADY_SUBSCRIBED comment below), and making
+ * someone wait out a long lock is its own bad experience.
+ *
+ * This is the first line, not the only one: the duplicate-token guard in
+ * routes/subscriptionWebhooks.js catches a second live subscription whenever it
+ * appears, however long the gap was. So this window only has to be wide enough
+ * to absorb the common case — an impatient venue clicking Start again while the
+ * provider page is still open.
+ */
+const CHECKOUT_LOCK_MS = 5 * 60 * 1000;
 
 function requireProviderConfigured(req, res, next) {
   const provider = getProvider();
@@ -66,7 +95,7 @@ router.get('/me', authMiddleware, (req, res) => {
     return res.json({
       status: 'none',
       venueCode: req.venue.code,
-      trialDays: TRIAL_DAYS,
+      trialDays: trialDays(),
       amountZar: SUBSCRIPTION_AMOUNT_ZAR,
       provider: providerName,
     });
@@ -86,7 +115,7 @@ router.get('/me', authMiddleware, (req, res) => {
     currentPeriodEnd: sub.currentPeriodEnd,
     cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
     venueCode: sub.venueCode,
-    trialDays: TRIAL_DAYS,
+    trialDays: trialDays(),
     amountZar: SUBSCRIPTION_AMOUNT_ZAR,
     provider: providerName,
   });
@@ -112,6 +141,20 @@ router.post('/start', authMiddleware, requireProviderConfigured, async (req, res
       });
     }
 
+    // A checkout already in flight blocks a second one. Without this the venue
+    // can open two hosted pages, complete both, and end up with two recurring
+    // subscriptions at the provider — while `subscriptions` (one row per venue)
+    // keeps only the last token, leaving the other billing forever with nothing
+    // in the app able to cancel it.
+    const openCheckout = db.getOpenSubscriptionCheckout(venue.code);
+    if (openCheckout && Date.now() - openCheckout.createdAt < CHECKOUT_LOCK_MS) {
+      return res.status(409).json({
+        error: 'A checkout is already open for this venue. Finish it, or wait a few minutes and try again.',
+        code: 'CHECKOUT_IN_PROGRESS',
+        retryAfterMs: CHECKOUT_LOCK_MS - (Date.now() - openCheckout.createdAt),
+      });
+    }
+
     const { providerCustomerId } = await provider.createCustomer({
       email: venue.owner.email,
       firstName: venue.name,
@@ -129,6 +172,12 @@ router.post('/start', authMiddleware, requireProviderConfigured, async (req, res
       metadata: { venueCode: venue.code, purpose: 'subscription_authorization' },
     });
 
+    // Ledger first: the subscriptions row keeps only the newest reference, so
+    // this is the only record that an earlier checkout ever existed. An ITN for
+    // a superseded checkout still resolves through it.
+    db.recordSubscriptionCheckout({ reference, venueCode: venue.code });
+    db.supersedeOpenSubscriptionCheckouts(venue.code, reference);
+
     db.upsertSubscription({
       venueCode: venue.code,
       providerCustomerId,
@@ -140,7 +189,7 @@ router.post('/start', authMiddleware, requireProviderConfigured, async (req, res
       authorizationUrl: init.authorizationUrl,
       reference: init.reference,
       amountZar: SUBSCRIPTION_AMOUNT_ZAR,
-      trialDays: TRIAL_DAYS,
+      trialDays: trialDays(),
     });
   } catch (err) {
     console.error('[SUB] /start failed:', err.message, err.paystack);
@@ -171,10 +220,38 @@ router.post('/complete', authMiddleware, requireProviderConfigured, async (req, 
     }
 
     // Webhook-activated providers (PayFast): there is no pre-webhook
-    // verification endpoint — the fully verified ITN is what activates the
-    // subscription (see routes/subscriptionWebhooks.js). Nothing is activated
-    // here on trust; the client polls until the webhook lands.
+    // verification endpoint — the fully verified ITN is what confirms the
+    // subscription (see routes/subscriptionWebhooks.js).
     if (provider.activationVia === 'webhook') {
+      // A FREE-TRIAL checkout moves R0.00 — the hosted page only tokenizes the
+      // card. There is no payment to confirm, so making the venue wait on an
+      // inbound webhook before it can use anything buys no safety and costs it
+      // the entire first impression: provider ITNs normally land in seconds,
+      // but "seconds" is not a guarantee anyone can offer, and a venue that has
+      // just signed up should not be staring at a spinner.
+      //
+      // So the trial starts now and the ITN confirms it afterwards. The worst
+      // case is a venue that abandons the hosted page and returns here anyway,
+      // getting a trial without a tokenized card — it costs nothing, expires on
+      // its own, and the missing ITN is visible in the checkout ledger.
+      //
+      // A PAID activation is different in kind: real money has to have moved
+      // before service starts, so it still waits for the verified ITN.
+      if (trialDays() > 0) {
+        const trialEndsAt = Date.now() + trialDays() * 24 * 60 * 60 * 1000;
+        db.upsertSubscription({
+          ...pendingSub,
+          status: 'trialing',
+          trialEndsAt,
+          currentPeriodEnd: trialEndsAt,
+          // providerSubscriptionId stays unset ON PURPOSE. It is what tells the
+          // webhook this subscription has never been confirmed, so the ITN is
+          // still handled as the activation (storing the real provider token
+          // and sending the trial-started email) rather than as a renewal.
+        });
+        return res.json({ status: 'trialing', trialEndsAt, pendingConfirmation: true });
+      }
+
       return res.status(202).json({
         status: 'pending_activation',
         message: 'Waiting for payment confirmation from the provider.',
@@ -189,7 +266,7 @@ router.post('/complete', authMiddleware, requireProviderConfigured, async (req, 
       return res.status(400).json({ error: 'Card cannot be saved for recurring billing', code: 'CARD_NOT_REUSABLE' });
     }
 
-    const trialEndsAt = Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000;
+    const trialEndsAt = Date.now() + trialDays() * 24 * 60 * 60 * 1000;
 
     const subscription = await provider.createSubscription({
       providerCustomerId: pendingSub.providerCustomerId,

@@ -421,3 +421,143 @@ describe('activation via a superseded init reference', () => {
     expect(res.sendStatus).toHaveBeenCalledWith(200);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Two live subscriptions for one venue.
+//
+// The subscriptions table holds ONE row per venue, so only one provider token
+// can ever be stored. If a venue completes two hosted checkouts, PayFast runs
+// two recurring subscriptions and the second token overwrites the first —
+// leaving the first billing R599 every month with nothing in the app able to
+// reach it, and no trace it exists.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('duplicate subscriptions', () => {
+  const VENUE2 = 'PFVEN9';
+  const REF_A = `vbsub_${VENUE2}_1700000000001`;
+  const REF_B = `vbsub_${VENUE2}_1700000000002`;
+
+  beforeAll(() => {
+    db.saveVenue(VENUE2, {
+      code: VENUE2, name: 'Double Bar', owner: { email: 'owner@double.co.za' }, settings: {},
+    });
+  });
+
+  test('a second token is cancelled at PayFast instead of silently replacing the first', async () => {
+    db.upsertSubscription({
+      venueCode: VENUE2,
+      providerCustomerId: 'owner@double.co.za',
+      status: 'incomplete',
+      paystackInitReference: REF_A,
+      providerSubscriptionId: null,
+      trialEndsAt: null,
+      currentPeriodEnd: null,
+    });
+    db.recordSubscriptionCheckout({ reference: REF_A, venueCode: VENUE2 });
+
+    // Checkout A activates normally.
+    const trialEnd = daysFromNow(14);
+    await postItn(itnBody({
+      m_payment_id: REF_A,
+      payment_status: 'COMPLETE',
+      amount_gross: '0.00',
+      token: 'pf-dup-AAA',
+      billing_date: dateStr(trialEnd),
+      merchant_id: MERCHANT_ID,
+      email_address: 'owner@double.co.za',
+    }));
+    expect(db.getSubscription(VENUE2).providerSubscriptionId).toBe('pf-dup-AAA');
+
+    // Checkout B — a second hosted page the venue also completed — arrives with
+    // a DIFFERENT token. PayFast is now billing this venue twice.
+    db.recordSubscriptionCheckout({ reference: REF_B, venueCode: VENUE2 });
+    const cancelCalls = [];
+    global.fetch = jest.fn(async (url, opts) => {
+      if (String(url).includes('/eng/query/validate')) return { ok: true, text: async () => 'VALID' };
+      cancelCalls.push({ url: String(url), method: opts?.method });
+      return { ok: true, status: 200, text: async () => 'OK' };
+    });
+
+    const res = await postItn(itnBody({
+      m_payment_id: REF_B,
+      payment_status: 'COMPLETE',
+      amount_gross: '0.00',
+      token: 'pf-dup-BBB',
+      billing_date: dateStr(trialEnd),
+      merchant_id: MERCHANT_ID,
+      email_address: 'owner@double.co.za',
+    }));
+    expect(res.sendStatus).toHaveBeenCalledWith(200);
+
+    // Let the fire-and-forget cancel settle.
+    await new Promise((r) => setImmediate(r));
+
+    // The tracked subscription is untouched — we keep the one the app can reach.
+    const sub = db.getSubscription(VENUE2);
+    expect(sub.providerSubscriptionId).toBe('pf-dup-AAA');
+
+    // And the duplicate was actually cancelled at PayFast, not just logged.
+    expect(cancelCalls.some((c) => c.url.includes('pf-dup-BBB') && /cancel/.test(c.url))).toBe(true);
+  });
+
+  test('the audit query surfaces a duplicate that could not be cancelled', () => {
+    // Simulate the cancel having failed: the ledger still holds a token the
+    // subscription no longer points at. This must be visible to ops.
+    db.markSubscriptionCheckout(REF_B, { status: 'activated', providerSubscriptionId: 'pf-dup-BBB' });
+    const dupes = db.listDuplicateSubscriptionCheckouts();
+    expect(dupes.some((d) => d.venueCode === VENUE2 && d.providerSubscriptionId === 'pf-dup-BBB')).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Instant trial access: /complete activates a trial optimistically so the venue
+// is not left staring at a spinner. The ITN still has to do the real work.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('optimistically-activated trial', () => {
+  const VENUE3 = 'PFVEN8';
+  const REF_C = `vbsub_${VENUE3}_1700000000003`;
+
+  beforeAll(() => {
+    db.saveVenue(VENUE3, {
+      code: VENUE3, name: 'Instant Bar', owner: { email: 'owner@instant.co.za' }, settings: {},
+    });
+  });
+
+  test('first ITN is still handled as the ACTIVATION, not as a renewal', async () => {
+    // The state /complete leaves behind: trialing, dated, but no provider token.
+    const optimisticTrialEnd = Date.now() + 14 * 24 * 60 * 60 * 1000;
+    db.upsertSubscription({
+      venueCode: VENUE3,
+      providerCustomerId: 'owner@instant.co.za',
+      status: 'trialing',
+      paystackInitReference: REF_C,
+      providerSubscriptionId: null,
+      trialEndsAt: optimisticTrialEnd,
+      currentPeriodEnd: optimisticTrialEnd,
+    });
+    db.recordSubscriptionCheckout({ reference: REF_C, venueCode: VENUE3 });
+
+    const billingDate = daysFromNow(14);
+    const res = await postItn(itnBody({
+      m_payment_id: REF_C,
+      payment_status: 'COMPLETE',
+      amount_gross: '0.00',
+      token: 'pf-tok-instant',
+      billing_date: dateStr(billingDate),
+      merchant_id: MERCHANT_ID,
+      email_address: 'owner@instant.co.za',
+    }));
+    expect(res.sendStatus).toHaveBeenCalledWith(200);
+
+    const sub = db.getSubscription(VENUE3);
+    // The durable token must get stored — treating this as a renewal would skip
+    // it and leave the subscription permanently uncancellable.
+    expect(sub.providerSubscriptionId).toBe('pf-tok-instant');
+    expect(sub.status).toBe('trialing');
+    // A R0.00 tokenization must NOT buy a month of paid service.
+    expect(sub.currentPeriodEnd).toBe(new Date(dateStr(billingDate)).getTime());
+    expect(email.sendTrialStartedEmail).toHaveBeenCalled();
+
+    // And the ledger now proves the provider confirmed it.
+    expect(db.getSubscriptionCheckout(REF_C).status).toBe('activated');
+  });
+});

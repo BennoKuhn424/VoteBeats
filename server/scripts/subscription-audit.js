@@ -91,6 +91,40 @@ for (const code of codes.sort()) {
 
 console.log('─'.repeat(88));
 
+// ── Duplicate live subscriptions ────────────────────────────────────────────
+// A venue can only ever store ONE provider token, so a checkout that activated
+// against a DIFFERENT token is a subscription still billing at the provider
+// that nothing in the app can cancel. This should always be empty; when it
+// isn't, real money is leaving someone's account every month for nothing.
+const duplicates = db.listDuplicateSubscriptionCheckouts();
+if (duplicates.length > 0) {
+  console.log(`\n⚠  ${duplicates.length} DUPLICATE SUBSCRIPTION(S) — the venue is being billed twice:\n`);
+  for (const d of duplicates) {
+    const current = db.getSubscription(d.venueCode);
+    console.log(`  ${d.venueCode}  untracked token ${d.providerSubscriptionId}`);
+    console.log(`            app is tracking ${current?.providerSubscriptionId || '(none)'}  (ref ${d.reference}, opened ${fmt(d.createdAt)})`);
+  }
+  console.log(
+    '\nCancel each untracked token in the PayFast dashboard — the app cannot reach\n'
+    + 'them. Refund anything already taken on them.\n'
+  );
+}
+
+// Checkouts that were started and never confirmed by an ITN. A trial activated
+// optimistically still shows here until its ITN lands, so a persistent entry
+// means the webhook is not arriving at all.
+const stale = [];
+for (const code of codes) {
+  for (const c of db.listSubscriptionCheckouts(code)) {
+    if (c.status === 'open' && Date.now() - c.createdAt > 30 * 60 * 1000) stale.push(c);
+  }
+}
+if (stale.length > 0) {
+  console.log(`\n${stale.length} checkout(s) opened over 30 min ago with no ITN confirmation:\n`);
+  for (const c of stale) console.log(`  ${c.venueCode}  ${c.reference}  opened ${fmt(c.createdAt)}`);
+  console.log('\nIf these keep accumulating, PayFast ITNs are not reaching the server.\n');
+}
+
 if (atRisk.length === 0) {
   console.log('\nNo venue depends on a provider other than the active one. The switch is safe.\n');
 } else {

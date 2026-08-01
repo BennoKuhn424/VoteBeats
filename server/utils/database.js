@@ -194,6 +194,62 @@ const stmtUpsertSubscription = db.prepare(`
     updated_at = excluded.updated_at
 `);
 
+// Append-only ledger of hosted checkouts. See the table comment in sqlite.js:
+// the subscriptions row holds only the LATEST init reference, so this is the
+// only place a superseded checkout survives — and the only way to notice that a
+// venue ended up with two live subscriptions at the provider.
+const stmtInsertSubCheckout = db.prepare(`
+  INSERT INTO subscription_checkouts (reference, venue_code, status, provider_subscription_id, created_at, updated_at)
+  VALUES (@reference, @venue_code, 'open', NULL, @created_at, @updated_at)
+  ON CONFLICT(reference) DO NOTHING
+`);
+const stmtGetSubCheckout = db.prepare('SELECT * FROM subscription_checkouts WHERE reference = ?');
+const stmtGetOpenSubCheckout = db.prepare(`
+  SELECT * FROM subscription_checkouts
+  WHERE venue_code = ? AND status = 'open'
+  ORDER BY created_at DESC LIMIT 1
+`);
+const stmtListSubCheckouts = db.prepare(
+  'SELECT * FROM subscription_checkouts WHERE venue_code = ? ORDER BY created_at DESC'
+);
+const stmtUpdateSubCheckout = db.prepare(`
+  UPDATE subscription_checkouts
+  SET status = @status,
+      provider_subscription_id = COALESCE(@provider_subscription_id, provider_subscription_id),
+      updated_at = @updated_at
+  WHERE reference = @reference
+`);
+const stmtSupersedeOpenSubCheckouts = db.prepare(`
+  UPDATE subscription_checkouts
+  SET status = 'superseded', updated_at = @updated_at
+  WHERE venue_code = @venue_code AND status = 'open' AND reference != @keep_reference
+`);
+// Activated checkouts whose provider token is NOT the one the venue's
+// subscription currently points at. Each of these is a subscription still live
+// at the provider that nothing in the app can cancel — i.e. active double
+// billing. Deliberately a query rather than a flag so it stays true as the
+// subscription row changes.
+const stmtListDuplicateSubCheckouts = db.prepare(`
+  SELECT c.* FROM subscription_checkouts c
+  JOIN subscriptions s ON s.venue_code = c.venue_code
+  WHERE c.status = 'activated'
+    AND c.provider_subscription_id IS NOT NULL
+    AND s.stripe_subscription_id IS NOT NULL
+    AND c.provider_subscription_id != s.stripe_subscription_id
+`);
+
+function rowToSubCheckout(row) {
+  if (!row) return null;
+  return {
+    reference: row.reference,
+    venueCode: row.venue_code,
+    status: row.status,
+    providerSubscriptionId: row.provider_subscription_id || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 // Payouts
 const stmtGetPayout = db.prepare('SELECT * FROM payouts WHERE venue_code = ? AND year = ? AND month = ?');
 const stmtGetPayoutById = db.prepare('SELECT * FROM payouts WHERE id = ?');
@@ -1029,6 +1085,55 @@ module.exports = {
     const row = stmtGetSubscriptionByReference.get(reference);
     return row ? rowToSubscription(row) : null;
   },
+
+  // ── Subscription checkout ledger ──────────────────────────────────────────
+
+  /** Record a newly-issued hosted checkout. Idempotent per reference. */
+  recordSubscriptionCheckout: ({ reference, venueCode }) => {
+    const now = Date.now();
+    stmtInsertSubCheckout.run({
+      reference, venue_code: venueCode, created_at: now, updated_at: now,
+    });
+  },
+
+  /** The most recent still-open checkout for a venue, or null. */
+  getOpenSubscriptionCheckout: (venueCode) =>
+    rowToSubCheckout(stmtGetOpenSubCheckout.get(venueCode)),
+
+  getSubscriptionCheckout: (reference) =>
+    rowToSubCheckout(stmtGetSubCheckout.get(reference)),
+
+  /** Every checkout ever opened for a venue, newest first. */
+  listSubscriptionCheckouts: (venueCode) =>
+    stmtListSubCheckouts.all(venueCode).map(rowToSubCheckout),
+
+  /** Mark a checkout activated (or superseded), recording the provider token. */
+  markSubscriptionCheckout: (reference, { status, providerSubscriptionId } = {}) => {
+    stmtUpdateSubCheckout.run({
+      reference,
+      status: status || 'open',
+      provider_subscription_id: providerSubscriptionId ?? null,
+      updated_at: Date.now(),
+    });
+  },
+
+  /**
+   * Close out every other open checkout for a venue when a new one is issued.
+   * Keeps the ledger honest about which hosted page is the live one.
+   */
+  supersedeOpenSubscriptionCheckouts: (venueCode, keepReference) => {
+    stmtSupersedeOpenSubCheckouts.run({
+      venue_code: venueCode, keep_reference: keepReference, updated_at: Date.now(),
+    });
+  },
+
+  /**
+   * Activated checkouts holding a provider token the venue's subscription no
+   * longer points at — each one is a subscription still billing at the provider
+   * that the app can no longer reach. Should always be empty.
+   */
+  listDuplicateSubscriptionCheckouts: () =>
+    stmtListDuplicateSubCheckouts.all().map(rowToSubCheckout),
 
   /**
    * Append an audit-log row. Used for sensitive admin actions where you'll
